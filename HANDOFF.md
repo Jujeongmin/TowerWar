@@ -2343,6 +2343,16 @@ npm run dev
 npx tsc --noEmit
 ```
 
+**커밋 전 검증은 이거 하나면 된다** (타입 체크 + 서버 테스트 + 빌드):
+```bash
+npm run verify
+```
+
+> **Windows PowerShell(5.1)에는 `&&` 가 없다.** `npx tsc --noEmit && npm run build` 는
+> 거기서 파서 에러다 (§0의 PowerShell 지뢰와 같은 뿌리). `npm run verify` 는 npm이
+> 내부적으로 cmd를 태우므로 어느 셸에서든 돈다. 이 PC에는 `pwsh`(7)가 없다 —
+> 확인함: `powershell 5.1.26100.8875`, `pwsh 미설치`.
+
 `vite.config.ts` 는 `tsconfig.json` 의 `include` 에서 제외돼 있다 (`@types/node` 없이 통과시키려고).
 
 서버 로직 검증 (배포 없이):

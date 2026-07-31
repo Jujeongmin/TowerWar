@@ -25,9 +25,15 @@ npm run dev
 | 명령 | 하는 일 |
 |---|---|
 | `npm run dev` | 개발 서버 (포트 고정 아님) |
+| `npm run verify` | 타입 체크 + 서버 테스트 + 빌드. **커밋 전에 이거 하나만 돌리면 된다** |
 | `npm run build` | `tsc && vite build` → `dist/` |
 | `npm run test:server` | `server.js` 로직 검증. 배포 없이 돈다 |
 | `npx tsc --noEmit` | 타입 체크 |
+
+> **Windows PowerShell(5.1)에서는 `&&` 가 파서 에러다.** `npx tsc --noEmit && npm run build`
+> 처럼 이어 쓰면 안 돌아간다. `npm run verify` 는 npm이 내부적으로 cmd를 태우므로
+> 어느 셸에서든 그대로 돈다 — 그래서 만들어 뒀다.
+> PowerShell에서 굳이 이어 쓰려면 `A; if ($?) { B }` 형태를 쓸 것.
 
 배포 전에도 끝까지 플레이된다 — 실서버에 못 붙으면 조용히 봇전으로 넘어간다.
 개발 빌드에서는 진짜 `server.js` 를 브라우저에서 돌리는 로컬 백엔드가 붙어

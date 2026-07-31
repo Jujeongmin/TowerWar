@@ -1,0 +1,589 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 캔버스는 `env()` 를 못 읽는다. HUD(이름·아바타·타이머)가 노치 밑으로 들어가지
+   않게 렌더러가 이 값을 읽어 간다 (`Renderer.resize`). 여기 이름을 바꾸면 거기도 고칠 것. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html,
+body {
+  width: 100%;
+  /* 모바일 브라우저는 주소창이 접혔다 펴지면서 100vh 가 실제 보이는 높이와 어긋난다.
+     dvh 는 그때그때의 실제 높이라 판이 잘리거나 뜨지 않는다. 지원 안 하면 위 100% 로 남는다. */
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #0b1017;
+  /* 아래로 당겨 새로고침·바운스 스크롤이 드래그 조작을 가로채지 못하게 막는다. */
+  overscroll-behavior: none;
+  color: #dbe6ef;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  /* 길게 눌렀을 때 뜨는 텍스트 선택·확대경. 드래그로 경로를 긋는 게임이라 방해가 된다. */
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+#stage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 브라우저의 스크롤/줌 제스처가 드래그 조작을 가로채지 못하게 막는다 */
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* hidden 속성이 display:block을 이기지 못하므로 명시적으로 눌러준다.
+   이게 없으면 로비에 있는 동안에도 캔버스가 화면을 덮는다. */
+[hidden] {
+  display: none !important;
+}
+
+/* ── 화면 ──────────────────────────────────────────────────────── */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  /* 노치·홈 인디케이터 밑으로 버튼이 들어가지 않게 안전영역만큼 더 민다.
+     `viewport-fit=cover` 를 켰기 때문에 이게 없으면 실제로 가려진다. */
+  padding: calc(24px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right))
+    calc(24px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 결과 화면은 매치 위에 얹힌다. 캔버스가 승리/패배 글자와 어둡게 깔기를 이미
+   그리므로 여기서는 배경을 덮지 않고 버튼만 올린다. */
+.screen-overlay {
+  justify-content: flex-end;
+  padding-bottom: 18vh;
+  background: none;
+  pointer-events: none;
+}
+
+.screen-overlay .btn {
+  pointer-events: auto;
+}
+
+/* ── 매치 중 설정 ───────────────────────────────────────────────── */
+
+/* 캔버스 위에 얹히는 유일한 컨트롤이다. 캔버스에 그리지 않는 이유는 §4.5에 있다 —
+   전에 캔버스 버튼 하나 때문에 그 뒤에서 절단 스와이프가 시작되는 버그를 따로 막아야 했다. */
+.gear {
+  position: fixed;
+  /* 노치 밑으로 들어가면 못 누른다. */
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(14px + env(safe-area-inset-right));
+  z-index: 20;
+  appearance: none;
+  /* 손가락으로 눌러야 한다. 44px 는 iOS 휴먼 인터페이스의 최소 터치 크기다. */
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  background: rgba(20, 26, 34, 0.82);
+  color: #dbe6ef;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  /* 톱니를 누르려다 드래그가 시작되면 경로가 열린다. 캔버스로 새지 않게 막는다. */
+  touch-action: manipulation;
+}
+
+.gear:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* 결과 화면과 달리 **판이 살아 있는 위**에 뜬다. `screen-overlay` 의
+   `pointer-events: none` 을 되돌려 놓지 않으면 창 너머 캔버스로 드래그가 들어가
+   설정을 보는 동안 경로가 열린다. */
+#settings {
+  justify-content: center;
+  padding-bottom: 24px;
+  pointer-events: auto;
+  background: rgba(6, 10, 15, 0.82);
+  z-index: 30;
+}
+
+/* 재확인 창을 없앤 자리(사용자 지시). 대가는 버튼 바로 아래에서 알린다. */
+.resign-warn {
+  margin-top: -12px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.settings-title {
+  font-size: 26px;
+}
+
+.btn-danger {
+  border-color: #f2555f;
+  color: #ffd9dc;
+}
+
+.btn-danger:hover {
+  border-color: #ff8b92;
+}
+
+.account-bar {
+  position: absolute;
+  top: calc(20px + env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  align-items: baseline;
+  font-size: 14px;
+}
+
+.coins {
+  font-weight: 800;
+  font-size: 18px;
+  color: #fbbf24;
+}
+
+.coins::before {
+  content: '◈ ';
+  font-weight: 400;
+}
+
+.record {
+  color: rgba(170, 186, 202, 0.7);
+}
+
+.acc-name {
+  font-weight: 800;
+  font-size: 15px;
+  color: #f2f7fb;
+}
+
+.acc-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  /* 원본이 908×908 정사각형이라 그대로 원으로 잘라도 잘리는 부분이 없다. */
+  object-fit: cover;
+  align-self: center;
+}
+
+/* ── 아바타 고르기 ─────────────────────────────────────────────── */
+
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+  gap: 6px;
+}
+
+.avatar-card {
+  appearance: none;
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+  touch-action: manipulation;
+}
+
+/* 캐릭터 그림은 9장이 다 같다. **고르는 것은 이 배경색이다** (src/profiles.ts).
+   원본 PNG에 알파가 있어 색이 캐릭터 뒤로 그대로 비친다 — 그림을 안 건드리고
+   변형을 만드는 방법이라, 에셋을 수정하지 말라는 지시(§-15)와도 맞는다. */
+.avatar-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--avatar-bg, #3a4757);
+}
+
+.avatar-card:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* 고른 것이 가장 잘 보여야 한다. 테두리만으로 구분한다 — 원본 그림을 안 건드리려고. */
+.avatar-card.is-picked {
+  border-color: #3fbdf1;
+}
+
+/* 닉네임 입력은 코드 입력과 달리 대문자화·자간 벌리기를 하지 않는다 — 사람 이름이다. */
+.name-input {
+  letter-spacing: normal;
+  text-transform: none;
+  text-align: center;
+}
+
+.reward {
+  font-weight: 700;
+  font-size: 15px;
+  color: #fbbf24;
+  margin-top: -8px;
+}
+
+.logo {
+  font-size: clamp(38px, 9vw, 68px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #f2f7fb;
+}
+
+.tagline {
+  font-size: 14px;
+  color: rgba(170, 186, 202, 0.75);
+  margin-top: -14px;
+}
+
+.result-title {
+  font-size: clamp(30px, 7vw, 54px);
+  font-weight: 800;
+  /* 캔버스가 같은 글자를 이미 그린다. 여기 글자는 자리만 잡고 안 보이게 둔다 —
+     지우면 버튼 위치가 화면 크기에 따라 흔들린다. */
+  visibility: hidden;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(320px, 100%);
+}
+
+.menu-row {
+  flex-direction: row;
+  justify-content: center;
+}
+
+.btn {
+  appearance: none;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  background: rgba(20, 26, 34, 0.92);
+  color: #dbe6ef;
+  font: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 14px 22px;
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  border-color: #3fbdf1;
+  color: #f2f7fb;
+}
+
+.btn-primary:hover {
+  border-color: #7fd6ff;
+}
+
+/* ── 로비 상점 ─────────────────────────────────────────────────── */
+
+.shop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(320px, 100%);
+}
+
+.shop-title {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: rgba(170, 186, 202, 0.55);
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+.shop-row {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(20, 26, 34, 0.92);
+  color: #dbe6ef;
+  font: inherit;
+  padding: 11px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.shop-row:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.shop-row:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* 못 사는 이유(코인 부족/만렙)는 가격 칸의 글자가 말해준다.
+   행을 통째로 숨기면 무엇을 향해 모으는 중인지 안 보인다. */
+.shop-row:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.shop-head,
+.shop-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.shop-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.shop-pips {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: #3fbdf1;
+}
+
+.shop-effect {
+  font-size: 12px;
+  color: rgba(170, 186, 202, 0.75);
+}
+
+.shop-price {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fbbf24;
+  white-space: nowrap;
+}
+
+/* 코인이 모자란 가격은 취소색(호박)이 아니라 회색으로 — 살 수 있는 값과 구분된다. */
+.shop-price.locked,
+.unit-state.locked {
+  color: rgba(170, 186, 202, 0.6);
+}
+
+/* 상점은 항목이 늘면 화면을 넘긴다. 넘칠 때만 스크롤되게 두고 위아래 여백을 준다. */
+.screen-scroll {
+  justify-content: flex-start;
+  padding-top: calc(62px + env(safe-area-inset-top));
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  /* 가로로는 못 밀게 둔다 — 가로 스크롤이 생기면 드래그 조작과 헷갈린다. */
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* 끝까지 스크롤한 뒤에도 계속 밀면 페이지 전체가 튀는 것을 막는다. */
+  overscroll-behavior: contain;
+  gap: 18px;
+}
+
+/* ── PVP 매칭 화면 ─────────────────────────────────────────────── */
+
+.pvp-title {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: rgba(170, 186, 202, 0.55);
+}
+
+.pvp-status {
+  font-size: clamp(20px, 5vw, 30px);
+  font-weight: 800;
+  text-align: center;
+}
+
+/* 매칭 경과 시간. 자릿수가 늘어도 글자가 안 흔들리게 등폭으로 쓴다 —
+   비례폭이면 1과 8의 폭이 달라 초가 바뀔 때마다 줄이 좌우로 떨린다. */
+.pvp-timer {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: rgba(170, 186, 202, 0.7);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  margin-top: -12px;
+}
+
+/* 방 코드·오류 원문처럼 길어질 수 있는 줄. 화면 밖으로 밀리지 않게 감싼다. */
+.pvp-detail {
+  font-size: 13px;
+  color: rgba(170, 186, 202, 0.75);
+  text-align: center;
+  max-width: min(420px, 100%);
+  overflow-wrap: anywhere;
+  margin-top: -10px;
+}
+
+.pvp-status.is-error {
+  color: #fbbf24;
+  font-size: clamp(16px, 4vw, 22px);
+}
+
+/* 안내문. 오류가 아니라 "이제 뭘 하면 되는지"라서 작고 조용하게. */
+.pvp-status.is-hint {
+  font-size: clamp(14px, 3.5vw, 18px);
+  font-weight: 500;
+  color: rgba(170, 186, 202, 0.8);
+}
+
+.pvp-code {
+  display: flex;
+  gap: 8px;
+}
+
+/* 친구랑 하기에서만 보이는 묶음. 자동 매칭에서는 hidden 이라 자리도 안 차지한다. */
+.friend-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 발급받은 코드. 친구가 옮겨 적는 값이라 크고 자간을 벌려 둔다. */
+.pvp-code-shown {
+  font-size: clamp(30px, 8vw, 46px);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  /* 자간이 마지막 글자 뒤에도 붙어 중앙이 왼쪽으로 밀린다. 그만큼 되민다. */
+  text-indent: 0.22em;
+  color: #3fbdf1;
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.code-input {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  background: rgba(20, 26, 34, 0.92);
+  color: #dbe6ef;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 13px 14px;
+  border-radius: 10px;
+}
+
+.code-input:focus {
+  outline: none;
+  border-color: #3fbdf1;
+}
+
+/* ── 유닛 카드 ─────────────────────────────────────────────────── */
+
+.unit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.unit-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(20, 26, 34, 0.92);
+  color: #dbe6ef;
+  font: inherit;
+  padding: 10px 6px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.unit-card:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.unit-card:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* 못 사는 카드는 흐리게. 착용 중인 카드도 disabled지만 흐리면 안 된다 —
+   지금 입고 있는 것이 가장 잘 보여야 한다. */
+.unit-card:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.unit-card.is-equipped {
+  opacity: 1;
+  border-color: #3fbdf1;
+  background: rgba(63, 189, 241, 0.1);
+}
+
+/* 미리보기 높이를 고정한다. 종류마다 원본 비율이 달라서(창기병 72×149)
+   높이를 안 맞추면 카드 높이가 제각각이 된다. */
+.unit-art {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 56px;
+}
+
+.unit-art img {
+  max-height: 100%;
+  max-width: 100%;
+  /* 픽셀 아트라 확대·축소에 보간이 걸리면 뭉개진다 */
+  image-rendering: pixelated;
+}
+
+.unit-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* 사는 이유가 여기 있다. 이름 다음으로 눈에 들어와야 해서 blurb 보다 밝고 굵다. */
+.unit-power {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fbbf24;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.unit-blurb {
+  font-size: 10px;
+  color: rgba(170, 186, 202, 0.65);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.unit-state {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.unit-card.is-owned .unit-state {
+  color: rgba(170, 186, 202, 0.8);
+}
+
+.unit-card.is-equipped .unit-state {
+  color: #3fbdf1;
+}

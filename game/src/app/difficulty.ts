@@ -1,0 +1,52 @@
+/**
+ * PVE 난이도 — 사람의 영구 강화에 맞춰 봇을 얼마나 세게 할 것인가.
+ *
+ * 계정 데이터도 시뮬레이션 규칙도 아니고 "이 판을 어떤 조건으로 시작하는가"라서 app/에 둔다.
+ * 스테이지 캠페인이 붙으면 스테이지 번호도 여기로 들어온다.
+ */
+import { modsFor, upgradeLevelOf, type Account } from '../account/account';
+import { SPEED_STEP } from '../sim/config';
+import type { PlayerId, PlayerMods } from '../sim/types';
+
+/**
+ * 봇이 공속에서 몇 단계 뒤처지는가. **사람이 이기는 폭이 오직 여기서 나온다.**
+ *
+ * 정수가 아닌 이유: 한 단계(+4%)가 통째로 승부를 가른다. 시드 1~30 × 좌우 거울 = 60판:
+ *
+ *   지연 0    → 40%   (봇과 동등)
+ *   지연 0.15 → 43~62% (판마다 널뛴다)
+ *   **지연 0.5  → 66.7 / 68.3 / 68.3%** (사람 속1·속3·속5 각각 — 단계와 무관하게 평평)
+ *   지연 0.75 → 81.7~90%
+ *   지연 1    → 86.7~91.7%
+ *
+ * 0.5를 고른 것은 승률이 목표대(65~70%)에 들어오면서 **강화 단계가 올라가도 안 흔들리는**
+ * 유일한 값이라서다. 봇 보정은 저장되는 값이 아니라 매치마다 계산되므로 소수여도 된다.
+ */
+const BOT_SPEED_LAG = 0.5;
+
+/**
+ * 봇에게 줄 보정. **공속만 반 단계 아래고, 유닛의 힘은 사람과 정확히 같다.**
+ *
+ * 두 축을 다르게 다루는 이유는 §-0.75의 실측이다. 유닛의 힘은 조절 가능한 축이 아니라
+ * 계단이다 — 충돌이 `Math.min(a.power, b.power)` 라 조금이라도 낮은 쪽은 정면 교환에서
+ * 항상 먼저 죽는다. 사람 전투력 2 기준으로 봇을 올려 가며 잰 사람 승률:
+ *
+ *   봇 1.0 → 100%   1.5 → 100%   1.7 → 100%   1.85 → 95%   1.95 → 95%   **2.0 → 45%**
+ *
+ * 1.95에서도 사람이 95% 이긴다. **봇 공속을 +20%까지 올려도, 판단주기를 0.5→0.1로 줄여
+ * 최고 실력으로 만들어도 전부 100%였다.** 다른 어떤 것으로도 못 메운다.
+ *
+ * 그 대가로 **비싼 유닛을 사도 PVE에서는 이득이 0이다.** 축의 성질이지 버그가 아니다.
+ * 봇전이 쉬워지길 원하면 여기서 봇의 `unitPower` 만 낮추면 되는데, 그 순간 승률이
+ * 100%로 붙는다 — 위 표가 그 값이다.
+ */
+export function botModsFor(a: Account): PlayerMods {
+  // speedMulFor는 단계를 정수로 내림한다. 봇은 반 단계를 써야 하므로 직접 계산한다.
+  const speedLevel = Math.max(0, upgradeLevelOf(a, 'speed') - BOT_SPEED_LAG);
+  return { speedMul: 1 + SPEED_STEP * speedLevel, unitPower: modsFor(a).unitPower };
+}
+
+/** `createMatch`에 그대로 넘길 수 있는 형태. 사람은 P1, 봇은 P2. */
+export function matchModsFor(a: Account): Partial<Record<PlayerId, PlayerMods>> {
+  return { 1: modsFor(a), 2: botModsFor(a) };
+}

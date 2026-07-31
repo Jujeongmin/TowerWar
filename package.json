@@ -1,0 +1,22 @@
+{
+  "name": "towerwar",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test:server": "node tools/server-harness.mjs",
+    "deploy:server": "npx -y @agent8/deploy"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.1",
+    "three": "^0.185.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  },
+  "dependencies": {
+    "@agent8/gameserver": "^1.10.2"
+  }
+}

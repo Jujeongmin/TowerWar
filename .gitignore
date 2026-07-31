@@ -1,0 +1,46 @@
+# 의존성·빌드 산출물
+node_modules/
+dist/
+
+# Verse8 배포가 만드는 것
+.env
+.env.*
+.deployed
+
+# ── 에셋 원본 (assets-src/) ────────────────────────────────────────
+#
+# **일부러 뺐다. 두 가지 이유가 겹친다.**
+#
+# 1. 크기. 51MB다. 게임을 빌드하는 데는 하나도 필요 없다 —
+#    `game/public/assets/` 에 들어간 뽑아낸 PNG만 있으면 된다.
+#
+# 2. **라이선스.** Tiny Swords 는 "에셋 재배포·재판매·재포장 금지"다
+#    (`game/public/assets/LICENSE-tiny-swords.txt`). 원본 팩을 저장소에 통째로
+#    올리는 것은 그 조항에 정면으로 걸린다. BeerGang 3D 는 상용 권한이
+#    아직 확인 안 됐다 (HANDOFF §-16 · §-18).
+#
+# 다시 구우려면 원본이 필요하다. 어디 있는지는 HANDOFF 를 볼 것:
+#   assets-src/beergang/GangHouse/BeerGang/{glb,anim}/   유닛 베이커 입력
+#   C:\Users\anjsh\TowerWar-assets-raw\                   받은 zip 원본 3.0GB
+assets-src/
+
+# ── 뽑아낸 에셋 (game/public/assets/) ──────────────────────────────
+#
+# **저장소가 공개라서 뺐다** (2026-07-31, 사용자 결정). 원본이 아니라 뽑아낸
+# PNG지만 재배포인 것은 같다:
+#
+#   tower/*.png            Tiny Swords 에서 추출. "재배포·재판매·재포장 금지"
+#   unit/*.png             BeerGang 3D 를 구운 것. 상용 권한 미확인
+#   profile/beergang.png   위와 같음
+#
+# **클론만 하면 게임이 그림 없이 돈다.** 렌더러가 스프라이트를 못 받으면
+# 원·도형 폴백으로 그린다 (일부러 남겨 둔 경로다 — HANDOFF §7).
+# 그림까지 되살리려면 `assets-src/` 원본을 놓고 다시 뽑아야 한다:
+#   유닛  브라우저 콘솔에서 `game/src/tools/bake-units.ts` (HANDOFF §-16 · §-24)
+#   타워  Tiny Swords 무료 팩에서 추출 (HANDOFF §7)
+game/public/assets/
+
+# OS·에디터
+.DS_Store
+Thumbs.db
+*.swp

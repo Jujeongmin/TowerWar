@@ -17,10 +17,32 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 
-/** 프로젝트 루트 기준 절대 경로를 dev 서버가 읽을 수 있는 URL 로 바꾼다. */
-const fsUrl = (abs: string) => '/@fs/' + abs.replace(/\\/g, '/').replace(/^\/+/, '');
+/**
+ * 프로젝트 루트. **dev 서버에 물어본다** (`/__bake/root`).
+ *
+ * 전에는 `'C:/Users/anjsh/OneDrive/Desktop/TowerWar'` 가 소스에 박혀 있었다 —
+ * **다른 PC에서 클론하면 베이커가 통째로 죽는다.** 저장소를 GitHub에 올린 뒤로
+ * 실제로 걸리는 문제라 서버가 알려 주게 바꿨다.
+ */
+let cachedRoot: string | null = null;
+async function projectRoot(): Promise<string> {
+  if (cachedRoot) return cachedRoot;
+  const res = await fetch('/__bake/root');
+  if (!res.ok) throw new Error('dev 서버에서 프로젝트 루트를 못 읽었습니다 (npm run dev 중인가?)');
+  cachedRoot = (await res.json()).root as string;
+  return cachedRoot;
+}
 
-const PROJECT_ROOT = 'C:/Users/anjsh/OneDrive/Desktop/TowerWar';
+/**
+ * 경로를 dev 서버가 읽을 수 있는 URL 로 바꾼다.
+ * **프로젝트 루트 기준 상대 경로**를 쓰는 것이 기본이고, 절대 경로도 그대로 받는다.
+ */
+async function fsUrl(p: string): Promise<string> {
+  const s = p.replace(/\\/g, '/');
+  const isAbs = /^[a-zA-Z]:\//.test(s) || s.startsWith('/');
+  const abs = isAbs ? s : `${await projectRoot()}/${s}`;
+  return '/@fs/' + abs.replace(/^\/+/, '');
+}
 
 export interface BakeOptions {
   /** 캐릭터 GLB. 스킨과 텍스처가 들어 있어야 한다 */
@@ -86,8 +108,10 @@ export interface BakeOptions {
 }
 
 const DEFAULTS: BakeOptions = {
-  model: `${PROJECT_ROOT}/assets-src/beergang/GangHouse/BeerGang/glb/final_Lyquid_mvp_uv_rig_ani_mat_05.glb`,
-  animation: null,
+  // 프로젝트 루트 기준 상대 경로다. `assets-src/` 는 저장소에 없으니(§-25)
+  // 다른 PC에서는 이 파일을 먼저 갖다 놓아야 한다.
+  model: 'assets-src/beergang/GangHouse/BeerGang/glb/final_Lyquid_mvp_uv_rig_ani_mat_05.glb',
+  animation: 'assets-src/beergang/GangHouse/BeerGang/anim/Walking.fbx',
   clip: null,
   frames: 6,
   height: 91,
@@ -265,10 +289,10 @@ export async function bake(opts: Partial<BakeOptions> = {}) {
   const o: BakeOptions = { ...DEFAULTS, ...opts };
   const log: string[] = [];
 
-  const { root, clips: own } = await loadModel(fsUrl(o.model));
+  const { root, clips: own } = await loadModel(await fsUrl(o.model));
   let clips = own;
   if (o.animation) {
-    const ext = await loadClips(fsUrl(o.animation));
+    const ext = await loadClips(await fsUrl(o.animation));
     clips = ext.map(c => retargetToRig(c, root));
     log.push(`외부 클립 ${ext.length}개: ${ext.map(c => c.name).join(', ')}`);
   }
@@ -519,7 +543,7 @@ export function removeStrip() {
 
 /** 모델 안에 뭐가 있는지만 본다 (굽지 않는다). */
 export async function inspect(model = DEFAULTS.model) {
-  const { root, clips } = await loadModel(fsUrl(model));
+  const { root, clips } = await loadModel(await fsUrl(model));
   const mats = new Set<string>();
   const meshes: string[] = [];
   root.traverse((o: any) => {
@@ -550,9 +574,15 @@ export async function inspect(model = DEFAULTS.model) {
  *
  * 세로형이 된 뒤로 화면에서 **+z 는 아래로 걷는 것, -z 는 위로 걷는 것**이다.
  */
-export async function facing(yawDeg = DEFAULTS.yawDeg, model = DEFAULTS.model, animation: string | null = null) {
-  const { root, clips: own } = await loadModel(fsUrl(model));
-  const clips = animation ? (await loadClips(fsUrl(animation))).map(c => retargetToRig(c, root)) : own;
+export async function facing(
+  yawDeg = DEFAULTS.yawDeg,
+  model = DEFAULTS.model,
+  // 굽는 것과 **같은 클립**으로 재야 의미가 있다. 모델 안의 idle 로 재면 보폭이 없어
+  // 발끝-발목 벡터가 흐려진다 (실측: Walking 1.0088 vs 모델 기본 클립 1.3749).
+  animation: string | null = DEFAULTS.animation,
+) {
+  const { root, clips: own } = await loadModel(await fsUrl(model));
+  const clips = animation ? (await loadClips(await fsUrl(animation))).map(c => retargetToRig(c, root)) : own;
 
   const pivot = new THREE.Group();
   pivot.add(root);
@@ -606,10 +636,10 @@ export async function facing(yawDeg = DEFAULTS.yawDeg, model = DEFAULTS.model, a
 
 /** 외부 애니메이션 파일이 이 리그에 붙는지 검사만 한다. */
 export async function checkAnimation(animation: string, model = DEFAULTS.model) {
-  const { root } = await loadModel(fsUrl(model));
+  const { root } = await loadModel(await fsUrl(model));
   const rigNames = new Set<string>();
   root.traverse(o => { if (o.name) rigNames.add(o.name); });
-  const clips = await loadClips(fsUrl(animation));
+  const clips = await loadClips(await fsUrl(animation));
   return clips.map(c => {
     const r = retargetToRig(c, root);
     const missing = new Set<string>();

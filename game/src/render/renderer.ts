@@ -109,6 +109,17 @@ const UNIT_SPRITE_H = 20;
  * HUD 막대를 이만큼 양쪽에서 줄여 이름·아바타가 버튼에 안 겹치게 한다.
  */
 const GEAR_CLEARANCE = 58;
+
+/**
+ * 유닛 그림 방향을 바꿀 때 요구하는 우세폭. **이미 쓰던 방향에 이만큼 가산점을 준다.**
+ *
+ * 한 구간(`fromId`→`toId`) 안에서는 이동 벡터가 안 변하므로 프레임마다 깜빡이지는
+ * 않는다. 이 값이 값을 하는 곳은 **중계**다 (`relayThrough`) — 상한에 찬 타워를
+ * 통과하며 구간이 갈아끼워질 때 45°에 가까운 두 구간을 오가면 그림이 톡톡 바뀐다.
+ *
+ * 1.0이면 히스테리시스가 없는 것과 같다. 1.35는 **약 8° 폭의 불감대**에 해당한다.
+ */
+const DIR_HYSTERESIS = 1.35;
 const UNIT_FPS = 12;
 
 export class Renderer {
@@ -120,6 +131,12 @@ export class Renderer {
   private time = 0;
   /** 맞물린 경로쌍의 마지막 전선 위치. 유닛이 잠깐 비는 순간에 경계가 튀지 않게 잡아준다. */
   private frontMemory = new Map<string, Vec>();
+  /**
+   * 유닛 id → 지금 쓰고 있는 그림 방향. 히스테리시스가 이걸 본다 (`DIR_HYSTERESIS`).
+   * `drawUnits` 가 매 프레임 살아 있는 것만 담아 통째로 갈아 끼운다 — 안 그러면
+   * 죽은 유닛 id가 한 판 내내 쌓인다.
+   */
+  private unitDir = new Map<number, UnitDir>();
   private lastTick = -1;
   private sprites = new Sprites();
   /**
@@ -250,9 +267,10 @@ export class Renderer {
     this.time += dt;
     this.stepEffects(dt);
 
-    // 새 판이 시작되면 이전 판의 전선 기억은 버린다 — 타워 id가 재사용되기 때문이다
+    // 새 판이 시작되면 이전 판의 기억은 버린다 — 타워·유닛 id가 재사용되기 때문이다
     if (state.tick < this.lastTick) {
       this.frontMemory.clear();
+      this.unitDir.clear();
     }
     this.lastTick = state.tick;
 
@@ -594,6 +612,10 @@ export class Renderer {
 
   private drawUnits(state: MatchState, alpha: number): void {
     const ctx = this.ctx;
+    // 살아 있는 유닛만 담아 매 프레임 갈아 끼운다. 죽은 유닛 id를 지우지 않으면
+    // 한 판 내내 쌓인다 — 유닛 id는 계속 증가하고 재사용되지 않는다.
+    const dirNow = new Map<number, UnitDir>();
+
     for (const u of state.units) {
       // 틱 사이 보간 — 30Hz 시뮬레이션을 60fps로 부드럽게 보여준다
       const p = unitPosition(state, u, unitProgressRate(u) * alpha * TICK_DT);
@@ -613,10 +635,16 @@ export class Renderer {
       //
       // 회전은 여전히 안 건다 — 사람 모양이라 돌리면 옆으로 눕는다(§7).
       // 옆모습일 때만 좌우 반전을 걸고, 정면·후면은 반전도 안 한다.
+      // 45° 근처에서는 우세가 종이 한 장 차이라 중계로 구간이 갈아끼워질 때
+      // 그림이 톡톡 바뀐다. **이미 쓰던 방향에 가산점**을 줘서 넘어갈 만할 때만 넘어간다.
       const dx = from && to ? to.x - from.x : 0;
       const dy = from && to ? to.y - from.y : 0;
-      const vertical = Math.abs(dy) > Math.abs(dx);
+      const prev = this.unitDir.get(u.id);
+      const sideScore = Math.abs(dx) * (prev === 'run' ? DIR_HYSTERESIS : 1);
+      const vertScore = Math.abs(dy) * (prev === 'up' || prev === 'down' ? DIR_HYSTERESIS : 1);
+      const vertical = vertScore >= sideScore;
       const dir: UnitDir = vertical ? (dy > 0 ? 'down' : 'up') : 'run';
+      dirNow.set(u.id, dir);
       const facingLeft = !vertical && dx < 0;
 
       const sprite = this.sprites.unit(u.owner, kind, dir, this.time * UNIT_FPS + u.id * 2);
@@ -642,6 +670,8 @@ export class Renderer {
       ctx.fill();
       ctx.stroke();
     }
+
+    this.unitDir = dirNow;
   }
 
   private drawDrag(state: MatchState, ui: UiState): void {

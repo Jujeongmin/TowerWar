@@ -11,6 +11,13 @@ function bakeWriter() {
     name: 'towerwar-bake-writer',
     apply: 'serve' as const,
     configureServer(server: any) {
+      // 베이커가 `assets-src/` 를 `/@fs/<절대경로>` 로 읽어야 하는데 브라우저는
+      // 자기가 어느 폴더에서 서빙되는지 모른다. 전에는 소스에 이 PC 경로가 박혀 있어서
+      // **다른 PC에서 클론하면 베이커가 통째로 죽었다.** 여기서 알려 준다.
+      server.middlewares.use('/__bake/root', (_req: any, res: any) => {
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ root: ROOT.replace(/\\/g, '/') }));
+      });
       server.middlewares.use('/__bake/write', (req: any, res: any, next: any) => {
         if (req.method !== 'POST') return next();
         let body = '';

@@ -167,6 +167,53 @@ function num(v) {
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
 }
 
+/** `num()` 과 달리 값이 없을 때 0이 아니라 지정한 기본값으로 떨어진다 (레이팅 기본값용). */
+function numOr(v, fallback) {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
+}
+
+// ── PVP 점수 (Elo) ───────────────────────────────────────────────
+//
+// `game/src/rating.ts` 가 이 숫자를 티어로 바꾼다. 서버는 숫자만 안다 — 구간은
+// 순수 표시용이라 클라이언트 한 곳에만 있다.
+
+/** 새 계정의 시작 점수. `game/src/account/account.ts` 의 같은 이름과 맞춰 둔다. */
+const DEFAULT_RATING = 1000;
+/** 한 판의 최대 변동폭. 표준 Elo 값이다. 승률 반영 속도를 조절하려면 이 값만 만지면 된다. */
+const RATING_K = 32;
+
+/** 표준 Elo 기대승률. */
+function eloExpected(mine, theirs) {
+  return 1 / (1 + Math.pow(10, (theirs - mine) / 400));
+}
+
+/** 한 판 뒤 변동량(반올림 정수). `score` 는 승 1 / 무 0.5 / 패 0. */
+function eloDelta(mine, theirs, score) {
+  return Math.round(RATING_K * (score - eloExpected(mine, theirs)));
+}
+
+/**
+ * 매칭 때 허용하는 점수 차. **오래 기다린 방일수록 넓어진다** — §-1이 "강화 폭이
+ * 판을 끝낸다"에 남겨 둔 완화책이 이것이다(전투력 기반 매치메이킹). 실력차가 큰
+ * 상대와 즉시 붙지 않게 막다가, 그래도 안 되면 봇전보다는 사람과 붙는 쪽을 우선한다.
+ *
+ * 마지막 칸을 `Infinity` 로 둔 것은 `SOLO_FALLBACK_MS`(12000) 전에 사실상 누구든
+ * 받도록 하기 위해서다 — 사람과 붙을 여지를 봇 폴백 직전까지 최대로 준다.
+ */
+const RATING_BAND_STEPS = [
+  { afterMs: 0, band: 100 },
+  { afterMs: 4000, band: 250 },
+  { afterMs: 8000, band: 600 },
+  { afterMs: 10000, band: Infinity },
+];
+
+function ratingBandFor(waitedMs) {
+  let band = RATING_BAND_STEPS[0].band;
+  for (const step of RATING_BAND_STEPS) if (waitedMs >= step.afterMs) band = step.band;
+  return band;
+}
+
 /** 닉네임 길이 상한. 화면 상단 HUD에 들어가야 해서 짧게 잡는다. */
 const NAME_MAX = 12;
 
@@ -232,6 +279,8 @@ function defaultAccount(account) {
     soloWins: 0,
     soloLosses: 0,
     soloDraws: 0,
+    // PVP 점수(Elo). 봇전은 안 건드린다 — solo 전적을 갈라 둔 것과 같은 이유다.
+    rating: DEFAULT_RATING,
   };
 }
 
@@ -258,6 +307,9 @@ function normalizeAccount(raw, account) {
     soloWins: num(raw.soloWins),
     soloLosses: num(raw.soloLosses),
     soloDraws: num(raw.soloDraws),
+    // 없으면(마이그레이션 전 계정) 0이 아니라 기본 점수로 떨어진다 — `num()` 은
+    // 여기 못 쓴다. 0은 "많이 져서 0점"과 "한 번도 안 쟀음"을 구분 못 한다.
+    rating: numOr(raw.rating, DEFAULT_RATING),
   };
 }
 
@@ -369,13 +421,31 @@ class Server {
    *
    * 코드 방(`private`)은 후보에서 뺀다. 친구를 기다리는 방에 낯선 사람을 넣으면 안 된다.
    */
+  /**
+   * 점수가 너무 다른 상대와는 즉시 안 붙는다. 방을 만든 사람이 오래 기다렸을수록
+   * 대역을 넓힌다 (`ratingBandFor`) — 실력차 매칭과 "그래도 봇보다는 사람"이라는
+   * §-7의 우선순위를 함께 만족시키는 지점이다.
+   *
+   * 대역 밖이면 이 방은 건너뛰고 계속 찾는다. 끝까지 못 찾으면 전과 같이 내가
+   * 새 대기방을 판다 — 그 방은 나중에 다른 사람의 findMatch 후보가 된다.
+   */
   async findMatch() {
     const ids = (await $global.getAllRoomIds()) || [];
+    const me = await this.#loadAccount();
+    const now = Date.now();
     for (const id of ids) {
       const state = await $global.getRoomState(id);
       if (state && state.private) continue;
       if (state && state.phase && state.phase !== PHASE_WAITING) continue;
       if ((await $global.countRoomUsers(id)) >= ROOM_MAX_USER) continue;
+
+      const players = (state && state.players) || {};
+      const creator = Object.keys(players)[0];
+      if (creator) {
+        const waited = now - (players[creator].joinedAt || 0);
+        const creatorRating = numOr(players[creator].rating, DEFAULT_RATING);
+        if (Math.abs(me.rating - creatorRating) > ratingBandFor(waited)) continue;
+      }
       return await this.#enterRoom(id);
     }
     return await this.#enterRoom(undefined);
@@ -484,6 +554,8 @@ class Server {
         // 닉네임·아바타도 서버 계정에서 읽는다. 클라이언트가 보내면 남의 것을 자칭할 수 있다.
         name: me.name,
         profile: me.profile,
+        // 매칭 대역(`findMatch`)과 매치 시작 시 점수 스냅샷(`#start`)이 이 값을 본다.
+        rating: me.rating,
         seenAt: Date.now(),
       }),
     });
@@ -696,6 +768,7 @@ class Server {
     const names = {};
     const profiles = {};
     const kinds = {};
+    const ratings = {};
     [...users].sort().forEach((account, i) => {
       const slot = i + 1;
       slots[account] = slot;
@@ -705,6 +778,9 @@ class Server {
       levels[slot] = clampSpeedLevel((players[account] || {}).speedLevel);
       names[slot] = cleanName((players[account] || {}).name);
       kinds[slot] = cleanUnitKind((players[account] || {}).unitKind);
+      // 점수 변동 계산의 기준값이다. **판 도중 점수가 바뀌어도 이 스냅샷은 안 바뀐다** —
+      // `reportResult` 가 매 판 정확히 같은 두 숫자로 Elo를 계산해야 하기 때문이다.
+      ratings[slot] = numOr((players[account] || {}).rating, DEFAULT_RATING);
     });
 
     await $global.updateRoomState(roomId, {
@@ -714,6 +790,7 @@ class Server {
       names,
       profiles,
       kinds,
+      ratings,
       // maps.ts 의 generateMap 이 16비트 시드를 받는다.
       seed: Math.floor(Math.random() * 0x10000),
       slots,
@@ -724,6 +801,9 @@ class Server {
       hashes: {},
       winner: null,
       winnerSlot: 0,
+      // 이번 판의 자기 신고와 점수 반영 여부. 슬롯 번호로 키를 잡는다 (§-9와 같은 이유).
+      reports: {},
+      ratingApplied: {},
     });
   }
 

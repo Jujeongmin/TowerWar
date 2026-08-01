@@ -11,7 +11,7 @@
 import { SPEED_LEVEL_MAX, speedMulFor } from '../sim/config';
 import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
-import { DEFAULT_UNIT_KIND, UNIT_KIND_META, isUnitKind, unitPowerOf, type UnitKind } from '../units';
+import { DEFAULT_UNIT_KIND, UNIT_KIND_META, isPremiumKind, isUnitKind, unitPowerOf, type UnitKind } from '../units';
 
 const STORAGE_KEY = 'towerwar.account.v1';
 
@@ -19,12 +19,12 @@ const STORAGE_KEY = 'towerwar.account.v1';
  * 저장 형식이 바뀌면 올린다.
  * v1 = 강화 없음, v2 = 전투력+공속, v3 = 공속만, v4 = 유닛 생김새,
  * v5 = 봇전 전적 분리, v6 = 닉네임, v7 = 프로필 아바타, v8 = 기본 생김새가 BeerGang,
- * v9 = PVP 점수.
+ * v9 = PVP 점수, v10 = 유료(VX) 소유.
  */
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 /** 읽어서 살릴 수 있는 형식들. 여기 없는 값이면 기본값으로 되돌린다. */
-const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, SCHEMA_VERSION]);
+const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, SCHEMA_VERSION]);
 
 /** 닉네임 길이 상한. HUD에 들어가야 해서 짧다. `server.js` 의 `NAME_MAX` 와 같아야 한다. */
 export const NAME_MAX = 12;
@@ -84,6 +84,14 @@ export interface Account {
    * 근거가 없고, 로컬에서 올려 봐야 서버에 안 올라간다 (`store.ts` 머리말).
    */
   rating: number;
+  /**
+   * 유료(VX)로 열린 것들. **코인으로 산 `ownedUnits` 와 갈라 둔다** — 획득 경로가
+   * 다르고, 섞으면 나중에 무엇이 유료였는지 구분이 안 된다.
+   *
+   * **서버가 진짜다.** 오프라인에서는 절대 안 채워진다 — 결제는 Verse8 쪽에서
+   * 일어나고 서버 계정에만 기록된다 (`net/vx.ts`).
+   */
+  entitlements: UnitKind[];
 }
 
 export function defaultAccount(): Account {
@@ -102,6 +110,7 @@ export function defaultAccount(): Account {
     soloLosses: 0,
     soloDraws: 0,
     rating: DEFAULT_RATING,
+    entitlements: [],
   };
 }
 
@@ -126,6 +135,7 @@ export function fromRemote(r: {
   speedLevel: number; ownedUnits: string[]; unitKind: string;
   soloWins: number; soloLosses: number; soloDraws: number;
   rating?: number;
+  entitlements?: string[];
 }): Account {
   const owned = r.ownedUnits.filter(isUnitKind);
   const kind = isUnitKind(r.unitKind) ? r.unitKind : DEFAULT_UNIT_KIND;
@@ -144,6 +154,7 @@ export function fromRemote(r: {
     soloLosses: num(r.soloLosses),
     soloDraws: num(r.soloDraws),
     rating: ratingOr(r.rating, DEFAULT_RATING),
+    entitlements: [...new Set((r.entitlements ?? []).filter(isUnitKind))],
   };
   return { ...a, unitKind: unitKindOf(a) };
 }
@@ -217,13 +228,24 @@ export function modsFor(a: Account): PlayerMods {
 // **2026-07-31부터 외형만이 아니다** (사용자 지시). 종류가 `power`(체력=공격력)를 들고
 // 그 값이 `modsFor` 를 통해 sim 으로 간다. 카탈로그는 src/units.ts.
 
-/** 기본 생김새는 가격 0이라 사지 않아도 가지고 있다. */
+/**
+ * 기본 생김새는 가격 0이라 사지 않아도 가지고 있다.
+ *
+ * **유료 종류는 `price` 를 안 본다.** 무지개 비어갱도 `price: 0` 이라 가격만 보면
+ * "기본 제공"으로 읽혀 공짜가 된다 — 소유는 `entitlements` 가 든다.
+ */
 export function ownsUnitKind(a: Account, kind: UnitKind): boolean {
+  if (isPremiumKind(kind)) return a.entitlements.includes(kind);
   return UNIT_KIND_META[kind].price === 0 || a.ownedUnits.includes(kind);
 }
 
-/** 한 종류 구매한 새 계정. 이미 가졌거나 코인이 모자라면 null. 사면 바로 착용한다. */
+/**
+ * 한 종류 구매한 새 계정. 이미 가졌거나 코인이 모자라면 null. 사면 바로 착용한다.
+ *
+ * **유료 종류는 여기로 안 온다** — 코인으로 살 수 없다 (`server.js` 의 `buyUnitKind`).
+ */
 export function buyUnitKind(a: Account, kind: UnitKind): Account | null {
+  if (isPremiumKind(kind)) return null;
   const price = UNIT_KIND_META[kind].price;
   if (ownsUnitKind(a, kind) || a.coins < price) return null;
   return { ...a, coins: a.coins - price, ownedUnits: [...a.ownedUnits, kind], unitKind: kind };
@@ -328,6 +350,9 @@ export function loadAccount(): Account {
       soloDraws: num(parsed.soloDraws),
       // v8 이하 저장본에는 없다. 그때는 0이 아니라 시작 점수에서 출발해야 한다.
       rating: ratingOr(parsed.rating, DEFAULT_RATING),
+      // **로컬 사본은 참고용이다.** 유료 소유의 진짜 출처는 서버다 — 여기 값을
+      // 손으로 넣어도 착용은 서버가 거절한다 (`selectUnitKind`).
+      entitlements: [...new Set((Array.isArray(parsed.entitlements) ? parsed.entitlements : []).filter(isUnitKind))],
     };
     // 안 가진 것이 착용돼 있으면(손으로 고친 저장본 등) 기본으로 되돌린다.
     return { ...account, unitKind: unitKindOf(account) };

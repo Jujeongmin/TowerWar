@@ -596,6 +596,50 @@ body {
 
 /* 힘 막대. 카탈로그 최댓값 대비 비율이다 (`shop-scene.ts`).
    크기 차이가 최대 1.2배라 옆에 안 놓인 두 카드를 비교하려면 이게 필요하다. */
+/* 유료 카드. 코인 카드와 한눈에 갈려야 한다 — 눌렀을 때 일어나는 일이 다르다
+   (코인 차감이 아니라 외부 결제 창). */
+.unit-card-premium {
+  border-color: rgba(251, 191, 36, 0.45);
+}
+
+/* 무지개 아우라. **그림이 없어서 코드로 그리는 구분이다** — 무지개 비어갱은 기본
+   스프라이트를 빌려 쓰므로(`spriteKindOf`) 이게 없으면 기본과 똑같아 보인다.
+   캐릭터 뒤에 깔아 재킷 색(진영 신호)을 안 덮는다. */
+.unit-art.aura-rainbow {
+  position: relative;
+}
+
+.unit-art.aura-rainbow::before {
+  content: '';
+  position: absolute;
+  inset: auto 50% 2px;
+  width: 46px;
+  height: 46px;
+  transform: translateX(50%);
+  border-radius: 50%;
+  background: conic-gradient(#f2555f, #fbbf24, #34d399, #3fbdf1, #a78bfa, #f2555f);
+  filter: blur(7px);
+  opacity: 0.55;
+  animation: aura-spin 6s linear infinite;
+}
+
+.unit-art.aura-rainbow img {
+  position: relative;
+}
+
+@keyframes aura-spin {
+  to {
+    transform: translateX(50%) rotate(1turn);
+  }
+}
+
+/* 움직임을 끄기로 한 사람에게는 돌지 않는다. 색은 그대로 남아 구분은 유지된다. */
+@media (prefers-reduced-motion: reduce) {
+  .unit-art.aura-rainbow::before {
+    animation: none;
+  }
+}
+
 .unit-bar {
   width: 100%;
   height: 4px;

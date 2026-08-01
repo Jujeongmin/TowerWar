@@ -792,6 +792,39 @@ const dsAfter = await $global.getRoomState(droom.roomId);
 check('서로 다른 승자를 대면 resultMismatch', dsAfter.resultMismatch === true, dsAfter.resultMismatch);
 check('양쪽 신고가 남는다', Object.keys(dsAfter.reports || {}).length === 2, dsAfter.reports);
 
+// 48) 유료(VX) 종류 — 코인으로 못 사고, 소유 없이 못 입는다
+const G = { account: '0xGGG', roomId: null };
+as(G);
+await server.getAccount();
+let perr = null;
+try { await server.buyUnitKind('beergang_rainbow'); } catch (e) { perr = e.message; }
+check('유료 종류는 코인으로 못 산다', perr === '코인으로 살 수 없습니다', perr);
+perr = null;
+try { await server.selectUnitKind('beergang_rainbow'); } catch (e) { perr = e.message; }
+check('소유 없이 유료 종류를 못 입는다', perr === '가지고 있지 않습니다', perr);
+perr = null;
+try { await server.grantEntitlement('beergang_gold'); } catch (e) { perr = e.message; }
+check('유료 목록에 없는 항목은 못 연다', perr === '그런 항목이 없습니다', perr);
+
+// 49) 소유가 열리면 입을 수 있다. 코인은 안 깎인다 — 결제는 Verse8 쪽에서 끝났다
+const before49 = (await server.getAccount()).coins;
+const granted = await server.grantEntitlement('beergang_rainbow');
+check('소유가 열린다', granted.entitlements.includes('beergang_rainbow'), granted.entitlements);
+check('코인은 안 깎인다', granted.coins === before49, { now: granted.coins, before49 });
+const wornVx = await server.selectUnitKind('beergang_rainbow');
+check('열린 뒤에는 입는다', wornVx.unitKind === 'beergang_rainbow', wornVx.unitKind);
+const twice49 = await server.grantEntitlement('beergang_rainbow');
+check('두 번 열어도 한 칸만', twice49.entitlements.length === 1, twice49.entitlements);
+
+// 50) 저장본이 오염돼도 유료 소유를 자칭 못 한다
+userStates.set('0xGGG', {
+  ...defaultsFor('0xGGG'),
+  unitKind: 'beergang_rainbow',
+  entitlements: ['beergang_rainbow', 'beergang_rainbow', 'nonsense'],
+});
+const vxClean = await server.getAccount();
+check('중복·모르는 항목이 걸러진다', JSON.stringify(vxClean.entitlements) === JSON.stringify(['beergang_rainbow']), vxClean.entitlements);
+
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  ← ' + JSON.stringify(r.extra)}`);

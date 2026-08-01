@@ -19,7 +19,17 @@ import {
   type UpgradeKind,
 } from '../account/account';
 import { speedMulFor } from '../sim/config';
-import { MAX_UNIT_POWER, SHOP_UNIT_ORDER, UNIT_KIND_META, sizeFactorOf, type UnitKind } from '../units';
+import {
+  MAX_UNIT_POWER,
+  SHOP_PREMIUM_ORDER,
+  SHOP_UNIT_ORDER,
+  UNIT_KIND_META,
+  isPremiumKind,
+  sizeFactorOf,
+  spriteKindOf,
+  type UnitKind,
+} from '../units';
+import { isPurchasable } from '../net/vx';
 import type { Scene } from './scene';
 
 /** 다음 단계를 사면 무엇이 어떻게 변하는가. 만렙이면 현재 값만 보여준다. */
@@ -36,13 +46,17 @@ const UNIT_ART_BASE_H = 44;
 
 /** 미리보기 이미지. 러닝 사이클 첫 프레임을 그대로 쓴다 — P1(파랑) 기준. */
 function previewSrc(kind: UnitKind): string {
-  return `/assets/unit/p1/${kind}/run0.png`;
+  // 그림이 없는 종류는 빌려 온다 (`spriteKindOf`). 무지개 비어갱이 그렇고,
+  // 구분은 카드에 얹는 아우라(`.unit-art.aura-rainbow`)가 맡는다.
+  return `/assets/unit/p1/${spriteKindOf(kind)}/run0.png`;
 }
 
 export class ShopScene implements Scene {
   private readonly coins: HTMLElement;
   private readonly upgradeRows: { kind: UpgradeKind; el: HTMLButtonElement }[];
   private readonly unitCards: { kind: UnitKind; el: HTMLButtonElement }[];
+  private readonly premiumCards: { kind: UnitKind; el: HTMLButtonElement }[];
+  private readonly vxNote: HTMLElement;
 
   constructor(
     private readonly root: HTMLElement,
@@ -50,12 +64,20 @@ export class ShopScene implements Scene {
     private readonly buyUpgrade: (kind: UpgradeKind) => void,
     /** 안 가진 것이면 사고, 가진 것이면 착용한다. 판정은 계정 쪽에 있다. */
     private readonly pickUnit: (kind: UnitKind) => void,
+    /**
+     * 유료 항목을 사러 간다. **결제 창은 Verse8 쪽 페이지다** — 우리는 주소만 받아
+     * 새 탭으로 연다 (`net/vx.ts`). 열 수 없으면 `false` 를 돌려준다.
+     */
+    private readonly openVxShop: () => Promise<boolean>,
     back: () => void,
   ) {
     const coins = root.querySelector<HTMLElement>('#shop-coins');
     const grid = root.querySelector<HTMLElement>('#unit-grid');
+    const pgrid = root.querySelector<HTMLElement>('#premium-grid');
+    const vxNote = root.querySelector<HTMLElement>('#vx-note');
     const backBtn = root.querySelector<HTMLButtonElement>('#btn-shop-back');
-    if (!coins || !grid || !backBtn) throw new Error('상점 DOM이 예상과 다릅니다');
+    if (!coins || !grid || !pgrid || !vxNote || !backBtn) throw new Error('상점 DOM이 예상과 다릅니다');
+    this.vxNote = vxNote;
     this.coins = coins;
     backBtn.addEventListener('click', back);
 
@@ -78,6 +100,25 @@ export class ShopScene implements Scene {
         this.render();
       });
       grid.appendChild(el);
+      return { kind, el };
+    });
+
+    this.premiumCards = SHOP_PREMIUM_ORDER.map((kind) => {
+      const el = this.buildUnitCard(kind);
+      el.addEventListener('click', () => {
+        // 이미 가진 것이면 착용, 아니면 결제 창을 연다. 두 갈래가 한 버튼인 이유:
+        // 카드 하나가 "이 물건"을 뜻하고, 무엇을 할지는 상태가 정한다.
+        if (ownsUnitKind(this.getAccount(), kind)) {
+          this.pickUnit(kind);
+          this.render();
+          return;
+        }
+        void this.openVxShop().then((ok) => {
+          // 팝업 차단에 걸렸다. 조용히 지나가면 눌렀는데 아무 일도 안 일어난 것으로 보인다.
+          if (!ok) this.vxNote.textContent = '결제 창을 열지 못했습니다. 다시 눌러 주세요.';
+        });
+      });
+      pgrid.appendChild(el);
       return { kind, el };
     });
   }
@@ -106,7 +147,7 @@ export class ShopScene implements Scene {
   private buildUnitCard(kind: UnitKind): HTMLButtonElement {
     const meta = UNIT_KIND_META[kind];
     const el = document.createElement('button');
-    el.className = 'unit-card';
+    el.className = isPremiumKind(kind) ? 'unit-card unit-card-premium' : 'unit-card';
     el.id = `unit-${kind}`;
     // 다섯 종이 같은 캐릭터를 하의 색만 바꿔 구운 것이라 **색만으로는 순서가 없다** —
     // 흰·금·초록·보라 중 어느 쪽이 센지 알 방법이 없다. 그래서 셋으로 말한다:
@@ -123,7 +164,7 @@ export class ShopScene implements Scene {
     const artH = Math.round(UNIT_ART_BASE_H * sizeFactorOf(meta.power));
     const fill = Math.round((meta.power / MAX_UNIT_POWER) * 100);
     el.innerHTML = `
-      <span class="unit-art"><img alt="" src="${previewSrc(kind)}" style="height:${artH}px" /></span>
+      <span class="unit-art${meta.aura === 'rainbow' ? ' aura-rainbow' : ''}"><img alt="" src="${previewSrc(kind)}" style="height:${artH}px" /></span>
       <span class="unit-name">${meta.label}</span>
       <span class="unit-bar"><i style="width:${fill}%"></i></span>
       <span class="unit-power">체력 ${meta.power} · 공격력 ${meta.power}</span>
@@ -165,6 +206,25 @@ export class ShopScene implements Scene {
       // 다만 가격은 계속 보여줘서 무엇을 향해 모으는 중인지 알 수 있게 한다.
       el.disabled = equipped || !affordable;
     }
+
+    // 유료 칸. 가격을 코인으로 안 적는다 — 실제 값은 Verse8 상점이 정한다.
+    let anyPurchasable = false;
+    for (const { kind, el } of this.premiumCards) {
+      const owned = ownsUnitKind(a, kind);
+      const equipped = kind === worn;
+      const sellable = isPurchasable(kind);
+      anyPurchasable = anyPurchasable || sellable;
+
+      set(el, 'state', equipped ? '착용 중' : owned ? '착용하기' : sellable ? 'VX로 구매' : '준비 중');
+      el.classList.toggle('is-equipped', equipped);
+      el.classList.toggle('is-owned', owned);
+      el.querySelector('[data-role="state"]')?.classList.toggle('locked', !owned && !sellable);
+      el.disabled = equipped || (!owned && !sellable);
+    }
+    // 자산 id 표(`ASSET_IDS`)가 비어 있으면 아직 팔 수 없다. 배포 전에는 늘 이 상태다 —
+    // 이유를 안 적으면 버튼이 왜 죽어 있는지 알 수가 없다.
+    this.vxNote.textContent = anyPurchasable ? '' : '결제 상품이 아직 등록되지 않았습니다.';
+    this.vxNote.hidden = anyPurchasable;
   }
 }
 

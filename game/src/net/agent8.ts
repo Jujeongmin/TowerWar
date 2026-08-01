@@ -102,6 +102,12 @@ export interface ServerBackend {
   remoteFunction(fn: string, args?: unknown[], opts?: unknown): Promise<any>;
   subscribeRoomState(roomId: string, cb: (state: any) => void): () => void;
   onRoomMessage(roomId: string, type: string, cb: (message: any) => void): () => void;
+  /**
+   * 결제 계열은 **선택**이다. 개발용 로컬 백엔드(`net/local-backend.ts`)에는 없다 —
+   * 결제는 Verse8 쪽에서 일어나므로 흉내 낼 대상이 아니다.
+   */
+  getCrossRampShopUrl?(lang?: string): Promise<string>;
+  subscribeAsset?(account: string, cb: (assets: Record<string, number>) => void): () => void;
 }
 
 export class Agent8Client {
@@ -258,6 +264,41 @@ export class Agent8Client {
     return await withTimeout(this.server.remoteFunction('getAccount', []), '계정 불러오기');
   }
 
+  // ── 유료(VX) ───────────────────────────────────────────────────
+  //
+  // 결제는 우리 코드 밖에서 일어난다 (`net/vx.ts` 머리말). 여기 있는 것은 SDK가
+  // 실제로 내놓는 두 가지뿐이다 — 결제 창 URL, 보유 자산 구독.
+
+  /** Verse8 CrossRamp 결제 창 URL. 실패하면 던진다 — 화면이 이유를 보여줘야 한다. */
+  async shopUrl(): Promise<string> {
+    const fn = this.server.getCrossRampShopUrl;
+    // 개발용 로컬 백엔드에는 없다. 던져야 화면이 "지금은 못 산다"를 말할 수 있다 —
+    // 빈 문자열을 돌려주면 빈 탭이 열린다.
+    if (!fn) throw new Error('이 빌드에서는 결제를 열 수 없습니다');
+    return await withTimeout(fn.call(this.server, 'ko'), '결제 창 주소');
+  }
+
+  /**
+   * 내 보유 자산 구독. **결제가 끝나는 시점을 우리가 모르기 때문에 구독이다** —
+   * 다른 탭에서 결제가 끝나면 이 콜백으로 들어온다.
+   */
+  onAssets(handler: (assets: Record<string, number>) => void): () => void {
+    const fn = this.server.subscribeAsset;
+    if (!fn) return () => {};
+    return fn.call(this.server, this.server.account, handler);
+  }
+
+  /**
+   * 유료 항목을 계정에 연다. **서버가 이걸 검증하지 못한다** —
+   * `server.js` 의 `grantEntitlement` 주석에 그 이유와 남은 구멍이 적혀 있다.
+   */
+  async grantEntitlement(item: string): Promise<RemoteAccount> {
+    return await withTimeout(
+      this.server.remoteFunction('grantEntitlement', [item]),
+      '유료 항목 반영',
+    );
+  }
+
   /**
    * 상위 10명. 서버가 판이 끝날 때마다 고치는 표를 그대로 읽는다 —
    * 클라이언트가 정렬하거나 자르지 않는다.
@@ -332,6 +373,8 @@ export interface RemoteAccount {
   soloWins: number;
   soloLosses: number;
   soloDraws: number;
-  /** PVP 점수(Elo). 봇전에서는 안 움직인다. 티어로 바꾸는 구간은 `rating.ts` 에 있다. */
+  /** PVP 점수(Elo). 봇전에서도 움직인다 (`server.js` 의 `BOT_RATING`). */
   rating: number;
+  /** 유료(VX)로 열린 항목들. 코인으로 산 `ownedUnits` 와 갈라져 있다. */
+  entitlements: string[];
 }

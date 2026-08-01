@@ -16,6 +16,7 @@ import type { MatchPlan, Scene } from './app/scene';
 import { PvpScene } from './app/pvp-scene';
 import { ShopScene } from './app/shop-scene';
 import { Agent8Client } from './net/agent8';
+import { openShopWindow } from './net/vx';
 import { Renderer } from './render/renderer';
 import type { UnitKind } from './units';
 
@@ -47,6 +48,18 @@ function grantReward(reward: Reward, winnerSlot: number): Promise<RatingChange |
 /** 못 사는 구매는 조용히 무시된다 — 버튼이 이미 비활성이라 여기까지 오면 경쟁 상태다. */
 function buy(kind: UpgradeKind): void {
   void store.buyUpgrade(kind).then(() => shop.refresh());
+}
+
+/**
+ * 유료 상점(Verse8 CrossRamp)을 새 탭으로 연다.
+ *
+ * **주소를 받아 오는 것이 비동기라 팝업 차단에 걸릴 수 있다** — 사용자가 누른 제스처와
+ * 실제로 창을 여는 시점이 갈라지기 때문이다. 못 열면 `false` 를 돌려주고, 화면이
+ * "다시 눌러 주세요"를 말한다.
+ */
+async function openVxShop(): Promise<boolean> {
+  const url = await store.shopUrl();
+  return url ? openShopWindow(url) : false;
 }
 
 /** 안 가진 생김새면 사고, 가진 것이면 착용한다. 둘 다 못 하면 아무 일도 안 일어난다. */
@@ -93,6 +106,7 @@ const shop = new ShopScene(
   () => store.current,
   buy,
   pickUnit,
+  openVxShop,
   () => switchTo(lobby),
 );
 const nameScene = new NameScene(
@@ -167,6 +181,9 @@ function afterConnect(): void {
 async function bootAccount(): Promise<void> {
   if (await store.connect(net)) {
     afterConnect();
+    // 결제가 다른 탭에서 끝나므로 언제 끝나는지 우리가 모른다. 구독해 두고
+    // 열리는 즉시 상점 화면을 새로 그린다 (`store.watchAssets`).
+    store.watchAssets(() => shop.refresh());
     return;
   }
 

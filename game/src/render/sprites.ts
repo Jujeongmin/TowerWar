@@ -17,7 +17,7 @@
  * 자세한 건 docs/assets-research.md.
  */
 
-import { UNIT_KIND_META, type UnitKind } from '../units';
+import { UNIT_KIND_META, type UnitKind, spriteKindOf } from '../units';
 
 const BASE = '/assets';
 
@@ -96,7 +96,13 @@ export class Sprites {
    * 아직 안 온 그림은 `null` 이 나가고 렌더러가 원으로 폴백한다 — 첫 프레임과
    * 헤드리스 검증이 그 폴백에 기댄다.
    */
-  loadUnit(owner: 1 | 2, kind: UnitKind): void {
+  /**
+   * **그림이 없는 종류는 다른 종류의 파일을 빌린다** (`spriteKindOf`).
+   * `beergang_rainbow` 가 그렇다 — 베이커 원본이 없어 새로 못 굽는다. 구분은
+   * 렌더러가 그리는 아우라가 맡는다.
+   */
+  loadUnit(owner: 1 | 2, kindIn: UnitKind): void {
+    const kind = spriteKindOf(kindIn);
     const slug = factionOf(owner);
     const tag = `${slug}/${kind}`;
     if (this.requested.has(tag)) return;
@@ -127,7 +133,8 @@ export class Sprites {
   }
 
   /** 러닝 사이클 한 프레임. `frame` 은 알아서 감긴다 — 종류마다 프레임 수가 다르다. */
-  unit(owner: 1 | 2, kind: UnitKind, dir: UnitDir, frame: number): Painted | null {
+  unit(owner: 1 | 2, kindIn: UnitKind, dir: UnitDir, frame: number): Painted | null {
+    const kind = spriteKindOf(kindIn);
     const n = UNIT_KIND_META[kind].frames;
     const i = ((Math.floor(frame) % n) + n) % n;
     return this.grab(unitKey(factionOf(owner), kind, dir, i));

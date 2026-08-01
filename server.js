@@ -137,6 +137,20 @@ const UNIT_PRICES = {
   beergang_green: 1500,
   beergang_purple: 2400,
 };
+
+/**
+ * 코인으로 못 사는 유료 종류. 사는 곳은 Verse8 CrossRamp 상점이다.
+ *
+ * `UNIT_PRICES` 와 갈라 두는 이유: `cleanUnitKind` 가 `UNIT_PRICES` 로 "아는 종류인가"를
+ * 판정하는데, 여기 값을 거기 넣으면 **코인 0원짜리로 읽혀 누구나 살 수 있게 된다.**
+ */
+const PREMIUM_UNITS = ['beergang_rainbow'];
+
+function isKnownUnit(v) {
+  return (
+    Object.prototype.hasOwnProperty.call(UNIT_PRICES, v) || PREMIUM_UNITS.includes(v)
+  );
+}
 /** `game/src/units.ts` 의 `DEFAULT_UNIT_KIND` 와 같아야 한다. */
 const DEFAULT_UNIT_KIND = 'beergang';
 
@@ -151,7 +165,7 @@ const DEFAULT_UNIT_KIND = 'beergang';
  */
 function cleanUnitKind(v) {
   // `in` 이 아니라 hasOwnProperty 다 — `'toString'` 같은 상속 키가 통과하면 안 된다.
-  return Object.prototype.hasOwnProperty.call(UNIT_PRICES, v) ? v : DEFAULT_UNIT_KIND;
+  return isKnownUnit(v) ? v : DEFAULT_UNIT_KIND;
 }
 
 /** 매치 보상. `account.ts` 의 값과 같아야 한다. */
@@ -165,6 +179,12 @@ const MAX_TOWERS = 12;
 function num(v) {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+/** 아는 유료 항목만 남기고 중복을 없앤다. 모르는 값이 저장본에 쌓이지 않게. */
+function cleanEntitlements(v) {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.filter((x) => PREMIUM_UNITS.includes(x)))];
 }
 
 /** `num()` 과 달리 값이 없을 때 0이 아니라 지정한 기본값으로 떨어진다 (레이팅 기본값용). */
@@ -340,6 +360,9 @@ function defaultAccount(account) {
     soloDraws: 0,
     // 점수(Elo). 봇전에서도 움직인다 (`BOT_RATING`) — 전적은 갈라 세지만 점수는 하나다.
     rating: DEFAULT_RATING,
+    // 유료(VX)로 열린 것들. 코인으로 산 `ownedUnits` 와 갈라 둔다 — 획득 경로가 다르고,
+    // 코인 목록에 섞으면 환불·초기화 때 무엇이 유료였는지 구분이 안 된다.
+    entitlements: [],
   };
 }
 
@@ -369,6 +392,7 @@ function normalizeAccount(raw, account) {
     // 없으면(마이그레이션 전 계정) 0이 아니라 기본 점수로 떨어진다 — `num()` 은
     // 여기 못 쓴다. 0은 "많이 져서 0점"과 "한 번도 안 쟀음"을 구분 못 한다.
     rating: numOr(raw.rating, DEFAULT_RATING),
+    entitlements: cleanEntitlements(raw.entitlements),
   };
 }
 
@@ -465,6 +489,9 @@ class Server {
   async buyUnitKind(kind) {
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();
+      // 유료 종류는 코인으로 못 산다. 여기서 안 막으면 `UNIT_PRICES[kind]` 가
+      // `undefined` 라 '그런 유닛이 없습니다' 로 새어 나가 이유가 안 읽힌다.
+      if (PREMIUM_UNITS.includes(kind)) throw new Error('코인으로 살 수 없습니다');
       const price = UNIT_PRICES[kind];
       if (price === undefined) throw new Error('그런 유닛이 없습니다');
       if (price === 0 || a.ownedUnits.includes(kind)) throw new Error('이미 가지고 있습니다');
@@ -478,9 +505,41 @@ class Server {
     });
   }
 
+  /**
+   * 유료 항목을 계정에 연다.
+   *
+   * ══════════════════════════════════════════════════════════════════
+   * **이 함수는 클라이언트를 믿는다. 지금은 막을 방법이 없다.**
+   *
+   * 결제는 Verse8 CrossRamp 상점(외부 URL)에서 일어나고, 산 것은 Verse8의 자산
+   * 원장에 기록된다. 클라이언트는 `subscribeAsset()` 로 그 원장을 읽을 수 있는데,
+   * **`server.js` 샌드박스($global/$room/$sender/$lock)에는 자산을 읽는 API가
+   * 문서에도 SDK 타입에도 없다.** 그래서 "정말 샀는가"를 서버가 확인할 수 없다.
+   *
+   * 즉 콘솔에서 이 함수를 부르면 무지개 비어갱(전투력 4)을 공짜로 얻는다.
+   * `MIN_RATED_MS`(§-34)로 막은 것과 같은 종류의 구멍이고, **해결도 같다** —
+   * 서버가 자산을 직접 읽거나(그런 API가 있다면), 서버 권위로 옮기는 것이다.
+   *
+   * 배포 후 할 일: `getAssetOf($sender.account)` 같은 것이 실제로 있는지 확인하고,
+   * 있으면 **이 함수 안에서만** 검사를 추가하면 된다. 그래서 여기 한 곳에 몰아 뒀다.
+   * ══════════════════════════════════════════════════════════════════
+   */
+  async grantEntitlement(item) {
+    if (!PREMIUM_UNITS.includes(item)) throw new Error('그런 항목이 없습니다');
+    return await $lock(`acct:${$sender.account}`, async () => {
+      const a = await this.#loadAccount();
+      if (a.entitlements.includes(item)) return a;
+      return await this.#saveAccount({ ...a, entitlements: [...a.entitlements, item] });
+    });
+  }
+
   /** 가진 것만 착용할 수 있다. */
   async selectUnitKind(kind) {
     const a = await this.#loadAccount();
+    if (PREMIUM_UNITS.includes(kind)) {
+      if (!a.entitlements.includes(kind)) throw new Error('가지고 있지 않습니다');
+      return await this.#saveAccount({ ...a, unitKind: kind });
+    }
     const price = UNIT_PRICES[kind];
     if (price === undefined) throw new Error('그런 유닛이 없습니다');
     if (price !== 0 && !a.ownedUnits.includes(kind)) throw new Error('가지고 있지 않습니다');

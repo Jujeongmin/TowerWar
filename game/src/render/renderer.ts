@@ -727,6 +727,9 @@ export class Renderer {
 
         ctx.save();
         ctx.translate(p.x, p.y);
+        // 아우라는 뒤집기 **전에** 그린다. 원이라 뒤집어도 같지만, 뒤집힌 좌표계에서
+        // 그리면 나중에 색 순서를 바꿀 때 좌우가 반대가 된다.
+        if (meta.aura === 'rainbow') this.drawRainbowAura(h);
         if (facingLeft) ctx.scale(-1, 1);
         ctx.drawImage(sprite.canvas, -w / 2, -h / 2, w, h);
         ctx.restore();
@@ -1052,6 +1055,34 @@ export class Renderer {
     ctx.textAlign = align;
     ctx.fillStyle = 'rgba(170,186,202,0.72)';
     ctx.fillText(`${rating}점`, x, y);
+  }
+
+  /**
+   * 유료 종류의 무지개 아우라. **캐릭터 뒤에 깐다** — 위에 얹으면 재킷 색을 덮는데
+   * 그게 "누구 편인가"의 유일한 신호다 (`units.ts` 의 변형색 주석).
+   *
+   * 그림이 없어서 코드로 그리는 구분이다. 무지개 비어갱은 기본 스프라이트를 빌려 쓰므로
+   * (`spriteKindOf`) 이게 없으면 기본과 구분이 안 된다. 상점 카드도 같은 것을 CSS로 낸다.
+   *
+   * 시간으로 색을 돌린다 — 정지 상태로 두면 그냥 얼룩으로 보인다.
+   */
+  private drawRainbowAura(h: number): void {
+    const ctx = this.ctx;
+    const r = h * 0.42;
+    // `time` 은 판 시작부터의 초. 유닛마다 위상을 안 나눈다 — 같은 종류가 같은 색으로
+    // 함께 도는 편이 "이건 특별한 부대"로 읽힌다.
+    const t = (this.time * 0.5) % 1;
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    const hue = Math.floor(t * 360);
+    g.addColorStop(0, `hsla(${hue}, 90%, 65%, 0.55)`);
+    g.addColorStop(0.6, `hsla(${(hue + 120) % 360}, 90%, 60%, 0.28)`);
+    g.addColorStop(1, 'hsla(0, 0%, 100%, 0)');
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   /**

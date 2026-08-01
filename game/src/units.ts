@@ -50,6 +50,7 @@ export const UNIT_KINDS = [
   'beergang_gold',
   'beergang_green',
   'beergang_purple',
+  'beergang_rainbow',
 ] as const;
 export type UnitKind = (typeof UNIT_KINDS)[number];
 
@@ -79,6 +80,23 @@ export interface UnitKindMeta {
   power: number;
   /** 상점에 보여줄 한 줄. */
   blurb: string;
+  /**
+   * 코인으로 못 사는 유료 종류인가. 사는 곳은 Verse8 CrossRamp 상점이고
+   * (`net/vx.ts`), 소유는 계정의 `entitlements` 가 든다.
+   *
+   * **`price` 는 무시된다.** 코인 경로(`buyUnitKind`)가 이 값을 보고 거절한다.
+   */
+  premium?: true;
+  /**
+   * 그림이 없어서 다른 종류의 스프라이트를 빌려 쓰는 경우 그 종류.
+   *
+   * `beergang_rainbow` 가 이 경우다 — 베이커 원본(GLB)이 저장소에 없어 새로 구울 수
+   * 없다(§7의 에셋 항목). 기본 스프라이트를 빌리고 **무지개 아우라를 코드로 그린다**
+   * (`renderer.drawUnits`). 재킷 색은 안 건드린다 — 그게 진영 신호다.
+   */
+  spriteOf?: UnitKind;
+  /** 코드로 그리는 아우라. 유료 종류를 그림 없이 구분하는 수단이다. */
+  aura?: 'rainbow';
 }
 
 /**
@@ -93,7 +111,28 @@ export const UNIT_KIND_META: Record<UnitKind, UnitKindMeta> = {
   beergang_gold: { label: '금 비어갱', frames: 8, scale: 1.3, price: 900, power: 2, blurb: '금 하의' },
   beergang_green: { label: '초록 비어갱', frames: 8, scale: 1.3, price: 1500, power: 2.5, blurb: '초록 하의' },
   beergang_purple: { label: '보라 비어갱', frames: 8, scale: 1.3, price: 2400, power: 3, blurb: '보라 하의' },
+  beergang_rainbow: {
+    label: '무지개 비어갱',
+    frames: 8,
+    scale: 1.3,
+    price: 0,
+    power: 4,
+    blurb: 'VX 전용 · 가장 강함',
+    premium: true,
+    spriteOf: 'beergang',
+    aura: 'rainbow',
+  },
 };
+
+/** 코인으로 못 사는 종류인가. 상점이 이걸 보고 다른 줄에 놓는다. */
+export function isPremiumKind(kind: UnitKind): boolean {
+  return UNIT_KIND_META[kind]?.premium === true;
+}
+
+/** 실제로 파일을 읽을 종류. 그림이 없는 종류는 빌려 쓴다 (`spriteOf`). */
+export function spriteKindOf(kind: UnitKind): UnitKind {
+  return UNIT_KIND_META[kind]?.spriteOf ?? kind;
+}
 
 /**
  * 종류 → 힘. **모르는 값이 오면 기본값으로 떨어뜨린다.**
@@ -139,6 +178,9 @@ export const SHOP_UNIT_ORDER: readonly UnitKind[] = [
   'beergang_green',
   'beergang_purple',
 ];
+
+/** 유료 종류. 코인 목록과 갈라 둔다 — 살 수 있는 곳이 다르다. */
+export const SHOP_PREMIUM_ORDER: readonly UnitKind[] = ['beergang_rainbow'];
 
 export function isUnitKind(v: unknown): v is UnitKind {
   return typeof v === 'string' && (UNIT_KINDS as readonly string[]).includes(v);

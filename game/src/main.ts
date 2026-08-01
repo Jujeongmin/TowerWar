@@ -130,6 +130,7 @@ const match = new MatchScene(
   () => store.current.rating,
   () => plan,
   need<HTMLButtonElement>('btn-resign'),
+  need<HTMLButtonElement>('btn-tempo'),
 );
 
 /**

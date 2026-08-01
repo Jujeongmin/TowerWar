@@ -115,6 +115,8 @@ export function runCase(seed: number, latencyMs: number, inputDelayTicks: number
     profiles: { 1: DEFAULT_PROFILE, 2: DEFAULT_PROFILE },
     // 점수도 검증에 안 쓴다 — HUD 표시용이라 시뮬레이션에 안 들어간다.
     ratings: { 1: DEFAULT_RATING, 2: DEFAULT_RATING },
+    // 배속도 검증에 안 쓴다. 켜도 틱 내용은 안 바뀌므로 락스텝 검증과 무관하다.
+    tempo: { 1: false, 2: false },
   };
   const a = new FakeClient(1, setup, hub.port());
   const b = new FakeClient(2, setup, hub.port());

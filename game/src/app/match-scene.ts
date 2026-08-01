@@ -11,7 +11,7 @@ import type { RatingChange } from '../account/store';
 import { Lockstep } from '../net/lockstep';
 import { TICK_DT, speedMulFor } from '../sim/config';
 import { generateMap } from '../sim/maps';
-import { createMatch, step } from '../sim/sim';
+import { createMatch, step, tempoScaleOf } from '../sim/sim';
 import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
 import { InputController } from '../render/input';
 import type { Renderer } from '../render/renderer';
@@ -53,12 +53,6 @@ export class MatchScene implements Scene {
    * 보고하고 승리 보상을 그대로 받는다.
    */
   private resigned = false;
-  /**
-   * 설정을 열어 판이 멈춰 있는가. **봇전에서만 참이 된다.**
-   *
-   * PVP에서는 멈출 수가 없다 — 상대는 계속 두고, 무엇보다 `pump()` 가 멈추면
-   * 내 `ackTick` 이 안 나가 **상대까지 교착에 빠진다** (§-6).
-   */
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -100,6 +94,8 @@ export class MatchScene implements Scene {
     private readonly getPlan: () => MatchPlan,
     /** 캔버스 위 [항복] 버튼. 매치 중에만 보인다. */
     private readonly resignBtn: HTMLButtonElement,
+    /** 캔버스 위 배속 토글. **살 수 있는 사람에게만** 보인다. */
+    private readonly tempoBtn: HTMLButtonElement,
   ) {
     const again = resultRoot.querySelector<HTMLButtonElement>('#btn-again');
     const lobby = resultRoot.querySelector<HTMLButtonElement>('#btn-lobby');
@@ -112,6 +108,7 @@ export class MatchScene implements Scene {
     // **재확인도 설정 창도 없다.** 한 번 누르면 바로 항복이다 (§-23 사용자 지시).
     // 되돌릴 수 없고 보상도 0이라는 것은 버튼 글자 자체가 알린다.
     this.resignBtn.addEventListener('click', () => this.resign());
+    this.tempoBtn.addEventListener('click', () => this.toggleTempo());
   }
 
   enter(): void {
@@ -127,6 +124,7 @@ export class MatchScene implements Scene {
     this.canvas.hidden = true;
     // 매치 밖에서 남아 있으면 로비 위에 떠서 아무 데도 안 걸린다.
     this.resignBtn.hidden = true;
+    this.tempoBtn.hidden = true;
     this.hideResult();
   }
 
@@ -170,8 +168,10 @@ export class MatchScene implements Scene {
       // 다른 배수로 시뮬레이션해 첫 틱부터 갈라진다 (net/types.ts MatchSetup 참고).
       const { levels, kinds } = plan.setup;
       this.state = createMatch(generateMap(seed), {
-        1: { speedMul: speedMulFor(levels[1]), unitPower: unitPowerOf(kinds[1]) },
-        2: { speedMul: speedMulFor(levels[2]), unitPower: unitPowerOf(kinds[2]) },
+        // `canTempo` 도 서버가 내려준다. 각자 자기 계정을 읽으면 한쪽만 배속을 켤 수
+        // 있다고 믿어 같은 명령을 다르게 처리한다 — 그 순간 갈라진다.
+        1: { speedMul: speedMulFor(levels[1]), unitPower: unitPowerOf(kinds[1]), canTempo: plan.setup.tempo[1] },
+        2: { speedMul: speedMulFor(levels[2]), unitPower: unitPowerOf(kinds[2]), canTempo: plan.setup.tempo[2] },
       });
       this.source = new NetSource(new Lockstep(plan.setup, plan.transport));
       shownKinds = { 1: kinds[1], 2: kinds[2] };
@@ -220,13 +220,49 @@ export class MatchScene implements Scene {
     // 새 판을 이기고도 '항복 — 보상 없음'이 뜬다.
     this.resigned = false;
     this.resignBtn.hidden = false;
+    // 배속 버튼은 **살 수 있는 사람에게만** 보인다. 못 켜는 사람에게 죽은 버튼을
+    // 보여 주면 눌러 보고 왜 안 되는지 묻게 된다.
+    this.tempoBtn.hidden = !this.canTempo();
+    this.paintTempo();
     this.hideResult();
+  }
+
+  /** 이 판에서 내가 배속을 켤 수 있는가. 판정은 `mods` 에 있고 서버가 정한다. */
+  private canTempo(): boolean {
+    const local = this.input?.ui.local ?? 1;
+    return this.state.mods[local]?.canTempo === true;
+  }
+
+  /**
+   * 배속 토글. **커맨드로 낸다** — 항복과 같은 이유다. 여기서 상태를 직접 바꾸면
+   * 상대는 `inputDelayTicks` 뒤에야 알게 되어 그 사이 두 판이 다른 속도로 돈다.
+   */
+  private toggleTempo(): void {
+    const local = this.input?.ui.local;
+    if (local === undefined || this.state.winner !== null || !this.canTempo()) return;
+    this.source.submit({ kind: 'setTempo', player: local, on: !this.state.tempo[local] });
+  }
+
+  /**
+   * 버튼에 지금 배속을 적는다. **내가 켠 것만이 아니라 판 전체 값이다** —
+   * 상대가 켜면 내가 안 켰어도 1.5배로 뜬다. 그게 실제로 도는 속도다.
+   */
+  private paintTempo(): void {
+    if (this.tempoBtn.hidden) return;
+    const local = this.input?.ui.local ?? 1;
+    const scale = tempoScaleOf(this.state);
+    this.tempoBtn.textContent = `${scale}×`;
+    this.tempoBtn.classList.toggle('is-on', this.state.tempo[local] === true);
   }
 
   frame(dt: number): void {
     // **판을 멈추는 경로가 없다.** 설정 창이 있던 시절에는 봇전에서만 멈췄는데,
     // 그것이 곧 "상대가 봇이다"를 알려 주는 신호였다 (§-7은 안 알리기로 했다).
-    this.accumulator = Math.min(this.accumulator + dt, MAX_ACCUMULATOR);
+    //
+    // **배속은 여기서만 걸린다.** 현실 시간을 배수만큼 부풀려 넣을 뿐이라 틱 하나가
+    // 계산하는 것은 그대로다 — 그래서 양쪽이 같은 배속이면 결과가 안 갈라진다
+    // (`tempoScaleOf` 주석). 상한(`MAX_ACCUMULATOR`)은 부풀린 뒤에 건다.
+    this.accumulator = Math.min(this.accumulator + dt * tempoScaleOf(this.state), MAX_ACCUMULATOR);
 
     while (this.accumulator >= TICK_DT) {
       // 배치를 먼저 보낸다. 내가 멈춰 있어도 이건 계속 나가야 상대가 진행한다.
@@ -243,6 +279,9 @@ export class MatchScene implements Scene {
 
     // 루프를 한 번도 못 돌았을 수 있다. 그래도 내 약속은 보내야 교착이 안 생긴다.
     this.source.pump?.(this.state.tick, this.state);
+    // 배속은 상대가 켜도 바뀐다. 매 프레임 다시 적는다 — 눌린 순간이 아니라
+    // 명령이 적용된 순간에 숫자가 바뀌어야 실제 속도와 맞는다.
+    this.paintTempo();
     this.renderer.setWaiting(this.source.waiting);
 
     const ui = this.input?.ui;
@@ -259,8 +298,9 @@ export class MatchScene implements Scene {
   }
 
   private showResult(): void {
-    // 끝난 판에서 항복 버튼이 남아 있으면 결과창 위에 떠서 [로비로]를 가린다.
+    // 끝난 판에서 버튼이 남아 있으면 결과창 위에 떠서 [로비로]를 가린다.
     this.resignBtn.hidden = true;
+    this.tempoBtn.hidden = true;
 
     const local = this.input?.ui.local ?? 1;
     const w = this.state.winner;

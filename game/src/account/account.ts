@@ -30,6 +30,22 @@ const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, SCHEMA_VERSION]);
 export const NAME_MAX = 12;
 
 /**
+ * **디버그: 상점의 모든 것을 열어 둔다** (2026-08-03 사용자 지시).
+ *
+ * 유닛 5종 + 유료 무지개 + 배속이 전부 가진 것으로 보인다. 코인도 강화도 안 건드린다 —
+ * 여기서 여는 것은 **소유 판정뿐**이다.
+ *
+ * **화면에만 먹는다.** 서버는 이 값을 모르므로 온라인에서 실제로 입으려 하면
+ * `selectUnitKind` 가 거절한다 (오프라인·봇전에서는 그대로 먹는다).
+ *
+ * 출시 전에 `false` 로 되돌릴 것. 여기 하나만 고치면 된다.
+ */
+export const DEBUG_UNLOCK_ALL = true;
+
+/** 배속을 여는 유료 항목의 id. `server.js` 의 `PREMIUM_ITEMS` 와 같아야 한다. */
+export const TEMPO_ITEM = 'tempo_boost';
+
+/**
  * 새 계정의 시작 점수. **`server.js` 의 `DEFAULT_RATING` 과 같아야 한다.**
  *
  * 화면에는 이 숫자가 그대로 나간다. 티어 구간(브론즈·실버…)을 뒀다가 걷어냈다
@@ -88,10 +104,13 @@ export interface Account {
    * 유료(VX)로 열린 것들. **코인으로 산 `ownedUnits` 와 갈라 둔다** — 획득 경로가
    * 다르고, 섞으면 나중에 무엇이 유료였는지 구분이 안 된다.
    *
+   * **유닛 종류가 아닌 것도 들어온다** (`TEMPO_ITEM`). 그래서 `UnitKind[]` 가 아니라
+   * `string[]` 이다 — 유료 항목이 늘 유닛인 것은 아니다.
+   *
    * **서버가 진짜다.** 오프라인에서는 절대 안 채워진다 — 결제는 Verse8 쪽에서
    * 일어나고 서버 계정에만 기록된다 (`net/vx.ts`).
    */
-  entitlements: UnitKind[];
+  entitlements: string[];
 }
 
 export function defaultAccount(): Account {
@@ -154,7 +173,7 @@ export function fromRemote(r: {
     soloLosses: num(r.soloLosses),
     soloDraws: num(r.soloDraws),
     rating: ratingOr(r.rating, DEFAULT_RATING),
-    entitlements: [...new Set((r.entitlements ?? []).filter(isUnitKind))],
+    entitlements: [...new Set(r.entitlements ?? [])],
   };
   return { ...a, unitKind: unitKindOf(a) };
 }
@@ -235,6 +254,7 @@ export function modsFor(a: Account): PlayerMods {
  * "기본 제공"으로 읽혀 공짜가 된다 — 소유는 `entitlements` 가 든다.
  */
 export function ownsUnitKind(a: Account, kind: UnitKind): boolean {
+  if (DEBUG_UNLOCK_ALL) return true;
   if (isPremiumKind(kind)) return a.entitlements.includes(kind);
   return UNIT_KIND_META[kind].price === 0 || a.ownedUnits.includes(kind);
 }
@@ -254,6 +274,17 @@ export function buyUnitKind(a: Account, kind: UnitKind): Account | null {
 /** 가진 것만 착용할 수 있다. 못 고르면 원본 그대로 — 호출부가 분기하지 않게 한다. */
 export function selectUnitKind(a: Account, kind: UnitKind): Account {
   return ownsUnitKind(a, kind) ? { ...a, unitKind: kind } : a;
+}
+
+/**
+ * 배속을 켤 수 있는가 (유료 항목).
+ *
+ * **`DEBUG_UNLOCK_ALL` 이 켜져 있으면 언제나 참이다** — 개발 중에 매번 결제를 태울
+ * 수는 없다. PVP에서는 서버가 내려준 값이 이걸 덮으므로(`MatchSetup.tempo`)
+ * 이 플래그로 남의 판을 빠르게 만들 수는 없다.
+ */
+export function canUseTempo(a: Account): boolean {
+  return DEBUG_UNLOCK_ALL || a.entitlements.includes(TEMPO_ITEM);
 }
 
 /** 저장값이 오염됐거나 안 가진 것이 착용돼 있으면 기본 생김새로 떨어진다. */
@@ -352,7 +383,7 @@ export function loadAccount(): Account {
       rating: ratingOr(parsed.rating, DEFAULT_RATING),
       // **로컬 사본은 참고용이다.** 유료 소유의 진짜 출처는 서버다 — 여기 값을
       // 손으로 넣어도 착용은 서버가 거절한다 (`selectUnitKind`).
-      entitlements: [...new Set((Array.isArray(parsed.entitlements) ? parsed.entitlements : []).filter(isUnitKind))],
+      entitlements: [...new Set(Array.isArray(parsed.entitlements) ? parsed.entitlements : [])],
     };
     // 안 가진 것이 착용돼 있으면(손으로 고친 저장본 등) 기본으로 되돌린다.
     return { ...account, unitKind: unitKindOf(account) };

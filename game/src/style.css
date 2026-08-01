@@ -113,6 +113,39 @@ body {
   touch-action: manipulation;
 }
 
+/* 배속 토글(유료). 항복과 화면 반대편(우상단)이다 — 하나는 판을 끝내고 하나는
+   판을 빠르게 하니, 붙여 두면 잘못 누른다.
+
+   **판 전체 배속을 적는다**: 상대가 켜도 숫자가 바뀐다. 내가 켠 상태는 테두리로
+   따로 표시한다 — 숫자만으로는 "내가 켠 건지 상대가 켠 건지"를 알 수 없다. */
+.tempo-btn {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(14px + env(safe-area-inset-right));
+  z-index: 20;
+  appearance: none;
+  min-width: 52px;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(125, 211, 252, 0.4);
+  border-radius: 10px;
+  background: rgba(20, 26, 34, 0.82);
+  color: #7dd3fc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* 내가 켜 둔 상태. */
+.tempo-btn.is-on {
+  border-color: #7dd3fc;
+  background: rgba(12, 40, 56, 0.9);
+  color: #dff3ff;
+}
+
 .resign-btn:hover {
   border-color: #fbbf24;
   background: rgba(38, 30, 12, 0.88);

@@ -62,6 +62,8 @@ export interface RoomSnapshot {
   profiles?: Record<number, string>;
   /** 슬롯 번호 → 판 시작 시점의 PVP 점수. 판이 끝난 뒤 Elo 계산의 기준값이다 (§-27). */
   ratings?: Record<number, number>;
+  /** 슬롯 번호 → 배속을 켤 수 있는가 (유료). 서버가 계정에서 읽어 내려준다. */
+  tempo?: Record<number, boolean>;
   inputDelayTicks?: number;
   desyncCheckTicks?: number;
   winner?: string | null;
@@ -214,6 +216,8 @@ export class Agent8Client {
       // 서버가 안 내려줬으면 양쪽 다 기본 점수로 본다. 한쪽만 떨어지면 화면에서
       // 실력 차가 있는 것처럼 보인다.
       ratings: { 1: state.ratings?.[1] ?? DEFAULT_RATING, 2: state.ratings?.[2] ?? DEFAULT_RATING },
+      // 안 내려줬으면 양쪽 다 못 켜는 것으로 본다. 한쪽만 기본값이 달라지면 갈라진다.
+      tempo: { 1: state.tempo?.[1] === true, 2: state.tempo?.[2] === true },
       inputDelayTicks: state.inputDelayTicks ?? DEFAULT_INPUT_DELAY_TICKS,
       desyncCheckTicks: state.desyncCheckTicks ?? DEFAULT_DESYNC_CHECK_TICKS,
     };

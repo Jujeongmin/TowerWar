@@ -62,6 +62,7 @@ export function createMatch(
       1: { ...defaultMods(), ...mods?.[1] },
       2: { ...defaultMods(), ...mods?.[2] },
     },
+    tempo: { 1: false, 2: false },
     winner: null,
   };
 }
@@ -70,6 +71,7 @@ export function cloneState(s: MatchState): MatchState {
   return {
     ...s,
     mods: { 1: { ...s.mods[1] }, 2: { ...s.mods[2] } },
+    tempo: { ...s.tempo },
     towers: s.towers.map((t) => ({ ...t })),
     routes: s.routes.map((r) => ({ ...r })),
     units: s.units.map((u) => ({ ...u })),
@@ -108,6 +110,11 @@ function applyCommands(state: MatchState, commands: Command[], ev: TickEvents): 
         break;
       case 'resign':
         applyResign(state, cmd.player);
+        break;
+      case 'setTempo':
+        // **살 수 있는 사람만 켠다.** 못 켜는 사람의 명령은 양쪽이 똑같이 버린다 —
+        // 클라이언트에서만 막으면 조작된 쪽에서 그 명령이 살아 갈라진다.
+        if (state.mods[cmd.player]?.canTempo) state.tempo[cmd.player] = cmd.on;
         break;
     }
   }
@@ -476,6 +483,17 @@ function hasPresence(state: MatchState, p: PlayerId): boolean {
   return (
     state.towers.some((t) => t.owner === p) || state.units.some((u) => u.owner === p && u.power > 0)
   );
+}
+
+/**
+ * 지금 판이 몇 배속으로 돌아야 하는가. 켠 사람 수만큼 `+0.5`.
+ *
+ * **틱 안쪽은 이 값을 안 쓴다.** 시뮬레이션 내용물은 배속과 무관하고, 이 값을 읽는
+ * 것은 틱을 얼마나 자주 돌릴지 정하는 바깥 루프와 화면뿐이다. 그래서 `step()` 의
+ * 결과는 배속과 상관없이 같다 — 락스텝이 안 깨지는 지점이 여기다.
+ */
+export function tempoScaleOf(state: MatchState): number {
+  return 1 + (state.tempo[1] ? 0.5 : 0) + (state.tempo[2] ? 0.5 : 0);
 }
 
 export function towerCount(state: MatchState, owner: Owner): number {

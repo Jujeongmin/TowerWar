@@ -4,7 +4,7 @@
  * 계정 데이터도 시뮬레이션 규칙도 아니고 "이 판을 어떤 조건으로 시작하는가"라서 app/에 둔다.
  * 스테이지 캠페인이 붙으면 스테이지 번호도 여기로 들어온다.
  */
-import { modsFor, upgradeLevelOf, type Account } from '../account/account';
+import { canUseTempo, modsFor, upgradeLevelOf, type Account } from '../account/account';
 import { SPEED_STEP } from '../sim/config';
 import type { PlayerId, PlayerMods } from '../sim/types';
 
@@ -48,5 +48,7 @@ export function botModsFor(a: Account): PlayerMods {
 
 /** `createMatch`에 그대로 넘길 수 있는 형태. 사람은 P1, 봇은 P2. */
 export function matchModsFor(a: Account): Partial<Record<PlayerId, PlayerMods>> {
-  return { 1: modsFor(a), 2: botModsFor(a) };
+  // **배속은 사람만 켠다.** 봇에게 주면 사람이 안 켰는데도 판이 빨라진다 —
+  // 산 사람만 누리는 물건인데 봇이 대신 켜 주면 살 이유가 없다.
+  return { 1: { ...modsFor(a), canTempo: canUseTempo(a) }, 2: botModsFor(a) };
 }

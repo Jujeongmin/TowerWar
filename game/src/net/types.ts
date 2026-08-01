@@ -73,6 +73,11 @@ export interface MatchSetup {
    * 판 도중에 안 바뀌고, 판이 끝난 뒤 Elo 계산의 기준이 되는 값과 같다 (§-27).
    */
   ratings: Record<PlayerId, number>;
+  /**
+   * 플레이어별 배속 사용 권한(유료). **서버가 계정에서 읽어 내려준다** —
+   * 각자 자기 계정을 읽으면 같은 `setTempo` 명령을 한쪽만 받아들여 갈라진다.
+   */
+  tempo: Record<PlayerId, boolean>;
   /** 명령을 몇 틱 뒤에 실행할 것인가. 서버 룸 상태의 `inputDelayTicks`. */
   inputDelayTicks: number;
   /** 몇 틱마다 상태 해시를 보낼 것인가. 0이면 안 보낸다. */

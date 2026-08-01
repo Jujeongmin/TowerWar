@@ -146,6 +146,16 @@ const UNIT_PRICES = {
  */
 const PREMIUM_UNITS = ['beergang_rainbow'];
 
+/**
+ * 열 수 있는 유료 항목 전부. **유닛만 있는 게 아니다** — 배속(`tempo_boost`)처럼
+ * 종류가 아닌 것도 있다.
+ *
+ * `PREMIUM_UNITS` 와 갈라 두는 이유: `cleanUnitKind` 가 "아는 유닛인가"를 판정하는데
+ * 여기 값을 그쪽에 넣으면 `tempo_boost` 가 입을 수 있는 유닛이 된다.
+ */
+const TEMPO_ITEM = 'tempo_boost';
+const PREMIUM_ITEMS = [...PREMIUM_UNITS, TEMPO_ITEM];
+
 function isKnownUnit(v) {
   return (
     Object.prototype.hasOwnProperty.call(UNIT_PRICES, v) || PREMIUM_UNITS.includes(v)
@@ -184,7 +194,7 @@ function num(v) {
 /** 아는 유료 항목만 남기고 중복을 없앤다. 모르는 값이 저장본에 쌓이지 않게. */
 function cleanEntitlements(v) {
   if (!Array.isArray(v)) return [];
-  return [...new Set(v.filter((x) => PREMIUM_UNITS.includes(x)))];
+  return [...new Set(v.filter((x) => PREMIUM_ITEMS.includes(x)))];
 }
 
 /** `num()` 과 달리 값이 없을 때 0이 아니라 지정한 기본값으로 떨어진다 (레이팅 기본값용). */
@@ -525,7 +535,7 @@ class Server {
    * ══════════════════════════════════════════════════════════════════
    */
   async grantEntitlement(item) {
-    if (!PREMIUM_UNITS.includes(item)) throw new Error('그런 항목이 없습니다');
+    if (!PREMIUM_ITEMS.includes(item)) throw new Error('그런 항목이 없습니다');
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();
       if (a.entitlements.includes(item)) return a;
@@ -689,6 +699,8 @@ class Server {
         profile: me.profile,
         // 매칭 대역(`findMatch`)과 매치 시작 시 점수 스냅샷(`#start`)이 이 값을 본다.
         rating: me.rating,
+        // 유료 소유. `#start` 가 여기서 읽어 방 상태의 `tempo` 를 만든다.
+        entitlements: me.entitlements,
         seenAt: Date.now(),
       }),
     });
@@ -916,6 +928,7 @@ class Server {
     const profiles = {};
     const kinds = {};
     const ratings = {};
+    const tempo = {};
     [...users].sort().forEach((account, i) => {
       const slot = i + 1;
       slots[account] = slot;
@@ -928,6 +941,9 @@ class Server {
       // 점수 변동 계산의 기준값이다. **판 도중 점수가 바뀌어도 이 스냅샷은 안 바뀐다** —
       // `reportResult` 가 매 판 정확히 같은 두 숫자로 Elo를 계산해야 하기 때문이다.
       ratings[slot] = numOr((players[account] || {}).rating, DEFAULT_RATING);
+      // 배속 권한. **서버가 계정에서 읽어 내려야 한다** — 각자 자기 계정을 읽으면
+      // 같은 `setTempo` 명령을 한쪽만 받아들여 판이 갈라진다.
+      tempo[slot] = ((players[account] || {}).entitlements || []).includes(TEMPO_ITEM);
     });
 
     await $global.updateRoomState(roomId, {
@@ -938,6 +954,7 @@ class Server {
       profiles,
       kinds,
       ratings,
+      tempo,
       // maps.ts 의 generateMap 이 16비트 시드를 받는다.
       seed: Math.floor(Math.random() * 0x10000),
       slots,

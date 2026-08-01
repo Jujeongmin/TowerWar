@@ -22,7 +22,7 @@ import {
   towerRadiusOf,
 } from '../sim/config';
 import { type Vec } from '../sim/geometry';
-import { routeBlockedBy, totalPower, unitPosition, unitProgressRate } from '../sim/sim';
+import { routeBlockedBy, towerCount, unitPosition, unitProgressRate } from '../sim/sim';
 import type { MatchState, Owner, PlayerId, Route, TickEvents, Tower } from '../sim/types';
 import { DEFAULT_PROFILE, profileBg, type ProfileId } from '../profiles';
 import { DEFAULT_UNIT_KIND, UNIT_KIND_META, type UnitKind } from '../units';
@@ -856,9 +856,17 @@ export class Renderer {
 
     this.drawHudPlate(top, w);
 
-    const p1 = totalPower(state, 1);
-    const p2 = totalPower(state, 2);
-    this.drawFrontBar(top, w, ui.local, p1 + p2 > 0 ? p1 / (p1 + p2) : 0.5);
+    // **타워 수로 잰다.** 전에는 `totalPower`(타워 재고 + 이동 중인 유닛)였는데,
+    // 그 값은 "누가 이기고 있나"가 아니라 **"누가 안 쓰고 쌓아뒀나"** 를 보여줬다:
+    // 공격하면 내 유닛도 적 병력도 같이 죽으므로 미는 쪽의 숫자가 오히려 줄고,
+    // 가만히 있으면 타워마다 초당 1.9씩 60까지 쌓인다. 실측으로 봇에게 판을 내주는
+    // 동안 막대가 파랑 97%였다 (2026-08-02).
+    //
+    // 타워 수는 **승패 판정과 같은 기준**이다 (`checkEnd` — 타워 수 우선, 동수일 때만
+    // 전투력). 중립은 양쪽 어디에도 안 센다: 아직 아무의 것도 아니라서 색이 없다.
+    const t1 = towerCount(state, 1);
+    const t2 = towerCount(state, 2);
+    this.drawFrontBar(top, w, ui.local, t1 + t2 > 0 ? t1 / (t1 + t2) : 0.5);
 
     // 시간은 **고정폭 숫자**로 찍는다. 비례폭이면 초가 바뀔 때마다 글자 폭이 달라져
     // 가운데 정렬한 시계가 좌우로 흔들린다.
@@ -876,8 +884,7 @@ export class Renderer {
     // 양 끝은 아바타 + 닉네임 한 줄이다. 전에는 이 자리에 `타워 N` 이 있고 이름이
     // 그 위에 따로 있었는데, 사용자 지시로 타워 수를 빼고 이름만 남겼다 (2026-07-30).
     //
-    // **타워 수는 이제 화면 어디에도 없다.** 세력 비교는 전선 막대가 맡는다 —
-    // 막대는 타워 수가 아니라 `totalPower`(재고+유닛) 비율이라 같은 값이 아니다.
+    // **타워 수는 숫자로는 어디에도 없다.** 전선 막대가 그 비율을 보여준다.
     //
     // 이름이 없으면(오프라인 옛 저장본 등) 그쪽을 아예 안 그린다 — 빈칸을 남기면
     // 레이아웃이 흔들린 것처럼 보인다.
@@ -946,6 +953,9 @@ export class Renderer {
    *
    * `local` 을 받는 이유: 내 색이 언제나 왼쪽이어야 한다. 슬롯 번호로 그리면
    * P2로 배정된 판에서 내 세력이 오른쪽에 붙어 매 판 좌우가 뒤집힌다.
+   *
+   * **눈금은 부드럽게 안 움직이고 툭툭 뛴다.** 타워 수 비율이라 그렇다 —
+   * 한 번 뛸 때마다 타워가 하나 주인이 바뀌었다는 뜻이라 오히려 읽기 쉽다.
    */
   private drawFrontBar(top: number, w: number, local: PlayerId, ratioP1: number): void {
     const ctx = this.ctx;

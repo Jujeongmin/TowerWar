@@ -44,6 +44,8 @@
  * 다섯 종이 같은 모델·같은 클립이라 추출 상자가 전부 59×91로 같다 — `scale`도 같다.
  */
 
+import { t } from './i18n';
+
 export const UNIT_KINDS = [
   'beergang',
   'beergang_white',
@@ -63,7 +65,6 @@ export type UnitKind = (typeof UNIT_KINDS)[number];
 export const DEFAULT_UNIT_KIND: UnitKind = 'beergang';
 
 export interface UnitKindMeta {
-  label: string;
   /** 러닝 사이클 프레임 수. 원본 시트를 따른다. */
   frames: number;
   /** 그릴 때 기준 높이에 곱하는 값. 추출 상자 비율 차이를 메운다. */
@@ -78,8 +79,7 @@ export interface UnitKindMeta {
    * 1·2·2·3·3 으로 뭉개진다. 한쪽만 올리려거든 이 사실을 먼저 볼 것.
    */
   power: number;
-  /** 상점에 보여줄 한 줄. */
-  blurb: string;
+
   /**
    * 코인으로 못 사는 유료 종류인가. 사는 곳은 Verse8 CrossRamp 상점이고
    * (`net/vx.ts`), 소유는 계정의 `entitlements` 가 든다.
@@ -106,23 +106,31 @@ export interface UnitKindMeta {
  * (§-10) 어긋나면 "상점에는 보이는데 못 입는"이 된다. 고칠 때 양쪽을 같이 고칠 것.
  */
 export const UNIT_KIND_META: Record<UnitKind, UnitKindMeta> = {
-  beergang: { label: '비어갱', frames: 8, scale: 1.3, price: 0, power: 1, blurb: '기본' },
-  beergang_white: { label: '흰 비어갱', frames: 8, scale: 1.3, price: 400, power: 1.5, blurb: '흰 하의' },
-  beergang_gold: { label: '금 비어갱', frames: 8, scale: 1.3, price: 900, power: 2, blurb: '금 하의' },
-  beergang_green: { label: '초록 비어갱', frames: 8, scale: 1.3, price: 1500, power: 2.5, blurb: '초록 하의' },
-  beergang_purple: { label: '보라 비어갱', frames: 8, scale: 1.3, price: 2400, power: 3, blurb: '보라 하의' },
+  beergang: { frames: 8, scale: 1.3, price: 0, power: 1 },
+  beergang_white: { frames: 8, scale: 1.3, price: 400, power: 1.5 },
+  beergang_gold: { frames: 8, scale: 1.3, price: 900, power: 2 },
+  beergang_green: { frames: 8, scale: 1.3, price: 1500, power: 2.5 },
+  beergang_purple: { frames: 8, scale: 1.3, price: 2400, power: 3 },
   beergang_rainbow: {
-    label: '무지개 비어갱',
     frames: 8,
     scale: 1.3,
     price: 0,
     power: 4,
-    blurb: 'VX 전용 · 가장 강함',
     premium: true,
     spriteOf: 'beergang',
     aura: 'rainbow',
   },
 };
+
+/** 화면에 보이는 이름. **언어 표에 있다** (`i18n.ts`) — 카탈로그는 규칙만 든다. */
+export function unitLabelOf(kind: UnitKind): string {
+  return t().unitLabels[kind] ?? kind;
+}
+
+/** 상점 카드의 한 줄 설명. 이름과 같은 이유로 언어 표에 있다. */
+export function unitBlurbOf(kind: UnitKind): string {
+  return t().unitBlurbs[kind] ?? '';
+}
 
 /** 코인으로 못 사는 종류인가. 상점이 이걸 보고 다른 줄에 놓는다. */
 export function isPremiumKind(kind: UnitKind): boolean {

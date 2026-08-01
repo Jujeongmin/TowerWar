@@ -12,11 +12,12 @@ import { NAME_MAX, cleanName } from '../account/account';
 import {
   DEFAULT_PROFILE,
   PROFILE_IDS,
-  PROFILE_LABEL,
+  profileLabel,
   profileBg,
   profileSrc,
   type ProfileId,
 } from '../profiles';
+import { t } from '../i18n';
 import type { Scene } from './scene';
 
 export class NameScene implements Scene {
@@ -44,10 +45,10 @@ export class NameScene implements Scene {
       const el = document.createElement('button');
       el.className = 'avatar-card';
       el.id = `avatar-${id}`;
-      el.title = PROFILE_LABEL[id];
+      el.title = profileLabel(id);
       // 그림은 9장 다 같은 파일이다 — 캐릭터는 고정이고 뒤에 깔리는 원 색만 다르다.
       // 그래서 브라우저가 한 번만 받는다.
-      el.innerHTML = `<img alt="${PROFILE_LABEL[id]}" src="${profileSrc(id)}" />`;
+      el.innerHTML = `<img alt="${profileLabel(id)}" src="${profileSrc(id)}" />`;
       el.style.setProperty('--avatar-bg', profileBg(id));
       el.addEventListener('click', () => {
         this.picked = id;
@@ -91,7 +92,7 @@ export class NameScene implements Scene {
     if (this.busy) return;
     const name = cleanName(this.input.value);
     if (name.length === 0) {
-      this.error.textContent = `이름을 입력하세요 (최대 ${NAME_MAX}자)`;
+      this.error.textContent = t().nameRequired(NAME_MAX);
       return;
     }
     // 정리 결과를 입력칸에 되돌려 보여준다. 저장될 값이 무엇인지 먼저 보여야 한다.

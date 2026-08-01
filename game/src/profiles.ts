@@ -48,19 +48,14 @@ export type ProfileId = (typeof PROFILE_IDS)[number];
  * 고른 것이 그림으로 구분되지 않으므로, 봇 아바타에서 이 값을 뺄 이유도 사라졌다
  * (`app/bot-name.ts`).
  */
+import { t } from './i18n';
+
 export const DEFAULT_PROFILE: ProfileId = 'slate';
 
-export const PROFILE_LABEL: Record<ProfileId, string> = {
-  slate: '회색',
-  blue: '파랑',
-  cyan: '청록',
-  green: '초록',
-  gold: '금색',
-  orange: '주황',
-  red: '빨강',
-  purple: '보라',
-  pink: '분홍',
-};
+/** 아바타 이름. **언어 표에 있다** (`i18n.ts`) — 여기는 id와 색만 든다. */
+export function profileLabel(id: ProfileId): string {
+  return t().profileNames[id] ?? id;
+}
 
 /** 캐릭터 뒤에 깔리는 원 색. DOM(카드·로비)과 캔버스 HUD가 같은 값을 쓴다. */
 export const PROFILE_BG: Record<ProfileId, string> = {

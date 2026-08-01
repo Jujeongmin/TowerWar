@@ -8,6 +8,7 @@
  * 아니라서 이름으로 맞추면 동명이인이 내 줄로 강조된다.
  */
 import type { BoardEntry } from '../net/agent8';
+import { t } from '../i18n';
 import type { Scene } from './scene';
 
 export class BoardScene implements Scene {
@@ -39,10 +40,10 @@ export class BoardScene implements Scene {
     // 들어올 때마다 새로 받는다. 판을 한 번 하고 돌아오면 순위가 바뀌어 있다.
     const mine = ++this.opened;
     this.list.replaceChildren();
-    this.show(null, '불러오는 중…');
+    this.show(null, t().boardLoading);
     void this.fetchBoard().then((board) => {
       if (mine !== this.opened) return;
-      this.show(board, board === null ? '서버에 연결되지 않아 순위를 볼 수 없습니다' : '');
+      this.show(board, board === null ? t().boardOffline : '');
     });
   }
 
@@ -53,7 +54,7 @@ export class BoardScene implements Scene {
     }
     // 붙었는데 표가 비어 있는 경우. 대전이 한 판도 안 끝난 상태다 —
     // 봇전은 점수를 안 건드리므로 여기 안 올라온다.
-    const text = board && board.length === 0 ? '아직 순위에 오른 사람이 없습니다' : note;
+    const text = board && board.length === 0 ? t().boardEmpty : note;
     this.note.textContent = text;
     this.note.hidden = text.length === 0;
   }
@@ -67,7 +68,7 @@ export class BoardScene implements Scene {
     name.textContent = e.name;
     const rating = document.createElement('span');
     rating.className = 'board-rating';
-    rating.textContent = `${e.rating}점`;
+    rating.textContent = t().points(e.rating);
     li.append(name, rating);
     return li;
   }

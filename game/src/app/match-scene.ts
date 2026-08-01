@@ -8,6 +8,7 @@
  */
 import { rewardFor, type Reward } from '../account/account';
 import type { RatingChange } from '../account/store';
+import { t } from '../i18n';
 import { Lockstep } from '../net/lockstep';
 import { TICK_DT, speedMulFor } from '../sim/config';
 import { generateMap } from '../sim/maps';
@@ -304,7 +305,7 @@ export class MatchScene implements Scene {
 
     const local = this.input?.ui.local ?? 1;
     const w = this.state.winner;
-    this.resultTitle.textContent = this.resigned ? '항복' : w === 0 ? '무승부' : w === local ? '승리' : '패배';
+    this.resultTitle.textContent = this.resigned ? t().resigned : w === 0 ? t().draw : w === local ? t().victory : t().defeat;
 
     // resultShown 플래그가 이 블록을 판당 한 번으로 막는다. 여기가 두 번 돌면
     // 보상이 두 번 들어간다.
@@ -318,7 +319,7 @@ export class MatchScene implements Scene {
     this.resultRating.textContent = '';
 
     if (this.resigned) {
-      this.resultReward.textContent = '항복 — 보상 없음';
+      this.resultReward.textContent = t().resignNoReward;
     } else {
       const reward = rewardFor(this.state, local);
       const shown = ++this.resultRound;
@@ -327,7 +328,7 @@ export class MatchScene implements Scene {
         if (shown === this.resultRound) this.showRating(change);
       });
       this.resultReward.textContent =
-        `+${reward.total}  (기본 ${reward.base} · 타워 ${reward.towers}개 ${reward.towerBonus})`;
+        t().rewardLine(reward.total, reward.base, reward.towers, reward.towerBonus);
     }
 
     // PVP는 같은 상대와 같은 시드로 다시 시작할 수 없다. 로비로만 나간다.
@@ -346,7 +347,7 @@ export class MatchScene implements Scene {
     if (!change) return;
     const diff = change.after - change.before;
     const sign = diff > 0 ? '+' : ''; // 음수는 부호가 이미 붙어 있다
-    this.resultRating.textContent = `점수 ${change.before} → ${change.after}  (${sign}${diff})`;
+    this.resultRating.textContent = t().ratingLine(change.before, change.after, sign, diff);
     this.resultRating.classList.toggle('rating-up', diff > 0);
     this.resultRating.classList.toggle('rating-down', diff < 0);
     this.resultRating.hidden = false;

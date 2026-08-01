@@ -25,6 +25,7 @@
  * 코드 방은 봇 폴백을 안 받는다. 친구를 기다리는 중에 판이 시작되면 코드를 준 의미가 없다.
  */
 import { Agent8Client, type RoomSnapshot } from '../net/agent8';
+import { t } from '../i18n';
 import type { MatchSetup, MatchTransport } from '../net/types';
 import type { Scene } from './scene';
 
@@ -40,17 +41,17 @@ export type PvpMode = 'auto' | 'friend';
 type Phase = 'idle' | 'searching' | 'hosting' | 'joining' | 'starting' | 'error';
 
 const STATUS_TEXT: Record<Phase, string> = {
-  idle: '방을 만들거나 코드를 입력하세요',
-  searching: '상대를 찾는 중…',
-  hosting: '친구를 기다리는 중…',
-  joining: '방에 들어가는 중…',
-  starting: '곧 시작합니다',
-  error: '들어가지 못했습니다',
+  idle: t().makeRoomOrCode,
+  searching: t().searching,
+  hosting: t().waitingFriend,
+  joining: t().joiningRoom,
+  starting: t().startingSoon,
+  error: t().couldNotJoin,
 };
 
 const TITLE_TEXT: Record<PvpMode, string> = {
-  auto: '자동 매칭',
-  friend: '친구랑 하기',
+  auto: t().pvpTitleAuto,
+  friend: t().pvpTitleFriend,
 };
 
 /** 경과 시간을 `0:07` 로. 분이 넘어가도 자리가 안 흔들리게 초를 두 자리로 채운다. */
@@ -243,7 +244,7 @@ export class PvpScene implements Scene {
     try {
       const connected = await this.client.connect();
       if (!alive()) return;
-      if (!connected) throw new Error('연결이 거부되었습니다');
+      if (!connected) throw new Error(t().connectionRefused);
 
       await go(this.client);
       if (!alive()) return;
@@ -275,7 +276,7 @@ export class PvpScene implements Scene {
 
     if (state.phase === 'finished') {
       if (!silentFallback) {
-        this.show('error', `방이 닫혔습니다 (${state.reason ?? '종료'})`);
+        this.show('error', t().roomClosed(state.reason ?? '종료'));
         return;
       }
       console.warn('[net] 방이 닫혔습니다, 봇전으로 대체합니다:', state.reason);

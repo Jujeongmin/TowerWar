@@ -17,17 +17,11 @@
  * 시드로 만들기 때문에 같은 판에서는 몇 번을 다시 그려도 같은 이름이 나온다.
  */
 
+import { t } from '../i18n';
 import { PROFILE_IDS, type ProfileId } from '../profiles';
 
-const HEAD = [
-  '검은', '푸른', '붉은', '조용한', '빠른', '늦은', '작은', '커다란',
-  '외로운', '성난', '느긋한', '차가운', '뜨거운', '흐린',
-] as const;
-
-const TAIL = [
-  '기사', '늑대', '까마귀', '방패', '창날', '바람', '노을', '서리',
-  '망치', '여우', '북풍', '등불', '모래', '파도',
-] as const;
+// 낱말 목록은 `i18n.ts` 에 있다. **영어 화면에 한국어 이름이 뜨면 그게 곧
+// "이 상대는 사람이 아니다"라는 신호가 된다** — §-7은 안 알리기로 했다.
 
 /** 이름 뒤에 붙는 두 자리 숫자. 같은 조합이 두 번 나와도 달라 보이게 한다. */
 const TAG_MOD = 90;
@@ -76,8 +70,9 @@ export function botName(seed: number): string {
   // 맵 생성과 다른 스트림을 쓴다. 같은 스트림을 이어 쓰면 이름 규칙을 건드리는 것만으로
   // 모든 시드의 맵이 흔들린다.
   const r = rand((seed ^ 0x5bf03635) >>> 0);
-  const head = HEAD[Math.floor(r() * HEAD.length)];
-  const tail = TAIL[Math.floor(r() * TAIL.length)];
+  const s = t();
+  const head = s.botHead[Math.floor(r() * s.botHead.length)];
+  const tail = s.botTail[Math.floor(r() * s.botTail.length)];
   const tag = 10 + Math.floor(r() * TAG_MOD);
-  return `${head}${tail}${tag}`;
+  return s.botJoin(head, tail, tag);
 }

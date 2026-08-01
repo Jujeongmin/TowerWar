@@ -26,6 +26,7 @@ import { routeBlockedBy, towerCount, unitPosition, unitProgressRate } from '../s
 import type { MatchState, Owner, PlayerId, Route, TickEvents, Tower } from '../sim/types';
 import { DEFAULT_PROFILE, profileBg, type ProfileId } from '../profiles';
 import { DEFAULT_UNIT_KIND, UNIT_KIND_META, sizeFactorOf, type UnitKind } from '../units';
+import { t } from '../i18n';
 import { Profiles } from './profiles';
 import { Sprites, type UnitDir } from './sprites';
 
@@ -53,7 +54,6 @@ interface Effect {
 }
 
 const BG = '#0b1017';
-const GRID = 'rgba(120,160,200,0.045)';
 
 /**
  * 위험·취소 계열 표시색(절단 궤적, 끊길 경로, 거부된 레벨업).
@@ -366,20 +366,8 @@ export class Renderer {
 
   private drawField(): void {
     const ctx = this.ctx;
-    ctx.strokeStyle = GRID;
-    ctx.lineWidth = 1;
-    for (let x = 0; x <= FIELD_W; x += 50) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, FIELD_H);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= FIELD_H; y += 50) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(FIELD_W, y);
-      ctx.stroke();
-    }
+    // **격자를 안 그린다** (2026-08-03 사용자 지시). 전에는 50논리px 간격의 옅은 선을
+    // 깔았는데, 건물 스프라이트가 들어온 뒤로는 판이 지도가 아니라 모눈종이로 읽혔다.
     // 중앙선. **세로형이라 가로로 긋는다** (2026-07-31) — 진영이 위아래로 마주본다.
     // `maps.ts` 가 y = FIELD_H/2 를 축으로 거울을 찍으므로 여기와 같은 선이어야 한다.
     ctx.strokeStyle = 'rgba(120,160,200,0.12)';
@@ -919,7 +907,7 @@ export class Renderer {
       ctx.globalAlpha = hint;
       ctx.fillStyle = 'rgba(170,186,202,0.6)';
       ctx.font = '500 12px ui-sans-serif, system-ui, sans-serif';
-      ctx.fillText('드래그: 경로 개설/차단  ·  빈 곳 스와이프: 경로 절단', w / 2, bottom - 24);
+      ctx.fillText(t().hint, w / 2, bottom - 24);
       ctx.globalAlpha = 1;
     }
 
@@ -929,7 +917,7 @@ export class Renderer {
       const dots = '.'.repeat(1 + (Math.floor(this.time * 2) % 3));
       ctx.font = '700 14px ui-sans-serif, system-ui, sans-serif';
       ctx.fillStyle = CUT_COLOR;
-      ctx.fillText(`상대를 기다리는 중${dots}`, w / 2, bottom - 48);
+      ctx.fillText(`${t().waitingPeer}${dots}`, w / 2, bottom - 48);
     }
     ctx.restore();
   }
@@ -1054,7 +1042,7 @@ export class Renderer {
     ctx.font = '700 11px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.textAlign = align;
     ctx.fillStyle = 'rgba(170,186,202,0.72)';
-    ctx.fillText(`${rating}점`, x, y);
+    ctx.fillText(t().points(rating), x, y);
   }
 
   /**
@@ -1149,7 +1137,7 @@ export class Renderer {
         ? OWNER_COLOR[ui.local].main
         : OWNER_COLOR[ui.local === 1 ? 2 : 1].main;
     ctx.font = '800 54px ui-sans-serif, system-ui, sans-serif';
-    ctx.fillText(draw ? '무승부' : won ? '승리' : '패배', w / 2, h / 2 - 16);
+    ctx.fillText(draw ? t().draw : won ? t().victory : t().defeat, w / 2, h / 2 - 16);
     ctx.restore();
   }
 

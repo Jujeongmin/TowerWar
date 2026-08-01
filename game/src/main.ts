@@ -14,9 +14,11 @@ import { MatchScene } from './app/match-scene';
 import { NameScene } from './app/name-scene';
 import type { MatchPlan, Scene } from './app/scene';
 import { PvpScene } from './app/pvp-scene';
+import { SettingsScene } from './app/settings-scene';
 import { ShopScene } from './app/shop-scene';
 import { Agent8Client } from './net/agent8';
 import { openShopWindow } from './net/vx';
+import { applyStaticText, getLang, setLang } from './i18n';
 import { Renderer } from './render/renderer';
 import type { UnitKind } from './units';
 
@@ -25,6 +27,11 @@ function need<T extends HTMLElement>(id: string): T {
   if (!el) throw new Error(`#${id}를 찾을 수 없습니다`);
   return el as T;
 }
+
+// 화면을 만들기 **전에** 언어를 확정하고 정적 문자열을 칠한다. 씬 생성자가 DOM에서
+// 글자를 읽어 가는 곳이 있어(버튼 제목 등) 순서가 뒤집히면 영어 기본값이 남는다.
+setLang(getLang());
+applyStaticText();
 
 const canvas = need<HTMLCanvasElement>('stage');
 
@@ -80,6 +87,14 @@ const lobby = new LobbyScene(
   },
   () => switchTo(shop),
   () => switchTo(board),
+  () => switchTo(settings),
+);
+const settings = new SettingsScene(
+  need('settings'),
+  // 언어가 바뀌면 지금 화면을 다시 읽게 한다. 씬들이 값을 `enter()` 에서 읽으므로
+  // 다시 부르는 것으로 충분하다 — 새로고침은 매칭·상점 상태를 날린다.
+  () => current?.enter(),
+  () => switchTo(lobby),
 );
 const board = new BoardScene(
   need('board'),

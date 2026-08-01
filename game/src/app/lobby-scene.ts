@@ -8,6 +8,7 @@
  * 상점은 별도 화면이다 (`shop-scene.ts`). 로비는 재화·전적을 보여주고 갈 곳만 고른다.
  */
 import type { Account } from '../account/account';
+import { t } from '../i18n';
 import { profileBg, profileSrc } from '../profiles';
 import type { Scene } from './scene';
 
@@ -31,6 +32,8 @@ export class LobbyScene implements Scene {
     openShop: () => void,
     /** 순위. 서버에서 상위 10명을 받아 오는 화면이다 (`board-scene.ts`). */
     openBoard: () => void,
+    /** 설정. 지금은 언어뿐이다 (`settings-scene.ts`). */
+    openSettings: () => void,
   ) {
     const name = root.querySelector<HTMLElement>('#acc-name');
     const avatar = root.querySelector<HTMLImageElement>('#acc-avatar');
@@ -41,10 +44,11 @@ export class LobbyScene implements Scene {
     const friend = root.querySelector<HTMLButtonElement>('#btn-friend');
     const shop = root.querySelector<HTMLButtonElement>('#btn-shop');
     const board = root.querySelector<HTMLButtonElement>('#btn-board');
+    const settings = root.querySelector<HTMLButtonElement>('#btn-settings');
     const coins = root.querySelector<HTMLElement>('#acc-coins');
     const rating = root.querySelector<HTMLElement>('#acc-rating');
     const record = root.querySelector<HTMLElement>('#acc-record');
-    if (!auto || !friend || !shop || !board || !coins || !rating || !record) {
+    if (!auto || !friend || !shop || !board || !settings || !coins || !rating || !record) {
       throw new Error('로비 DOM이 예상과 다릅니다');
     }
     this.coins = coins;
@@ -54,6 +58,7 @@ export class LobbyScene implements Scene {
     friend.addEventListener('click', startFriend);
     shop.addEventListener('click', openShop);
     board.addEventListener('click', openBoard);
+    settings.addEventListener('click', openSettings);
   }
 
   enter(): void {
@@ -67,9 +72,10 @@ export class LobbyScene implements Scene {
     if (!this.avatar.src.endsWith(src)) this.avatar.src = src;
     // 그림은 모두가 같고 뒤에 깔리는 색이 고른 값이다 (src/profiles.ts).
     this.avatar.style.background = profileBg(a.profile);
-    this.coins.textContent = a.coins.toLocaleString('ko-KR');
-    this.rating.textContent = `${a.rating}점`;
-    this.record.textContent = `${a.wins}승 ${a.losses}패${a.draws > 0 ? ` ${a.draws}무` : ''}`;
+    this.coins.textContent = a.coins.toLocaleString();
+    this.rating.textContent = t().points(a.rating);
+    // 무승부는 안 적는다 — 언어마다 표기가 갈리고, 거의 안 난다.
+    this.record.textContent = t().record(a.wins, a.losses);
     this.root.hidden = false;
   }
 

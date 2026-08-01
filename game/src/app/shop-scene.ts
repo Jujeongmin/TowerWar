@@ -26,10 +26,13 @@ import {
   UNIT_KIND_META,
   isPremiumKind,
   sizeFactorOf,
+  unitBlurbOf,
+  unitLabelOf,
   spriteKindOf,
   type UnitKind,
 } from '../units';
 import { isPurchasable } from '../net/vx';
+import { t } from '../i18n';
 import type { Scene } from './scene';
 
 /** 다음 단계를 사면 무엇이 어떻게 변하는가. 만렙이면 현재 값만 보여준다. */
@@ -115,7 +118,7 @@ export class ShopScene implements Scene {
         }
         void this.openVxShop().then((ok) => {
           // 팝업 차단에 걸렸다. 조용히 지나가면 눌렀는데 아무 일도 안 일어난 것으로 보인다.
-          if (!ok) this.vxNote.textContent = '결제 창을 열지 못했습니다. 다시 눌러 주세요.';
+          if (!ok) this.vxNote.textContent = t().vxOpenFailed;
         });
       });
       pgrid.appendChild(el);
@@ -165,10 +168,10 @@ export class ShopScene implements Scene {
     const fill = Math.round((meta.power / MAX_UNIT_POWER) * 100);
     el.innerHTML = `
       <span class="unit-art${meta.aura === 'rainbow' ? ' aura-rainbow' : ''}"><img alt="" src="${previewSrc(kind)}" style="height:${artH}px" /></span>
-      <span class="unit-name">${meta.label}</span>
+      <span class="unit-name" data-role="name"></span>
       <span class="unit-bar"><i style="width:${fill}%"></i></span>
-      <span class="unit-power">체력 ${meta.power} · 공격력 ${meta.power}</span>
-      <span class="unit-blurb">${meta.blurb}</span>
+      <span class="unit-power" data-role="stats"></span>
+      <span class="unit-blurb" data-role="blurb"></span>
       <span class="unit-state" data-role="state"></span>
     `;
     return el;
@@ -176,7 +179,7 @@ export class ShopScene implements Scene {
 
   private render(): void {
     const a = this.getAccount();
-    this.coins.textContent = a.coins.toLocaleString('ko-KR');
+    this.coins.textContent = a.coins.toLocaleString();
 
     for (const { kind, el } of this.upgradeRows) {
       const level = upgradeLevelOf(a, kind);
@@ -186,9 +189,17 @@ export class ShopScene implements Scene {
 
       set(el, 'pips', '●'.repeat(level) + '○'.repeat(Math.max(0, max - level)));
       set(el, 'effect', effectText(kind, level));
-      set(el, 'price', cost === null ? '최대' : `◈ ${cost.toLocaleString('ko-KR')}`);
+      set(el, 'price', cost === null ? t().maxed : `◈ ${cost.toLocaleString()}`);
       el.querySelector('[data-role="price"]')?.classList.toggle('locked', !affordable);
       el.disabled = !affordable;
+    }
+
+    // **이름·스탯·설명은 매번 다시 쓴다.** 카드는 생성자에서 한 번만 만들어지므로
+    // 여기서 안 채우면 언어를 바꿔도 처음 언어가 그대로 남는다 — 실제로 그 버그를 냈다.
+    for (const { kind, el } of [...this.unitCards, ...this.premiumCards]) {
+      set(el, 'name', unitLabelOf(kind));
+      set(el, 'stats', t().unitStats(UNIT_KIND_META[kind].power));
+      set(el, 'blurb', unitBlurbOf(kind));
     }
 
     const worn = unitKindOf(a);
@@ -198,7 +209,7 @@ export class ShopScene implements Scene {
       const equipped = kind === worn;
       const affordable = owned || a.coins >= price;
 
-      set(el, 'state', equipped ? '착용 중' : owned ? '착용하기' : `◈ ${price.toLocaleString('ko-KR')}`);
+      set(el, 'state', equipped ? t().equipped : owned ? t().equip : `◈ ${price.toLocaleString()}`);
       el.classList.toggle('is-equipped', equipped);
       el.classList.toggle('is-owned', owned);
       el.querySelector('[data-role="state"]')?.classList.toggle('locked', !affordable);
@@ -215,7 +226,7 @@ export class ShopScene implements Scene {
       const sellable = isPurchasable(kind);
       anyPurchasable = anyPurchasable || sellable;
 
-      set(el, 'state', equipped ? '착용 중' : owned ? '착용하기' : sellable ? 'VX로 구매' : '준비 중');
+      set(el, 'state', equipped ? t().equipped : owned ? t().equip : sellable ? t().buyWithVx : t().comingSoon);
       el.classList.toggle('is-equipped', equipped);
       el.classList.toggle('is-owned', owned);
       el.querySelector('[data-role="state"]')?.classList.toggle('locked', !owned && !sellable);
@@ -223,7 +234,7 @@ export class ShopScene implements Scene {
     }
     // 자산 id 표(`ASSET_IDS`)가 비어 있으면 아직 팔 수 없다. 배포 전에는 늘 이 상태다 —
     // 이유를 안 적으면 버튼이 왜 죽어 있는지 알 수가 없다.
-    this.vxNote.textContent = anyPurchasable ? '' : '결제 상품이 아직 등록되지 않았습니다.';
+    this.vxNote.textContent = anyPurchasable ? '' : t().vxNotListed;
     this.vxNote.hidden = anyPurchasable;
   }
 }

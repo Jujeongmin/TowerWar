@@ -113,12 +113,17 @@ const UNIT_SPRITE_H = 20;
 
 /** 판때기 좌우 여백. */
 const HUD_PAD = 12;
-/** 판때기 높이(`safeTop` 아래로). 이름 줄 + 전선 막대가 들어간다. */
-const HUD_H = 56;
-/** 이름 줄의 세로 중심. */
-const HUD_NAME_Y = 20;
+/** 판때기 높이(`safeTop` 아래로). 이름 줄 + 점수 줄 + 전선 막대가 들어간다. */
+const HUD_H = 66;
+/** 이름 줄의 세로 중심. 타이머도 이 줄이다. */
+const HUD_NAME_Y = 18;
+/**
+ * 점수 줄의 세로 중심. **이름 밑에 따로 놓는다** — 같은 줄에 붙이면 375px에서
+ * 이름에 남는 자리가 네 글자로 줄어든다.
+ */
+const HUD_RATING_Y = 34;
 /** 전선 막대의 위쪽 y와 두께. */
-const HUD_BAR_Y = 36;
+const HUD_BAR_Y = 46;
 const HUD_BAR_H = 9;
 
 /**
@@ -139,6 +144,14 @@ const HUD_TIMER_HALF = 36;
  */
 const HINT_HOLD = 6;
 const HINT_FADE = 1.5;
+
+/**
+ * 아래쪽에 비워 두는 높이. 조작 안내가 여기 들어간다.
+ *
+ * [항복] 버튼(우하단, 44px)까지 다 비우지는 않는다 — 구석 하나 때문에 판을 더 줄이면
+ * 손해가 크고, 버튼은 경로를 긋는 자리에서 이미 가장 먼 곳이다.
+ */
+const HUD_BOTTOM = 48;
 
 /**
  * 유닛 그림 방향을 바꿀 때 요구하는 우세폭. **이미 쓰던 방향에 이만큼 가산점을 준다.**
@@ -187,6 +200,13 @@ export class Renderer {
   private waitingForPeer = false;
   /** 플레이어별 닉네임. 비어 있으면 HUD에 이름 줄을 안 그린다. */
   private names: Record<PlayerId, string> = { 1: '', 2: '' };
+  /**
+   * 플레이어별 PVP 점수. 이름 밑에 한 줄로 나간다.
+   *
+   * **0이면 안 그린다** — 점수를 못 받은 판(옛 서버·오프라인)에서 `0점` 이라고 쓰면
+   * 밑바닥까지 떨어진 사람으로 읽힌다. 빈칸이 낫다.
+   */
+  private ratings: Record<PlayerId, number> = { 1: 0, 2: 0 };
   /** 플레이어별 프로필 아바타. 원본이 908px이라 필요한 것만 그때 불러온다. */
   private readonly profiles = new Profiles();
   private profileIds: Record<PlayerId, ProfileId> = { 1: DEFAULT_PROFILE, 2: DEFAULT_PROFILE };
@@ -222,10 +242,17 @@ export class Renderer {
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
 
-    // 논리 좌표계를 화면에 레터박스로 맞춘다
-    this.scale = Math.min(w / FIELD_W, h / FIELD_H);
+    // 논리 좌표계를 화면에 레터박스로 맞춘다. **HUD가 먹는 높이를 먼저 빼고 남은
+    // 자리에 넣는다** — 전에는 화면 전체에 맞춰서, 620×1000보다 짧은 비율(375×667 등)
+    // 에서는 위아래 여백이 HUD보다 좁아 상단 타워가 HUD 밑으로 들어갔다.
+    //
+    // 세로가 긴 화면에서는 어차피 가로가 먼저 걸리므로(375×812 → 0.605) 이 뺄셈이
+    // 판 크기를 안 건드린다. 짧은 화면에서만 판이 조금 작아지고, 대신 다 보인다.
+    const top = this.safeTop + HUD_H;
+    const usable = Math.max(1, h - top - this.safeBottom - HUD_BOTTOM);
+    this.scale = Math.min(w / FIELD_W, usable / FIELD_H);
     this.ox = (w - FIELD_W * this.scale) / 2;
-    this.oy = (h - FIELD_H * this.scale) / 2;
+    this.oy = top + (usable - FIELD_H * this.scale) / 2;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
@@ -248,6 +275,17 @@ export class Renderer {
   setNames(names: Partial<Record<PlayerId, string>>): void {
     if (names[1] !== undefined) this.names[1] = names[1];
     if (names[2] !== undefined) this.names[2] = names[2];
+  }
+
+  /**
+   * 판이 시작될 때 양쪽 점수를 정한다. 판 도중에는 안 바뀐다 — 서버가 판 시작에
+   * 찍어 둔 스냅샷이고, 판이 끝난 뒤 Elo 계산도 같은 값으로 한다 (§-27).
+   *
+   * 봇전 상대 점수는 클라이언트가 만든다 (`botRating`) — 이름·아바타와 같은 이유다.
+   */
+  setRatings(ratings: Partial<Record<PlayerId, number>>): void {
+    if (ratings[1] !== undefined) this.ratings[1] = ratings[1];
+    if (ratings[2] !== undefined) this.ratings[2] = ratings[2];
   }
 
   /**
@@ -848,10 +886,12 @@ export class Renderer {
     if (this.names[ui.local]) {
       const x = this.drawAvatar(ui.local, HUD_PAD, nameY, 'left');
       this.drawHudName(this.names[ui.local], x, nameY, budget, 'left');
+      this.drawHudRating(this.ratings[ui.local], x, top + HUD_RATING_Y, 'left');
     }
     if (this.names[enemy]) {
       const x = this.drawAvatar(enemy, w - HUD_PAD, nameY, 'right');
       this.drawHudName(this.names[enemy], x, nameY, budget, 'right');
+      this.drawHudRating(this.ratings[enemy], x, top + HUD_RATING_Y, 'right');
     }
 
     // 홈 인디케이터가 먹는 만큼 띄운다.
@@ -971,6 +1011,25 @@ export class Renderer {
       text = `${text}…`;
     }
     ctx.fillText(text, x, y);
+  }
+
+  /**
+   * 이름 밑의 점수 한 줄. **이름보다 작고 흐리다** — 누구와 붙었는지가 먼저고
+   * 점수는 그 다음이다. 둘이 같은 무게면 어느 쪽을 읽어야 할지 알 수 없다.
+   *
+   * 고정폭 숫자를 쓰는 이유는 시계와 같다 — 자릿수가 같으면 폭도 같아야 한다.
+   * `점` 을 붙이는 것은 로비·결과 화면과 같은 표기를 쓰기 위해서다. 숫자만 두면
+   * 이 판에서 딴 점수로 읽힐 수 있다.
+   *
+   * 0이면 아무것도 안 그린다 (`ratings` 주석).
+   */
+  private drawHudRating(rating: number, x: number, y: number, align: 'left' | 'right'): void {
+    if (!(rating > 0)) return;
+    const ctx = this.ctx;
+    ctx.font = '700 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = align;
+    ctx.fillStyle = 'rgba(170,186,202,0.72)';
+    ctx.fillText(`${rating}점`, x, y);
   }
 
   /**

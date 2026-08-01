@@ -9,6 +9,7 @@
  * 여기 상수와 `server.js` 의 상수가 어긋나면 조용히 아무 일도 안 일어난다.
  */
 import { GameServer } from '@agent8/gameserver';
+import { DEFAULT_RATING } from '../account/account';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
 import type { PlayerId } from '../sim/types';
 import { DEFAULT_UNIT_KIND, isUnitKind, type UnitKind } from '../units';
@@ -59,6 +60,8 @@ export interface RoomSnapshot {
   names?: Record<number, string>;
   /** 슬롯 번호 → 프로필 아바타 id. 이것도 서버 계정에서 읽는다. */
   profiles?: Record<number, string>;
+  /** 슬롯 번호 → 판 시작 시점의 PVP 점수. 판이 끝난 뒤 Elo 계산의 기준값이다 (§-27). */
+  ratings?: Record<number, number>;
   inputDelayTicks?: number;
   desyncCheckTicks?: number;
   winner?: string | null;
@@ -202,6 +205,9 @@ export class Agent8Client {
         1: toProfile(state.profiles?.[1]),
         2: toProfile(state.profiles?.[2]),
       },
+      // 서버가 안 내려줬으면 양쪽 다 기본 점수로 본다. 한쪽만 떨어지면 화면에서
+      // 실력 차가 있는 것처럼 보인다.
+      ratings: { 1: state.ratings?.[1] ?? DEFAULT_RATING, 2: state.ratings?.[2] ?? DEFAULT_RATING },
       inputDelayTicks: state.inputDelayTicks ?? DEFAULT_INPUT_DELAY_TICKS,
       desyncCheckTicks: state.desyncCheckTicks ?? DEFAULT_DESYNC_CHECK_TICKS,
     };

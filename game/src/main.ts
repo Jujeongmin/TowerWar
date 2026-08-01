@@ -113,6 +113,7 @@ const match = new MatchScene(
   () => unitKindOf(store.current),
   () => store.current.name,
   () => store.current.profile,
+  () => store.current.rating,
   () => plan,
   need<HTMLButtonElement>('btn-resign'),
 );

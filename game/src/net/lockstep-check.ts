@@ -15,6 +15,7 @@
  * 명령을 프레임이 아니라 **틱 루프 안에서** 내는 것이 중요하다. 프레임 단위로 내면
  * 따라잡기 구간에서 여러 틱을 건너뛰어, 락스텝이 아니라 하네스가 만든 차이를 보게 된다.
  */
+import { DEFAULT_RATING } from '../account/account';
 import { DEFAULT_PROFILE } from '../profiles';
 import { DEFAULT_UNIT_KIND, unitPowerOf, type UnitKind } from '../units';
 import { TICK_DT, speedMulFor } from '../sim/config';
@@ -112,6 +113,8 @@ export function runCase(seed: number, latencyMs: number, inputDelayTicks: number
     names: { 1: 'A', 2: 'B' },
     // 카탈로그에서 읽는다. id를 손으로 박아 두면 아바타 목록을 고칠 때마다 여기가 깨진다.
     profiles: { 1: DEFAULT_PROFILE, 2: DEFAULT_PROFILE },
+    // 점수도 검증에 안 쓴다 — HUD 표시용이라 시뮬레이션에 안 들어간다.
+    ratings: { 1: DEFAULT_RATING, 2: DEFAULT_RATING },
   };
   const a = new FakeClient(1, setup, hub.port());
   const b = new FakeClient(2, setup, hub.port());

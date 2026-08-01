@@ -68,6 +68,11 @@ export interface MatchSetup {
   names: Record<PlayerId, string>;
   /** 플레이어별 프로필 아바타. 이름과 같은 이유로 서버가 내려준 것만 쓴다. */
   profiles: Record<PlayerId, ProfileId>;
+  /**
+   * 플레이어별 PVP 점수. **판이 시작될 때 서버가 찍어 둔 스냅샷이다** (`state.ratings`) —
+   * 판 도중에 안 바뀌고, 판이 끝난 뒤 Elo 계산의 기준이 되는 값과 같다 (§-27).
+   */
+  ratings: Record<PlayerId, number>;
   /** 명령을 몇 틱 뒤에 실행할 것인가. 서버 룸 상태의 `inputDelayTicks`. */
   inputDelayTicks: number;
   /** 몇 틱마다 상태 해시를 보낼 것인가. 0이면 안 보낸다. */

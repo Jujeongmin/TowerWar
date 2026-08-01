@@ -17,7 +17,7 @@ import { InputController } from '../render/input';
 import type { Renderer } from '../render/renderer';
 import { unitPowerOf, type UnitKind } from '../units';
 import type { ProfileId } from '../profiles';
-import { botName, botProfile } from './bot-name';
+import { botName, botProfile, botRating } from './bot-name';
 import { BotSource, NetSource, type CommandSource } from './command-source';
 import type { MatchPlan, Scene } from './scene';
 
@@ -94,6 +94,8 @@ export class MatchScene implements Scene {
     private readonly getPlayerName: () => string,
     /** 내 프로필 아바타. 이름과 같은 규칙이다. */
     private readonly getProfile: () => ProfileId,
+    /** 내 PVP 점수. 봇전에서만 쓴다 — PVP는 서버가 찍어 준 스냅샷이 이걸 덮는다. */
+    private readonly getRating: () => number,
     /** 이 판의 조건. 씬에 들어올 때마다 새로 읽는다. */
     private readonly getPlan: () => MatchPlan,
     /** 캔버스 위 [항복] 버튼. 매치 중에만 보인다. */
@@ -189,11 +191,15 @@ export class MatchScene implements Scene {
       // 서버가 내려준 것만 쓴다. 클라이언트가 보내면 남의 이름·아바타를 자칭할 수 있다.
       this.renderer.setNames({ 1: plan.setup.names[1], 2: plan.setup.names[2] });
       this.renderer.setProfiles({ 1: plan.setup.profiles[1], 2: plan.setup.profiles[2] });
+      this.renderer.setRatings({ 1: plan.setup.ratings[1], 2: plan.setup.ratings[2] });
     } else {
       // 봇 이름·아바타는 클라이언트가 만든다 — 봇이라는 것을 화면에 안 알리기로 했다
       // (app/bot-name.ts).
       this.renderer.setNames({ [local]: this.getPlayerName(), [other]: botName(seed) });
       this.renderer.setProfiles({ [local]: this.getProfile(), [other]: botProfile(seed) });
+      // 내 점수는 계정에서, 봇 점수는 내 점수 근처에서 만든다 (app/bot-name.ts).
+      const myRating = this.getRating();
+      this.renderer.setRatings({ [local]: myRating, [other]: botRating(seed, myRating) });
     }
 
     this.input = new InputController(

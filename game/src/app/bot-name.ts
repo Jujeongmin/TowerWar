@@ -56,6 +56,22 @@ export function botProfile(seed: number): ProfileId {
   return PROFILE_IDS[Math.floor(r() * PROFILE_IDS.length)];
 }
 
+/**
+ * 봇 상대에게 붙이는 점수. **비워 두면 그 자리가 곧 "봇이다"가 된다** — 이름·아바타를
+ * 만드는 것과 같은 이유다(§-7). HUD에 양쪽 점수가 뜨는데 한쪽만 비면 그걸로 끝난다.
+ *
+ * 내 점수 근처에서 뽑는 이유: 매칭이 점수 대역으로 상대를 고르므로(`RATING_BAND_STEPS`)
+ * **진짜 사람이었다면 어차피 가까운 값이 나온다.** 멀리 떨어진 값을 주면 "이 점수대에
+ * 저런 상대가 붙을 리가 없는데" 가 힌트가 된다.
+ *
+ * 폭을 ±60으로 둔 것은 즉시 매칭 대역(100)보다 좁게 잡은 것이다. 시드로 뽑으므로
+ * 한 판 안에서는 몇 번을 다시 그려도 같은 값이다.
+ */
+export function botRating(seed: number, mine: number): number {
+  const r = rand((seed ^ 0x1d2c6f3b) >>> 0);
+  return Math.max(0, Math.round(mine + (r() * 2 - 1) * 60));
+}
+
 export function botName(seed: number): string {
   // 맵 생성과 다른 스트림을 쓴다. 같은 스트림을 이어 쓰면 이름 규칙을 건드리는 것만으로
   // 모든 시드의 맵이 흔들린다.

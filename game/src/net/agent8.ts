@@ -305,4 +305,6 @@ export interface RemoteAccount {
   soloWins: number;
   soloLosses: number;
   soloDraws: number;
+  /** PVP 점수(Elo). 봇전에서는 안 움직인다. 티어로 바꾸는 구간은 `rating.ts` 에 있다. */
+  rating: number;
 }

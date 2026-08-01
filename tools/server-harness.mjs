@@ -560,6 +560,70 @@ await server.$roomTick(300, sroom.roomId);
 const sst = await $global.getRoomState(sroom.roomId);
 check('봇전은 내 이름만', sst.solo === true && sst.names[1] === '캐럴' && sst.names[2] === undefined, sst.names);
 
+// 36) PVP 점수(Elo) — 판이 끝나면 서버가 점수를 옮긴다.
+//     점수 차 200인 판을 고른 이유: 양쪽 변동이 ±8로 같아야 스냅샷으로 쟀다는 뜻이다.
+//     지금 계정 값을 읽었다면 나중에 보고한 쪽이 이미 움직인 상대 점수를 보게 돼 합이 어긋난다.
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), rating: 1200 });
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), rating: 1000 });
+as(A);
+const eroom = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(eroom.code);
+await server.setReady(true);
+await server.$roomTick(300, eroom.roomId);
+const es = await $global.getRoomState(eroom.roomId);
+check(
+  '시작 시 점수 스냅샷이 찍힌다',
+  es.ratings[es.slots['0xAAA']] === 1200 && es.ratings[es.slots['0xBBB']] === 1000,
+  es.ratings,
+);
+as(A);
+const ratedA = await server.reportResult(es.slots['0xAAA'], 0);
+check('이긴 쪽 1200 → 1208', ratedA.rating === 1208, ratedA.rating);
+as(B);
+const ratedB = await server.reportResult(es.slots['0xAAA'], 0);
+check('진 쪽 1000 → 992', ratedB.rating === 992, ratedB.rating);
+check('점수 합이 보존된다 (스냅샷으로 쟀다)', ratedA.rating + ratedB.rating === 2200, {
+  a: ratedA.rating, b: ratedB.rating,
+});
+
+// 37) 봇전은 점수를 안 건드린다 — solo 전적을 갈라 둔 것과 같은 이유
+userStates.set('0xCCC', { ...defaultsFor('0xCCC'), rating: 1100 });
+as(C); await server.leaveMatch().catch(() => {});
+const broom = await server.createRoom();
+await server.setReady(true);
+rooms.get(broom.roomId).state.players['0xCCC'].joinedAt = Date.now() - 60000;
+rooms.get(broom.roomId).state.private = false;
+await server.$roomTick(300, broom.roomId);
+const ratedC = await server.reportResult(1, 0);
+check('봇전 승리는 점수를 안 올린다', ratedC.rating === 1100, ratedC.rating);
+
+// 38) 점수 필드가 없던 계정(v8 이하)은 0이 아니라 기본 점수에서 출발한다
+const F = { account: '0xFFF', roomId: null };
+as(F);
+check('점수가 없던 계정은 1000', (await server.getAccount()).rating === 1000, await server.getAccount());
+
+// 39) 매칭 대역 — 점수가 너무 다르면 즉시 안 붙고, 오래 기다린 방은 열린다
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+as(C); await server.leaveMatch().catch(() => {});
+rooms.clear(); // 앞 절의 방들이 후보에 섞이면 무엇에 붙었는지 알 수 없다
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), rating: 1000 });
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), rating: 1600 });
+as(A);
+const waitRoom = await server.findMatch();
+as(B);
+const far = await server.findMatch();
+check('점수 차 600은 즉시 안 붙는다', far.roomId !== waitRoom.roomId, { far: far.roomId, waitRoom: waitRoom.roomId });
+as(B); await server.leaveMatch();
+rooms.get(waitRoom.roomId).state.players['0xAAA'].joinedAt = Date.now() - 11000;
+as(B);
+const near = await server.findMatch();
+check('11초 기다린 방은 대역이 열린다', near.roomId === waitRoom.roomId, { near: near.roomId, waitRoom: waitRoom.roomId });
+
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  ← ' + JSON.stringify(r.extra)}`);

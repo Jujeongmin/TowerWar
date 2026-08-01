@@ -12,18 +12,20 @@ import { SPEED_LEVEL_MAX, speedMulFor } from '../sim/config';
 import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
 import { DEFAULT_UNIT_KIND, UNIT_KIND_META, isUnitKind, unitPowerOf, type UnitKind } from '../units';
+import { DEFAULT_RATING } from '../rating';
 
 const STORAGE_KEY = 'towerwar.account.v1';
 
 /**
  * 저장 형식이 바뀌면 올린다.
  * v1 = 강화 없음, v2 = 전투력+공속, v3 = 공속만, v4 = 유닛 생김새,
- * v5 = 봇전 전적 분리, v6 = 닉네임, v7 = 프로필 아바타, v8 = 기본 생김새가 BeerGang.
+ * v5 = 봇전 전적 분리, v6 = 닉네임, v7 = 프로필 아바타, v8 = 기본 생김새가 BeerGang,
+ * v9 = PVP 점수.
  */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 /** 읽어서 살릴 수 있는 형식들. 여기 없는 값이면 기본값으로 되돌린다. */
-const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, SCHEMA_VERSION]);
+const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, SCHEMA_VERSION]);
 
 /** 닉네임 길이 상한. HUD에 들어가야 해서 짧다. `server.js` 의 `NAME_MAX` 와 같아야 한다. */
 export const NAME_MAX = 12;
@@ -65,6 +67,12 @@ export interface Account {
   soloWins: number;
   soloLosses: number;
   soloDraws: number;
+  /**
+   * PVP 점수(Elo). **서버가 정하는 값이다** — 사람과 붙은 판에서만 움직이고,
+   * 봇전은 안 건드린다 (solo 전적을 갈라 둔 것과 같은 이유).
+   * 오프라인은 언제나 봇전이라 로컬 경로에서는 절대 안 바뀐다.
+   */
+  rating: number;
 }
 
 export function defaultAccount(): Account {
@@ -82,7 +90,18 @@ export function defaultAccount(): Account {
     soloWins: 0,
     soloLosses: 0,
     soloDraws: 0,
+    rating: DEFAULT_RATING,
   };
+}
+
+/**
+ * `num()` 과 달리 값이 없을 때 0이 아니라 기본 점수로 떨어진다.
+ * **점수에는 `num()` 을 쓰면 안 된다** — 0은 "많이 져서 0점"과 "한 번도 안 쟀음"을
+ * 구분하지 못한다. `server.js` 의 `numOr` 과 같은 규칙이다.
+ */
+function ratingOr(v: unknown, fallback: number): number {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
 }
 
 /**
@@ -95,6 +114,7 @@ export function fromRemote(r: {
   coins: number; wins: number; losses: number; draws: number;
   speedLevel: number; ownedUnits: string[]; unitKind: string;
   soloWins: number; soloLosses: number; soloDraws: number;
+  rating?: number;
 }): Account {
   const owned = r.ownedUnits.filter(isUnitKind);
   const kind = isUnitKind(r.unitKind) ? r.unitKind : DEFAULT_UNIT_KIND;
@@ -112,6 +132,7 @@ export function fromRemote(r: {
     soloWins: num(r.soloWins),
     soloLosses: num(r.soloLosses),
     soloDraws: num(r.soloDraws),
+    rating: ratingOr(r.rating, DEFAULT_RATING),
   };
   return { ...a, unitKind: unitKindOf(a) };
 }
@@ -294,6 +315,8 @@ export function loadAccount(): Account {
       soloWins: num(parsed.soloWins),
       soloLosses: num(parsed.soloLosses),
       soloDraws: num(parsed.soloDraws),
+      // v8 이하 저장본에는 없다. 그때는 0이 아니라 시작 점수에서 출발해야 한다.
+      rating: ratingOr(parsed.rating, DEFAULT_RATING),
     };
     // 안 가진 것이 착용돼 있으면(손으로 고친 저장본 등) 기본으로 되돌린다.
     return { ...account, unitKind: unitKindOf(account) };

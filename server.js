@@ -801,9 +801,9 @@ class Server {
       hashes: {},
       winner: null,
       winnerSlot: 0,
-      // 이번 판의 자기 신고와 점수 반영 여부. 슬롯 번호로 키를 잡는다 (§-9와 같은 이유).
-      reports: {},
-      ratingApplied: {},
+      // 점수 반영은 `rewarded` 가 함께 막는다. 보상과 점수가 같은 한 번에 붙어 있어서
+      // 자물쇠를 따로 둘 이유가 없다 (`#grantReward`).
+      rewarded: {},
     });
   }
 
@@ -874,8 +874,24 @@ class Server {
         soloWins: a.soloWins + (solo && outcome === 'win' ? 1 : 0),
         soloLosses: a.soloLosses + (solo && outcome === 'loss' ? 1 : 0),
         soloDraws: a.soloDraws + (solo && outcome === 'draw' ? 1 : 0),
+        rating: solo ? a.rating : this.#ratingAfter(state, slot, outcome),
       });
     });
+  }
+
+  /**
+   * 이 판 뒤의 내 PVP 점수. **판이 시작될 때 찍어 둔 `state.ratings` 로만 계산한다** —
+   * 두 사람이 각자 보고하는데 계정의 지금 값을 읽으면 먼저 보고한 쪽의 변동이
+   * 나중 쪽 계산에 섞여 들어와 합이 0이 안 된다.
+   *
+   * 0 아래로는 안 내려간다. 음수 점수는 티어 표시(`game/src/rating.ts`)에 자리가 없다.
+   */
+  #ratingAfter(state, slot, outcome) {
+    const ratings = state.ratings || {};
+    const mine = numOr(ratings[slot], DEFAULT_RATING);
+    const theirs = numOr(ratings[slot === 1 ? 2 : 1], DEFAULT_RATING);
+    const score = outcome === 'win' ? 1 : outcome === 'draw' ? 0.5 : 0;
+    return Math.max(0, mine + eloDelta(mine, theirs, score));
   }
 
   /** `players` 맵을 통째로 다시 만든다. 룸 상태 갱신이 얕은 병합이라 중첩 객체는 직접 합쳐야 한다. */

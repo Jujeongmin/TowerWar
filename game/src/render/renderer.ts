@@ -968,8 +968,16 @@ export class Renderer {
 
     ctx.save();
     // 막대 전체를 둥근 사각형으로 잘라 두면 안쪽은 사각형으로 칠해도 끝이 둥글다.
+    //
+    // **`roundRect` 이 없는 브라우저가 있다** (Safari 16 미만). 없는 채로 부르면
+    // 매 프레임 던지고, 이건 `render()` 안이라 **판 전체가 안 그려진다.** 모서리를
+    // 포기하는 것과 화면이 검게 죽는 것은 비교 대상이 아니다.
     ctx.beginPath();
-    ctx.roundRect(x, y, bw, HUD_BAR_H, r);
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, bw, HUD_BAR_H, r);
+    } else {
+      ctx.rect(x, y, bw, HUD_BAR_H);
+    }
     ctx.clip();
     ctx.fillStyle = OWNER_COLOR[enemy].main;
     ctx.fillRect(x, y, bw, HUD_BAR_H);

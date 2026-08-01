@@ -138,7 +138,10 @@ export class MatchScene implements Scene {
    */
   private resign(): void {
     const local = this.input?.ui.local;
-    if (local === undefined || this.state.winner !== null) return;
+    // **연타를 막는다.** 명령은 `inputDelayTicks` 뒤에 적용되므로 그 사이에 판이 아직
+    // 안 끝나 있고, `winner` 검사만으로는 두 번째 누름이 그대로 통과한다. `applyResign`
+    // 이 끝난 판을 무시하므로 데싱크는 없지만, PVP에서는 그만큼 명령이 더 나간다.
+    if (this.resigned || local === undefined || this.state.winner !== null) return;
     this.resigned = true;
     this.source.submit({ kind: 'resign', player: local });
   }

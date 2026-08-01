@@ -9,14 +9,13 @@
  */
 import type { Account } from '../account/account';
 import { profileBg, profileSrc } from '../profiles';
-import { tierOf } from '../rating';
 import type { Scene } from './scene';
 
 export class LobbyScene implements Scene {
   private readonly name: HTMLElement;
   private readonly avatar: HTMLImageElement;
   private readonly coins: HTMLElement;
-  private readonly tier: HTMLElement;
+  private readonly rating: HTMLElement;
   private readonly record: HTMLElement;
 
   constructor(
@@ -30,6 +29,8 @@ export class LobbyScene implements Scene {
     /** 친구랑 하기. 방을 만들거나 코드로 들어간다. 봇 대체가 없다. */
     startFriend: () => void,
     openShop: () => void,
+    /** 순위. 서버에서 상위 10명을 받아 오는 화면이다 (`board-scene.ts`). */
+    openBoard: () => void,
   ) {
     const name = root.querySelector<HTMLElement>('#acc-name');
     const avatar = root.querySelector<HTMLImageElement>('#acc-avatar');
@@ -39,18 +40,20 @@ export class LobbyScene implements Scene {
     const auto = root.querySelector<HTMLButtonElement>('#btn-auto');
     const friend = root.querySelector<HTMLButtonElement>('#btn-friend');
     const shop = root.querySelector<HTMLButtonElement>('#btn-shop');
+    const board = root.querySelector<HTMLButtonElement>('#btn-board');
     const coins = root.querySelector<HTMLElement>('#acc-coins');
-    const tier = root.querySelector<HTMLElement>('#acc-tier');
+    const rating = root.querySelector<HTMLElement>('#acc-rating');
     const record = root.querySelector<HTMLElement>('#acc-record');
-    if (!auto || !friend || !shop || !coins || !tier || !record) {
+    if (!auto || !friend || !shop || !board || !coins || !rating || !record) {
       throw new Error('로비 DOM이 예상과 다릅니다');
     }
     this.coins = coins;
-    this.tier = tier;
+    this.rating = rating;
     this.record = record;
     auto.addEventListener('click', startAuto);
     friend.addEventListener('click', startFriend);
     shop.addEventListener('click', openShop);
+    board.addEventListener('click', openBoard);
   }
 
   enter(): void {
@@ -65,7 +68,7 @@ export class LobbyScene implements Scene {
     // 그림은 모두가 같고 뒤에 깔리는 색이 고른 값이다 (src/profiles.ts).
     this.avatar.style.background = profileBg(a.profile);
     this.coins.textContent = a.coins.toLocaleString('ko-KR');
-    this.tier.textContent = `${tierOf(a.rating)} ${a.rating}`;
+    this.rating.textContent = `${a.rating}점`;
     this.record.textContent = `${a.wins}승 ${a.losses}패${a.draws > 0 ? ` ${a.draws}무` : ''}`;
     this.root.hidden = false;
   }

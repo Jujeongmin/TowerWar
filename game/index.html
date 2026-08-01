@@ -39,7 +39,7 @@
         <img id="acc-avatar" class="acc-avatar" alt="" hidden />
         <span id="acc-name" class="acc-name"></span>
         <span id="acc-coins" class="coins">0</span>
-        <span id="acc-tier" class="tier"></span>
+        <span id="acc-rating" class="rating"></span>
         <span id="acc-record" class="record"></span>
       </div>
       <h1 class="logo">TowerWar</h1>
@@ -48,6 +48,19 @@
         <button id="btn-auto" class="btn btn-primary">자동 매칭</button>
         <button id="btn-friend" class="btn">친구랑 하기</button>
         <button id="btn-shop" class="btn">상점</button>
+        <button id="btn-board" class="btn">순위</button>
+      </div>
+    </div>
+
+    <!-- 순위. 목록은 서버에서 받아 채운다 (app/board-scene.ts) — 여기는 껍데기만 둔다. -->
+    <div id="board" class="screen" hidden>
+      <p class="shop-title">순위 — 점수 상위 10명</p>
+      <ol id="board-list" class="board-list"></ol>
+      <!-- 서버에 못 붙었거나 아직 아무도 대전을 안 끝냈을 때. 빈 목록만 두면
+           고장인지 비어 있는 건지 구분이 안 된다. -->
+      <p id="board-note" class="pvp-detail" hidden></p>
+      <div class="menu">
+        <button id="btn-board-back" class="btn">돌아가기</button>
       </div>
     </div>
 

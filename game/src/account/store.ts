@@ -14,7 +14,7 @@
  *
  * 씬들은 `current` 를 읽고 콜백으로 사기만 한다. 온라인/오프라인 분기는 이 파일에만 있다.
  */
-import type { Agent8Client } from '../net/agent8';
+import type { Agent8Client, BoardEntry } from '../net/agent8';
 import type { ProfileId } from '../profiles';
 import type { UnitKind } from '../units';
 import {
@@ -102,6 +102,21 @@ export class AccountStore {
       return;
     }
     this.setLocal({ ...this.account, name: clean, profile });
+  }
+
+  /**
+   * 상위 10명. **오프라인이면 `null` 이다** — 빈 배열로 내리면 화면이 "아직 아무도 안
+   * 올랐다"로 읽어 버린다. 서버가 없는 것과 표가 비어 있는 것은 다른 사정이다.
+   */
+  async leaderboard(): Promise<BoardEntry[] | null> {
+    if (!this.net) return null;
+    try {
+      return await this.net.getLeaderboard();
+    } catch {
+      // 접속은 됐는데 이 호출만 실패한 경우. 오프라인과 같이 다룬다 —
+      // 화면이 할 수 있는 일이 "지금은 못 본다"로 같다.
+      return null;
+    }
   }
 
   /** 강화 구매. 못 사면 조용히 아무 일도 안 일어난다 — 버튼이 이미 비활성이다. */

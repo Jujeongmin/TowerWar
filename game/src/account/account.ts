@@ -12,7 +12,6 @@ import { SPEED_LEVEL_MAX, speedMulFor } from '../sim/config';
 import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
 import { DEFAULT_UNIT_KIND, UNIT_KIND_META, isUnitKind, unitPowerOf, type UnitKind } from '../units';
-import { DEFAULT_RATING } from '../rating';
 
 const STORAGE_KEY = 'towerwar.account.v1';
 
@@ -29,6 +28,15 @@ const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, SCHEMA_VERSION]);
 
 /** 닉네임 길이 상한. HUD에 들어가야 해서 짧다. `server.js` 의 `NAME_MAX` 와 같아야 한다. */
 export const NAME_MAX = 12;
+
+/**
+ * 새 계정의 시작 점수. **`server.js` 의 `DEFAULT_RATING` 과 같아야 한다.**
+ *
+ * 화면에는 이 숫자가 그대로 나간다. 티어 구간(브론즈·실버…)을 뒀다가 걷어냈다
+ * (2026-08-01, 사용자 지시) — 되살리지 말 것. 구간이 있으면 같은 티어 안의 변동이
+ * 안 보여서 점수를 봐도 올랐는지 내렸는지 모른다.
+ */
+export const DEFAULT_RATING = 1000;
 
 /**
  * 닉네임 정리. **`server.js` 의 `cleanName` 과 같은 규칙이다** —

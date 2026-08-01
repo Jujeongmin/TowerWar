@@ -252,6 +252,15 @@ export class Agent8Client {
     return await withTimeout(this.server.remoteFunction('getAccount', []), '계정 불러오기');
   }
 
+  /**
+   * 상위 10명. 서버가 판이 끝날 때마다 고치는 표를 그대로 읽는다 —
+   * 클라이언트가 정렬하거나 자르지 않는다.
+   */
+  async getLeaderboard(): Promise<BoardEntry[]> {
+    const res = await withTimeout(this.server.remoteFunction('getLeaderboard', []), '순위 불러오기');
+    return Array.isArray(res) ? (res as BoardEntry[]) : [];
+  }
+
   /** 닉네임 저장. 정리·검사는 서버가 한다 (`server.js` `setName`). */
   async setName(name: string): Promise<RemoteAccount> {
     return await withTimeout(this.server.remoteFunction('setName', [name]), '닉네임 저장');
@@ -288,6 +297,18 @@ export class Agent8Client {
     );
     return res && typeof res === 'object' ? (res as RemoteAccount) : null;
   }
+}
+
+/**
+ * 순위표 한 줄. 점수 내림차순으로 이미 정렬돼서 온다.
+ *
+ * 계정 id는 안 온다. **자기 자신은 `me` 로만 찾는다** — 닉네임은 안 겹치는 값이
+ * 아니라서 이름으로 맞추면 동명이인이 내 줄로 강조된다.
+ */
+export interface BoardEntry {
+  name: string;
+  rating: number;
+  me: boolean;
 }
 
 /** 서버가 들고 있는 계정. `account/account.ts` 의 로컬 계정과 필드가 겹친다. */

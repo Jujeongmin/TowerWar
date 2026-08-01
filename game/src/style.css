@@ -165,9 +165,50 @@ body {
   color: rgba(170, 186, 202, 0.7);
 }
 
-.tier {
+.rating {
   font-weight: 700;
   color: #7dd3fc;
+}
+
+/* 순위. `ol` 이라 번호는 브라우저가 매긴다 — 서버가 준 순서가 곧 등수다. */
+.board-list {
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto 4px;
+  padding: 0 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.board-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* 내 줄. 서버가 `me` 로 짚어 준다 (동명이인 때문에 이름으로 못 찾는다). */
+.board-row-me {
+  background: rgba(125, 211, 252, 0.14);
+  outline: 1px solid rgba(125, 211, 252, 0.4);
+}
+
+.board-name {
+  font-weight: 700;
+  color: #f2f7fb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-rating {
+  font-weight: 800;
+  color: #7dd3fc;
+  flex: none;
 }
 
 .acc-name {

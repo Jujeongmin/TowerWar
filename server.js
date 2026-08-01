@@ -175,8 +175,9 @@ function numOr(v, fallback) {
 
 // ── PVP 점수 (Elo) ───────────────────────────────────────────────
 //
-// `game/src/rating.ts` 가 이 숫자를 티어로 바꾼다. 서버는 숫자만 안다 — 구간은
-// 순수 표시용이라 클라이언트 한 곳에만 있다.
+// 화면에는 이 숫자가 그대로 나간다. 티어 구간을 뒀다가 걷어냈다 (2026-08-01, 사용자
+// 지시) — 되살리지 말 것. 구간이 있으면 같은 티어 안의 변동이 안 보여서 점수를 봐도
+// 올랐는지 내렸는지 모른다.
 
 /** 새 계정의 시작 점수. `game/src/account/account.ts` 의 같은 이름과 맞춰 둔다. */
 const DEFAULT_RATING = 1000;
@@ -213,6 +214,14 @@ function ratingBandFor(waitedMs) {
   for (const step of RATING_BAND_STEPS) if (waitedMs >= step.afterMs) band = step.band;
   return band;
 }
+
+/**
+ * 순위표에 남기는 인원. **글로벌 상태에 통째로 산다** — 방 코드표(`codes`)와 같은 자리다.
+ *
+ * 전체 계정을 훑어 정렬하는 방법은 안 쓴다. Verse8 유저 상태에는 "전부 읽기"가 없고,
+ * 있더라도 계정 수에 비례해 느려진다. 판이 끝날 때마다 10칸짜리 표를 고치는 편이 싸다.
+ */
+const BOARD_SIZE = 10;
 
 /** 닉네임 길이 상한. 화면 상단 HUD에 들어가야 해서 짧게 잡는다. */
 const NAME_MAX = 12;
@@ -344,6 +353,21 @@ class Server {
   /** 내 계정. 없으면 만들어서 돌려준다. */
   async getAccount() {
     return await this.#loadAccount();
+  }
+
+  /**
+   * 상위 `BOARD_SIZE` 명. 점수 내림차순이고, 부른 사람 자신은 `me` 로 표시된다 —
+   * **이름은 안 겹치는 값이 아니라서** 클라이언트가 이름으로 자기를 찾으면 안 된다.
+   *
+   * 계정 id는 안 내려준다. 순위 표시에 필요 없고, 내려주면 남의 계정 주소가 퍼진다.
+   */
+  async getLeaderboard() {
+    const g = (await $global.getGlobalState()) || {};
+    return (g.board || []).map((e) => ({
+      name: cleanName(e.name),
+      rating: numOr(e.rating, DEFAULT_RATING),
+      me: e.account === $sender.account,
+    }));
   }
 
   /**
@@ -876,6 +900,29 @@ class Server {
         soloDraws: a.soloDraws + (solo && outcome === 'draw' ? 1 : 0),
         rating: solo ? a.rating : this.#ratingAfter(state, slot, outcome),
       });
+    }).then(async (saved) => {
+      // 순위표는 계정 자물쇠 **밖에서** 고친다. 안에서 부르면 계정 락을 쥔 채로
+      // 순위표 락을 기다리게 되고, 두 사람이 동시에 보고하면 서로를 막는다.
+      if (!state.solo) await this.#recordOnBoard(saved);
+      return saved;
+    });
+  }
+
+  /**
+   * 순위표에 내 점수를 반영한다. 계정당 한 칸이라 먼저 빼고 다시 넣는다 —
+   * 안 그러면 같은 사람이 이길 때마다 표를 채운다.
+   *
+   * **점수가 내려가면 표에서 밀려난다.** 최고 기록이 아니라 지금 점수의 순위표다.
+   * 최고 기록으로 두면 한 번 올라간 사람이 안 내려와 표가 굳는다.
+   */
+  async #recordOnBoard(a) {
+    await $lock('board', async () => {
+      const g = (await $global.getGlobalState()) || {};
+      const board = (g.board || []).filter((e) => e && e.account !== a.account);
+      // 이름 없는 계정은 표에 안 넣는다. 빈 칸이 순위에 끼면 무엇인지 알 수가 없다.
+      if (a.name) board.push({ account: a.account, name: a.name, rating: a.rating });
+      board.sort((x, y) => y.rating - x.rating);
+      await $global.updateGlobalState({ board: board.slice(0, BOARD_SIZE) });
     });
   }
 

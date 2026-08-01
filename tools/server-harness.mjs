@@ -624,6 +624,80 @@ as(B);
 const near = await server.findMatch();
 check('11초 기다린 방은 대역이 열린다', near.roomId === waitRoom.roomId, { near: near.roomId, waitRoom: waitRoom.roomId });
 
+// 40) 순위표 — 판이 끝날 때마다 서버가 고친다
+globalState = { ...globalState, board: [] };
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', rating: 1200 });
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), name: '밥', rating: 1000 });
+as(A);
+const lroom = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(lroom.code);
+await server.setReady(true);
+await server.$roomTick(300, lroom.roomId);
+const ls = await $global.getRoomState(lroom.roomId);
+as(A); await server.reportResult(ls.slots['0xAAA'], 0);
+as(B); await server.reportResult(ls.slots['0xAAA'], 0);
+as(A);
+const board1 = await server.getLeaderboard();
+check('두 사람 다 순위표에 오른다', board1.length === 2, board1);
+check('점수 내림차순이다', board1[0].name === '앨리스' && board1[1].name === '밥', board1);
+check('점수는 판이 끝난 뒤 값이다', board1[0].rating === 1208 && board1[1].rating === 992, board1);
+check('부른 사람이 me 로 표시된다', board1[0].me === true && board1[1].me === false, board1);
+check('계정 id는 안 내려간다', board1.every((e) => e.account === undefined), board1);
+
+// 41) 한 사람이 여러 판을 해도 한 칸만 쓰고, 점수가 내려가면 그 값으로 갱신된다
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+const rroom = await (async () => { as(A); return await server.createRoom(); })();
+as(A); await server.setReady(true);
+as(B);
+await server.joinRoomByCode(rroom.code);
+await server.setReady(true);
+await server.$roomTick(300, rroom.roomId);
+const rs = await $global.getRoomState(rroom.roomId);
+as(A); const revA = await server.reportResult(rs.slots['0xBBB'], 0); // 이번엔 밥이 이긴다
+as(B); await server.reportResult(rs.slots['0xBBB'], 0);
+as(A);
+const board2 = await server.getLeaderboard();
+check('같은 사람이 두 칸을 안 쓴다', board2.length === 2, board2);
+check('내려간 점수로 갱신된다', board2.find((e) => e.name === '앨리스').rating === revA.rating, board2);
+
+// 42) 봇전은 순위표에 안 올라간다 — 점수를 안 건드리는 것과 같은 이유
+userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 5000 });
+as(C); await server.leaveMatch().catch(() => {});
+const nroom2 = await server.createRoom();
+await server.setReady(true);
+rooms.get(nroom2.roomId).state.players['0xCCC'].joinedAt = Date.now() - 60000;
+rooms.get(nroom2.roomId).state.private = false;
+await server.$roomTick(300, nroom2.roomId);
+await server.reportResult(1, 0);
+as(A);
+check('봇전 승리는 순위표에 안 오른다', (await server.getLeaderboard()).every((e) => e.name !== '캐럴'), await server.getLeaderboard());
+
+// 43) 표는 10명에서 잘린다
+globalState = {
+  ...globalState,
+  board: Array.from({ length: 10 }, (_, i) => ({ account: `0xF${i}`, name: `봇${i}`, rating: 9000 + i })),
+};
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+as(A);
+const croom = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(croom.code);
+await server.setReady(true);
+await server.$roomTick(300, croom.roomId);
+const cs = await $global.getRoomState(croom.roomId);
+as(A); await server.reportResult(cs.slots['0xAAA'], 0);
+as(A);
+const board3 = await server.getLeaderboard();
+check('10명을 안 넘는다', board3.length === 10, board3.length);
+check('점수가 모자라면 표에 못 든다', board3.every((e) => e.name !== '앨리스'), board3);
+
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  ← ' + JSON.stringify(r.extra)}`);

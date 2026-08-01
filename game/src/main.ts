@@ -8,6 +8,7 @@ import './style.css';
 import { unitKindOf, type Reward, type UpgradeKind } from './account/account';
 import { AccountStore } from './account/store';
 import { matchModsFor } from './app/difficulty';
+import { BoardScene } from './app/board-scene';
 import { LobbyScene } from './app/lobby-scene';
 import { MatchScene } from './app/match-scene';
 import { NameScene } from './app/name-scene';
@@ -65,6 +66,12 @@ const lobby = new LobbyScene(
     switchTo(pvp);
   },
   () => switchTo(shop),
+  () => switchTo(board),
+);
+const board = new BoardScene(
+  need('board'),
+  () => store.leaderboard(),
+  () => switchTo(lobby),
 );
 const pvp = new PvpScene(
   need('pvp'),

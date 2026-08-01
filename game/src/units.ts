@@ -182,6 +182,28 @@ export const SHOP_UNIT_ORDER: readonly UnitKind[] = [
 /** 유료 종류. 코인 목록과 갈라 둔다 — 살 수 있는 곳이 다르다. */
 export const SHOP_PREMIUM_ORDER: readonly UnitKind[] = ['beergang_rainbow'];
 
+/**
+ * 힘 오름차순 전체 목록. 상점 순서(`SHOP_UNIT_ORDER`)와 달리 **유료 종류도 포함한다** —
+ * "한 단계 아래"를 셀 때 무지개(4)에서 보라(3)로 내려갈 수 있어야 한다.
+ *
+ * 카탈로그에서 만들어 낸다. 손으로 적어 두면 종류를 추가할 때 조용히 어긋난다.
+ */
+export const POWER_ORDER: readonly UnitKind[] = [...UNIT_KINDS].sort(
+  (a, b) => UNIT_KIND_META[a].power - UNIT_KIND_META[b].power,
+);
+
+/**
+ * 한 단계 아래 종류. **가장 약한 것이면 그대로 돌려준다** — 더 내려갈 곳이 없다.
+ *
+ * 봇이 사람보다 한 단계 낮게 입는 데 쓴다 (2026-08-03 사용자 지시, `app/difficulty.ts`).
+ * 힘 순서로 세므로 상점에 없는 유료 종류도 자리를 갖는다.
+ */
+export function stepDownKind(kind: UnitKind): UnitKind {
+  const i = POWER_ORDER.indexOf(kind);
+  if (i <= 0) return POWER_ORDER[0] ?? DEFAULT_UNIT_KIND;
+  return POWER_ORDER[i - 1];
+}
+
 export function isUnitKind(v: unknown): v is UnitKind {
   return typeof v === 'string' && (UNIT_KINDS as readonly string[]).includes(v);
 }

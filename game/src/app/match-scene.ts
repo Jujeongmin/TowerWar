@@ -15,7 +15,7 @@ import { createMatch, step, tempoScaleOf } from '../sim/sim';
 import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
 import { InputController } from '../render/input';
 import type { Renderer } from '../render/renderer';
-import { unitPowerOf, type UnitKind } from '../units';
+import { stepDownKind, unitPowerOf, type UnitKind } from '../units';
 import type { ProfileId } from '../profiles';
 import { botName, botProfile, botRating } from './bot-name';
 import { BotSource, NetSource, type CommandSource } from './command-source';
@@ -180,11 +180,11 @@ export class MatchScene implements Scene {
       // 봇전이 쉬워지기만 한다.
       this.state = createMatch(generateMap(seed), this.getMods());
       this.source = BotSource.forPlayer(2);
-      // **봇을 내 종류로 그린다.** 전에는 상대가 항상 기본 생김새였는데, 종류가 힘을
-      // 정하게 된 뒤로 그러면 화면이 거짓말이 된다 — 봇은 `botModsFor` 로 나와 정확히
-      // 같은 힘을 갖는데 기본 생김새로 그리면 약해 보인다.
+      // **봇은 나보다 한 단계 아래를 입는다** (2026-08-03 사용자 지시).
+      // 그리는 종류와 `botModsFor` 의 힘이 **반드시 같은 함수에서 나와야 한다** —
+      // 어긋나면 화면이 거짓말을 한다. 둘 다 `stepDownKind` 를 탄다.
       const mine = this.getUnitKind();
-      shownKinds = { [local]: mine, [other]: mine } as Record<PlayerId, UnitKind>;
+      shownKinds = { [local]: mine, [other]: stepDownKind(mine) } as Record<PlayerId, UnitKind>;
     }
 
     // 종류와 이름은 매치 상태가 아니라 렌더러가 든다 — 서버 권위로 갈 때 검증 대상을

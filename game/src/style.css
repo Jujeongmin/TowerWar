@@ -156,10 +156,17 @@ body {
   --hud-btn-line: #fbbf24;
 }
 
-/* 배속. **판 전체 배속을 적는다** — 상대가 켜도 숫자가 바뀐다. 내가 켠 상태는
-   따로 표시한다: 숫자만으로는 누가 켰는지 알 수 없다. */
+/* 배속. **우상단, 전선 막대 바로 아래다** (2026-08-03 사용자 지시).
+   HUD 판때기가 66px이고 막대가 46~55px이라, 그 밑(72px)에서 시작해야 안 겹친다.
+   위에 두면 상대 아바타(x 341~363)와 막대를 통째로 덮는다 — 한 번 그랬다.
+
+   **판 전체 배속을 적는다** — 상대가 켜도 숫자가 바뀐다. 내가 켠 상태는 따로
+   표시한다: 숫자만으로는 누가 켰는지 알 수 없다. */
 .tempo-btn {
-  left: calc(14px + env(safe-area-inset-left));
+  /* 판때기(66) 아래 6px. 항복과 달리 위쪽에 붙으므로 `bottom` 을 지운다. */
+  top: calc(72px + env(safe-area-inset-top));
+  bottom: auto;
+  right: calc(14px + env(safe-area-inset-right));
   --hud-btn-line: rgba(125, 211, 252, 0.42);
   --hud-btn-ink: #7dd3fc;
   --hud-btn-base: rgba(6, 46, 66, 0.8);

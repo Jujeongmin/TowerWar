@@ -4,7 +4,8 @@
  * 계정 데이터도 시뮬레이션 규칙도 아니고 "이 판을 어떤 조건으로 시작하는가"라서 app/에 둔다.
  * 스테이지 캠페인이 붙으면 스테이지 번호도 여기로 들어온다.
  */
-import { canUseTempo, modsFor, upgradeLevelOf, type Account } from '../account/account';
+import { canUseTempo, modsFor, unitKindOf, upgradeLevelOf, type Account } from '../account/account';
+import { stepDownKind, unitPowerOf, type UnitKind } from '../units';
 import { SPEED_STEP } from '../sim/config';
 import type { PlayerId, PlayerMods } from '../sim/types';
 
@@ -43,7 +44,26 @@ const BOT_SPEED_LAG = 0.5;
 export function botModsFor(a: Account): PlayerMods {
   // speedMulFor는 단계를 정수로 내림한다. 봇은 반 단계를 써야 하므로 직접 계산한다.
   const speedLevel = Math.max(0, upgradeLevelOf(a, 'speed') - BOT_SPEED_LAG);
-  return { speedMul: 1 + SPEED_STEP * speedLevel, unitPower: modsFor(a).unitPower };
+  return { speedMul: 1 + SPEED_STEP * speedLevel, unitPower: unitPowerOf(botUnitKindFor(a)) };
+}
+
+/**
+ * 봇이 입는 종류. **사람보다 한 단계 아래다** (2026-08-03 사용자 지시).
+ *
+ * ⚠ **이 한 줄이 난이도를 통째로 바꾼다.** 위 주석의 실측표가 그 이유다 — 충돌이
+ * `Math.min(a.power, b.power)` 라 조금이라도 높은 쪽이 정면 교환에서 절대 먼저 안
+ * 죽는다. 사람 전투력 2 기준으로 잰 사람 승률:
+ *
+ *   봇 1.85 → 95%   봇 1.95 → 95%   **봇 2.0 → 45%**
+ *
+ * 즉 한 단계만 낮춰도 사람 승률이 **95~100%** 로 올라간다. 전에 맞춰 둔 66~68%
+ * (`BOT_SPEED_LAG`)와 그 위에 서 있는 점수 천장(§-29의 1123)은 **이 값과 함께 다시
+ * 재야 한다.** 사용자가 직접 플레이해 정할 영역이다 (§8).
+ *
+ * 사람이 가장 약한 것을 입고 있으면 더 내려갈 곳이 없어 같은 것을 입는다.
+ */
+export function botUnitKindFor(a: Account): UnitKind {
+  return stepDownKind(unitKindOf(a));
 }
 
 /** `createMatch`에 그대로 넘길 수 있는 형태. 사람은 P1, 봇은 P2. */

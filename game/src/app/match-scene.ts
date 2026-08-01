@@ -7,6 +7,7 @@
  * **상대가 봇인지 사람인지 이 파일은 모른다.** 차이는 `CommandSource` 하나에 갇혀 있다.
  */
 import { rewardFor, type Reward } from '../account/account';
+import type { RatingChange } from '../account/store';
 import { Lockstep } from '../net/lockstep';
 import { TICK_DT, speedMulFor } from '../sim/config';
 import { generateMap } from '../sim/maps';
@@ -34,6 +35,11 @@ export class MatchScene implements Scene {
   private accumulator = 0;
   /** 결과창을 이미 띄웠는가. 매 프레임 다시 띄우지 않기 위한 것. */
   private resultShown = false;
+  /**
+   * 결과 화면을 몇 번째 띄웠는가. 점수 변동은 서버 왕복이라 늦게 오는데, 그 사이에
+   * 다음 판이 끝나면 앞 판의 점수가 새 결과 화면에 얹힌다 — 번호가 다르면 버린다.
+   */
+  private resultRound = 0;
   /** 이 판이 PVP인가. 결과 화면의 [다시 하기]를 가리는 데 쓴다. */
   private pvp = false;
   /**
@@ -61,11 +67,18 @@ export class MatchScene implements Scene {
     private readonly resultRoot: HTMLElement,
     private readonly resultTitle: HTMLElement,
     private readonly resultReward: HTMLElement,
+    private readonly resultRating: HTMLElement,
     /**
      * 판이 끝났다. 보상을 실제로 주는 곳은 계정을 든 쪽(main.ts)이다 —
      * 서버 방이면 서버가 주고, 오프라인 봇전이면 로컬에 준다.
+     *
+     * 점수 변동을 돌려준다. **서버 왕복이라 결과 화면보다 늦게 온다** — 보상 줄을
+     * 먼저 띄우고 점수 줄은 도착하면 채운다. 안 움직였으면 `null` 이라 줄이 안 뜬다.
      */
-    private readonly grantReward: (reward: Reward, winnerSlot: number) => void,
+    private readonly grantReward: (
+      reward: Reward,
+      winnerSlot: number,
+    ) => Promise<RatingChange | null>,
     private readonly toLobby: () => void,
     /**
      * 양쪽 플레이어의 보정. 매 판 시작할 때 새로 읽는다 — 로비에서 사고 바로 시작할 수 있다.
@@ -294,11 +307,20 @@ export class MatchScene implements Scene {
     // **항복하면 아예 보고하지 않는다** (사용자 결정: 항복은 0코인). 서버가 보상을
     // 계산하므로(§-10) 안 부르는 것이 곧 0이다 — 서버에 "항복" 개념을 넣을 필요가 없다.
     // PVP 상대는 자기 클라이언트에서 정상 승리로 보고하고 승리 보상을 그대로 받는다.
+    // 점수 줄은 서버 응답이 와야 채워진다. 이전 판의 값이 남아 있으면 안 되므로
+    // 여기서 먼저 지운다.
+    this.resultRating.hidden = true;
+    this.resultRating.textContent = '';
+
     if (this.resigned) {
       this.resultReward.textContent = '항복 — 보상 없음';
     } else {
       const reward = rewardFor(this.state, local);
-      this.grantReward(reward, w ?? 0);
+      const shown = ++this.resultRound;
+      void this.grantReward(reward, w ?? 0).then((change) => {
+        // 늦게 온 응답이 다음 판의 결과 화면을 덮어쓰지 않게 한다.
+        if (shown === this.resultRound) this.showRating(change);
+      });
       this.resultReward.textContent =
         `+${reward.total}  (기본 ${reward.base} · 타워 ${reward.towers}개 ${reward.towerBonus})`;
     }
@@ -309,6 +331,20 @@ export class MatchScene implements Scene {
 
     this.resultRoot.hidden = false;
     this.resultShown = true;
+  }
+
+  /**
+   * 점수 변동 한 줄. **안 움직였으면 줄 자체를 안 띄운다** — 오프라인이거나 보고가
+   * 실패한 경우라 "±0" 으로 적으면 안 움직인 것처럼 읽힌다.
+   */
+  private showRating(change: RatingChange | null): void {
+    if (!change) return;
+    const diff = change.after - change.before;
+    const sign = diff > 0 ? '+' : ''; // 음수는 부호가 이미 붙어 있다
+    this.resultRating.textContent = `점수 ${change.before} → ${change.after}  (${sign}${diff})`;
+    this.resultRating.classList.toggle('rating-up', diff > 0);
+    this.resultRating.classList.toggle('rating-down', diff < 0);
+    this.resultRating.hidden = false;
   }
 
   private hideResult(): void {

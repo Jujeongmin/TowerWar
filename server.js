@@ -184,14 +184,40 @@ const DEFAULT_RATING = 1000;
 /** 한 판의 최대 변동폭. 표준 Elo 값이다. 승률 반영 속도를 조절하려면 이 값만 만지면 된다. */
 const RATING_K = 32;
 
+/**
+ * 봇의 가상 점수. **봇은 계정이 없어서 Elo를 매기려면 상대 숫자가 필요하다.**
+ *
+ * 봇전도 점수를 움직인다 (2026-08-01, 사용자 지시). 안 움직이면 두 가지가 깨진다:
+ *   - 플레이어는 봇인 것을 모른다(§-7). 코인은 PVP와 같이 받는데 점수만 안 오르면
+ *     "이겼는데 왜 안 올라"가 된다
+ *   - 인구가 적으면 `SOLO_FALLBACK_MS`(12초) 때문에 거의 매 판이 봇전이다.
+ *     그동안 아무의 점수도 안 움직여 **순위표가 통째로 빈다**
+ *
+ * 값을 1000(= `DEFAULT_RATING`)으로 둔 것은 **천장이 저절로 생기기 때문이다.**
+ * 봇 승률은 66~68%로 고정돼 있고(`app/difficulty.ts` 의 `BOT_SPEED_LAG` 실측),
+ * Elo는 실제 승률과 기대 승률이 같아지는 지점에서 멈춘다:
+ *
+ *   0.67 = 1 / (1 + 10^((1000 - R) / 400))   →   R ≈ 1123
+ *
+ * 즉 **봇만 잡아서는 1123점 언저리까지만 오른다.** 그 위로 가려면 사람을 이겨야 한다.
+ * 점수 파밍을 따로 막을 장치가 필요 없는 것이 이 값을 고른 이유다.
+ */
+const BOT_RATING = 1000;
+
+/**
+ * 봇전의 변동폭. 사람전(32)보다 작게 잡았다 — 봇 승률이 고정이라 큰 폭으로 흔들면
+ * 천장(1123)까지 몇 판 만에 붙어 버리고, 그 뒤로는 매 판 ±8씩 널뛰는 것만 보인다.
+ */
+const RATING_K_SOLO = 8;
+
 /** 표준 Elo 기대승률. */
 function eloExpected(mine, theirs) {
   return 1 / (1 + Math.pow(10, (theirs - mine) / 400));
 }
 
 /** 한 판 뒤 변동량(반올림 정수). `score` 는 승 1 / 무 0.5 / 패 0. */
-function eloDelta(mine, theirs, score) {
-  return Math.round(RATING_K * (score - eloExpected(mine, theirs)));
+function eloDelta(mine, theirs, score, k) {
+  return Math.round(k * (score - eloExpected(mine, theirs)));
 }
 
 /**
@@ -288,7 +314,7 @@ function defaultAccount(account) {
     soloWins: 0,
     soloLosses: 0,
     soloDraws: 0,
-    // PVP 점수(Elo). 봇전은 안 건드린다 — solo 전적을 갈라 둔 것과 같은 이유다.
+    // 점수(Elo). 봇전에서도 움직인다 (`BOT_RATING`) — 전적은 갈라 세지만 점수는 하나다.
     rating: DEFAULT_RATING,
   };
 }
@@ -898,12 +924,15 @@ class Server {
         soloWins: a.soloWins + (solo && outcome === 'win' ? 1 : 0),
         soloLosses: a.soloLosses + (solo && outcome === 'loss' ? 1 : 0),
         soloDraws: a.soloDraws + (solo && outcome === 'draw' ? 1 : 0),
-        rating: solo ? a.rating : this.#ratingAfter(state, slot, outcome),
+        rating: this.#ratingAfter(state, slot, outcome, a.rating),
       });
     }).then(async (saved) => {
       // 순위표는 계정 자물쇠 **밖에서** 고친다. 안에서 부르면 계정 락을 쥔 채로
       // 순위표 락을 기다리게 되고, 두 사람이 동시에 보고하면 서로를 막는다.
-      if (!state.solo) await this.#recordOnBoard(saved);
+      //
+      // 봇전도 올린다. 점수가 움직이는데 표에 안 오르면 어디서 밀렸는지 알 수가 없고,
+      // 인구가 적을 때 표가 통째로 비는 문제(`BOT_RATING` 주석)가 그대로 남는다.
+      await this.#recordOnBoard(saved);
       return saved;
     });
   }
@@ -927,18 +956,26 @@ class Server {
   }
 
   /**
-   * 이 판 뒤의 내 PVP 점수. **판이 시작될 때 찍어 둔 `state.ratings` 로만 계산한다** —
-   * 두 사람이 각자 보고하는데 계정의 지금 값을 읽으면 먼저 보고한 쪽의 변동이
-   * 나중 쪽 계산에 섞여 들어와 합이 0이 안 된다.
+   * 이 판 뒤의 내 점수. 0 아래로는 안 내려간다.
    *
-   * 0 아래로는 안 내려간다. 음수 점수는 티어 표시(`game/src/rating.ts`)에 자리가 없다.
+   * **사람전은 판이 시작될 때 찍어 둔 `state.ratings` 로만 계산한다** — 두 사람이
+   * 각자 보고하는데 계정의 지금 값을 읽으면 먼저 보고한 쪽의 변동이 나중 쪽 계산에
+   * 섞여 들어와 합이 0이 안 된다.
+   *
+   * **봇전은 반대로 지금 값(`current`)을 쓴다.** 봇은 계정이 없어 상대가 `BOT_RATING`
+   * 이라는 상수이고, 보고하는 사람이 하나뿐이라 다른 사람의 변동이 섞일 자리가 없다.
+   * 스냅샷을 고집하면 봇전 방(`#soloStart`)에도 `ratings` 를 채워야 하는데 그건
+   * 상수 하나를 위해 룸 상태를 늘리는 것뿐이다.
    */
-  #ratingAfter(state, slot, outcome) {
+  #ratingAfter(state, slot, outcome, current) {
+    const score = outcome === 'win' ? 1 : outcome === 'draw' ? 0.5 : 0;
+    if (state.solo) {
+      return Math.max(0, current + eloDelta(current, BOT_RATING, score, RATING_K_SOLO));
+    }
     const ratings = state.ratings || {};
     const mine = numOr(ratings[slot], DEFAULT_RATING);
     const theirs = numOr(ratings[slot === 1 ? 2 : 1], DEFAULT_RATING);
-    const score = outcome === 'win' ? 1 : outcome === 'draw' ? 0.5 : 0;
-    return Math.max(0, mine + eloDelta(mine, theirs, score));
+    return Math.max(0, mine + eloDelta(mine, theirs, score, RATING_K));
   }
 
   /** `players` 맵을 통째로 다시 만든다. 룸 상태 갱신이 얕은 병합이라 중첩 객체는 직접 합쳐야 한다. */

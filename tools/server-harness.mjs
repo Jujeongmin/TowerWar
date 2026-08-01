@@ -590,16 +590,32 @@ check('점수 합이 보존된다 (스냅샷으로 쟀다)', ratedA.rating + rat
   a: ratedA.rating, b: ratedB.rating,
 });
 
-// 37) 봇전은 점수를 안 건드린다 — solo 전적을 갈라 둔 것과 같은 이유
-userStates.set('0xCCC', { ...defaultsFor('0xCCC'), rating: 1100 });
-as(C); await server.leaveMatch().catch(() => {});
-const broom = await server.createRoom();
-await server.setReady(true);
-rooms.get(broom.roomId).state.players['0xCCC'].joinedAt = Date.now() - 60000;
-rooms.get(broom.roomId).state.private = false;
-await server.$roomTick(300, broom.roomId);
-const ratedC = await server.reportResult(1, 0);
-check('봇전 승리는 점수를 안 올린다', ratedC.rating === 1100, ratedC.rating);
+// 37) 봇전도 점수를 움직인다. 봇은 계정이 없어 `BOT_RATING`(1000)이 상대다.
+//     플레이어는 봇인 것을 모르므로(§-7) 여기서 안 움직이면 "이겼는데 왜 안 올라"가 된다.
+/** 봇전 한 판을 끝까지 돌리고 새 계정을 돌려준다. `winner` 는 1(사람) 또는 2(봇). */
+async function soloMatch(who, winner) {
+  as(who); await server.leaveMatch().catch(() => {});
+  const r = await server.createRoom();
+  await server.setReady(true);
+  rooms.get(r.roomId).state.players[who.account].joinedAt = Date.now() - 60000;
+  rooms.get(r.roomId).state.private = false; // 봇 폴백을 받게 한다
+  await server.$roomTick(300, r.roomId);
+  return await server.reportResult(winner, 0);
+}
+userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1100 });
+const soloWin = await soloMatch(C, 1);
+// 1100 대 1000, K=8. 기대승률 0.6403 → round(8 × 0.3597) = +3
+check('봇전 승리 1100 → 1103', soloWin.rating === 1103, soloWin.rating);
+userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1100 });
+const soloLoss = await soloMatch(C, 2);
+// 지는 쪽이 이기는 쪽보다 크다 — 봇보다 점수가 높으니 이기는 게 당연한 판이다
+check('봇전 패배 1100 → 1095', soloLoss.rating === 1095, soloLoss.rating);
+
+// 37-b) 천장. 점수가 오를수록 봇을 이겨서 얻는 것이 줄고, 결국 0이 된다 —
+//       파밍을 따로 막는 장치가 없는 이유가 이것이다 (`BOT_RATING` 주석).
+userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1500 });
+const capped = await soloMatch(C, 1);
+check('1500점에서는 봇을 이겨도 안 오른다', capped.rating === 1500, capped.rating);
 
 // 38) 점수 필드가 없던 계정(v8 이하)은 0이 아니라 기본 점수에서 출발한다
 const F = { account: '0xFFF', roomId: null };
@@ -665,17 +681,15 @@ const board2 = await server.getLeaderboard();
 check('같은 사람이 두 칸을 안 쓴다', board2.length === 2, board2);
 check('내려간 점수로 갱신된다', board2.find((e) => e.name === '앨리스').rating === revA.rating, board2);
 
-// 42) 봇전은 순위표에 안 올라간다 — 점수를 안 건드리는 것과 같은 이유
-userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 5000 });
-as(C); await server.leaveMatch().catch(() => {});
-const nroom2 = await server.createRoom();
-await server.setReady(true);
-rooms.get(nroom2.roomId).state.players['0xCCC'].joinedAt = Date.now() - 60000;
-rooms.get(nroom2.roomId).state.private = false;
-await server.$roomTick(300, nroom2.roomId);
-await server.reportResult(1, 0);
+// 42) 봇전도 순위표에 올라간다. **인구가 적으면 거의 매 판이 봇전이라**
+//     (`SOLO_FALLBACK_MS`) 여기서 빼면 표가 통째로 빈다.
+userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1300 });
+await soloMatch(C, 1);
 as(A);
-check('봇전 승리는 순위표에 안 오른다', (await server.getLeaderboard()).every((e) => e.name !== '캐럴'), await server.getLeaderboard());
+const boardSolo = await server.getLeaderboard();
+check('봇전 승리도 순위표에 오른다', boardSolo.some((e) => e.name === '캐럴'), boardSolo);
+// 1300 대 1000: 기대승률 0.8490 → round(8 × 0.1510) = +1
+check('순위표 점수도 봇전 결과를 반영한다', boardSolo.find((e) => e.name === '캐럴').rating === 1301, boardSolo);
 
 // 43) 표는 10명에서 잘린다
 globalState = {

@@ -6,7 +6,7 @@
  */
 import './style.css';
 import { unitKindOf, type Reward, type UpgradeKind } from './account/account';
-import { AccountStore } from './account/store';
+import { AccountStore, type RatingChange } from './account/store';
 import { matchModsFor } from './app/difficulty';
 import { BoardScene } from './app/board-scene';
 import { LobbyScene } from './app/lobby-scene';
@@ -39,9 +39,9 @@ const net = new Agent8Client();
 // localStorage는 사본이다 — 그 분기는 전부 AccountStore 안에 있다.
 const store = new AccountStore();
 
-function grantReward(reward: Reward, winnerSlot: number): void {
+function grantReward(reward: Reward, winnerSlot: number): Promise<RatingChange | null> {
   const serverRoom = plan.mode === 'pvp' || plan.serverRoom;
-  void store.grantReward(reward, winnerSlot, serverRoom);
+  return store.grantReward(reward, winnerSlot, serverRoom);
 }
 
 /** 못 사는 구매는 조용히 무시된다 — 버튼이 이미 비활성이라 여기까지 오면 경쟁 상태다. */
@@ -106,6 +106,7 @@ const match = new MatchScene(
   need('result'),
   need('result-title'),
   need('result-reward'),
+  need('result-rating'),
   grantReward,
   () => switchTo(lobby),
   () => matchModsFor(store.current),

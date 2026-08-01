@@ -76,9 +76,12 @@ export interface Account {
   soloLosses: number;
   soloDraws: number;
   /**
-   * PVP 점수(Elo). **서버가 정하는 값이다** — 사람과 붙은 판에서만 움직이고,
-   * 봇전은 안 건드린다 (solo 전적을 갈라 둔 것과 같은 이유).
-   * 오프라인은 언제나 봇전이라 로컬 경로에서는 절대 안 바뀐다.
+   * 점수(Elo). **서버가 정하는 값이다.** 봇전에서도 움직인다 — 플레이어는 봇인 것을
+   * 모르므로(§-7) 봇전만 안 움직이면 "이겼는데 왜 안 올라"가 된다. 봇 상대 점수와
+   * 변동폭은 `server.js` 의 `BOT_RATING`·`RATING_K_SOLO` 에 있다.
+   *
+   * **오프라인 경로에서는 안 바뀐다** (`applyReward`). 서버가 없으면 점수를 매길
+   * 근거가 없고, 로컬에서 올려 봐야 서버에 안 올라간다 (`store.ts` 머리말).
    */
   rating: number;
 }

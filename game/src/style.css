@@ -279,6 +279,22 @@ body {
   margin-top: -8px;
 }
 
+/* 점수 변동. 보상(코인)과 다른 축이라 색을 갈라 둔다 — 같은 노랑이면 한 줄로 읽힌다. */
+.result-rating {
+  font-weight: 700;
+  font-size: 14px;
+  color: rgba(170, 186, 202, 0.85);
+  margin-top: -10px;
+}
+
+.result-rating.rating-up {
+  color: #7dd3fc;
+}
+
+.result-rating.rating-down {
+  color: #f2555f;
+}
+
 .logo {
   font-size: clamp(38px, 9vw, 68px);
   font-weight: 800;

@@ -31,6 +31,12 @@ import {
   type UpgradeKind,
 } from './account';
 
+/** 한 판으로 점수가 어떻게 움직였는가. 결과 화면이 그대로 보여준다. */
+export interface RatingChange {
+  before: number;
+  after: number;
+}
+
 export class AccountStore {
   private account: Account = loadAccount();
   private net: Agent8Client | null = null;
@@ -143,21 +149,34 @@ export class AccountStore {
   /**
    * 판 결과. 서버 방이면 서버가 보상을 계산해 넣고, 오프라인 봇전이면 로컬에 넣는다.
    *
+   * 점수 변동을 돌려준다 — 결과 화면이 "1000 → 1004" 를 띄우는 데 쓴다.
+   * **점수가 안 움직였으면 `null`** 이다: 오프라인 판이거나, 이미 보상을 받은 판이거나,
+   * 보고가 실패한 경우. 그때 `0` 을 돌려주면 화면이 "±0" 을 띄워 버린다 —
+   * 안 움직인 것과 못 잰 것은 다르다.
+   *
    * @param serverRoom 이 판이 서버가 연 방이었는가. 아니면 보고할 곳이 없다.
    */
-  async grantReward(reward: Reward, winnerSlot: number, serverRoom: boolean): Promise<void> {
+  async grantReward(
+    reward: Reward,
+    winnerSlot: number,
+    serverRoom: boolean,
+  ): Promise<RatingChange | null> {
     if (this.net && serverRoom) {
+      const before = this.account.rating;
       try {
         const next = await this.net.reportResult(winnerSlot, reward.towers);
         // null 이면 이미 받은 판이다. 그때는 계정을 안 건드린다.
-        if (next) this.setLocal(fromRemote(next));
-        return;
+        if (!next) return null;
+        this.setLocal(fromRemote(next));
+        return { before, after: this.account.rating };
       } catch (e) {
         console.warn('[account] 결과 보고 실패:', String((e as Error)?.message ?? e));
-        return; // 로컬로 대신 주지 않는다. 서버가 나중에 줄 수도 있어 두 번 받게 된다
+        return null; // 로컬로 대신 주지 않는다. 서버가 나중에 줄 수도 있어 두 번 받게 된다
       }
     }
+    // 오프라인. 코인은 로컬로 주지만 점수는 안 건드린다 (`Account.rating` 주석).
     this.setLocal(applyReward(this.account, reward));
+    return null;
   }
 
   /** 온라인이면 서버 호출, 아니면 로컬 계산. 결과는 항상 사본에 남긴다. */

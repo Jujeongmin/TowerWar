@@ -22,6 +22,7 @@ import {
   applyReward,
   buyUnitKind,
   buyUpgrade,
+  ownsUnitKind,
   cleanName,
   fromRemote,
   loadAccount,
@@ -180,7 +181,10 @@ export class AccountStore {
   /** 안 가진 생김새면 사고, 가진 것이면 착용한다. */
   async pickUnit(kind: UnitKind): Promise<void> {
     if (this.net) {
-      const owned = this.account.ownedUnits.includes(kind) || kind === this.account.unitKind;
+      // **`ownsUnitKind` 로 물어야 한다.** `ownedUnits` 를 직접 보면 `DEBUG_UNLOCK_ALL`
+      // 과 유료 소유(`entitlements`)가 빠져서, 상점은 '착용하기'를 보여 주는데 실제로는
+      // 구매를 시도해 서버가 코인 부족으로 거절한다 — 눌러도 아무 일이 안 일어난다.
+      const owned = ownsUnitKind(this.account, kind);
       await this.mutate(
         () => (owned ? this.net!.selectUnitKind(kind) : this.net!.buyUnitKind(kind)),
         () => null,

@@ -97,6 +97,9 @@ const $room = {
 };
 
 const ctx = vm.createContext({
+  // **디버그 해금을 끄고 잰다.** 켜 둔 채로 재면 "안 산 것을 못 입는다" 계열 검사가
+  // 통째로 통과해 버려서 아무것도 증명하지 못한다 (`server.js` 의 DEBUG_UNLOCK_ALL).
+  __TW_NO_DEBUG_UNLOCK: true,
   $global,
   $room,
   $lock,

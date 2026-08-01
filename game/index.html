@@ -143,11 +143,12 @@
          **설정 창이 없다** (2026-08-01 사용자 지시). 전에는 톱니로 창을 열고 그 안에
          항복이 있었는데, 그 창이 봇전에서만 판을 멈춰서 상대가 봇인지 알려 줬다.
          §-7이 안 알리기로 한 것을 UI가 흘리고 있던 셈이다. 창째로 걷어냈다. -->
-    <button id="btn-resign" class="resign-btn" hidden>항복</button>
+    <button id="btn-resign" class="hud-btn resign-btn" hidden>항복</button>
 
-    <!-- 배속 토글(유료). 우상단 — 항복(우하단)과 화면 반대편에 둔다.
-         **판 전체 배속을 적는다**: 상대가 켜도 숫자가 바뀐다. -->
-    <button id="btn-tempo" class="tempo-btn" hidden>1×</button>
+    <!-- 배속 토글(유료). **좌하단이다** — 위쪽은 HUD(판때기 + 전선 막대)가 통째로
+         쓰므로 우상단에 두면 상대 아바타와 막대를 덮는다. 항복(우하단)과는 좌우로
+         갈라 둔다: 하나는 판을 끝내고 하나는 빠르게 하니 붙여 두면 잘못 누른다. -->
+    <button id="btn-tempo" class="hud-btn tempo-btn" hidden>1×</button>
 
     <div id="result" class="screen screen-overlay" hidden>
       <p id="result-title" class="result-title"></p>

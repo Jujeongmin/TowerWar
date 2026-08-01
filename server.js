@@ -156,6 +156,21 @@ const PREMIUM_UNITS = ['beergang_rainbow'];
 const TEMPO_ITEM = 'tempo_boost';
 const PREMIUM_ITEMS = [...PREMIUM_UNITS, TEMPO_ITEM];
 
+/**
+ * **디버그: 소유 판정을 통째로 연다** (2026-08-03 사용자 지시).
+ *
+ * `game/src/account/account.ts` 의 같은 이름과 **반드시 같이 켜고 끈다.** 한쪽만 켜면
+ * 상점은 '착용하기'를 보여 주는데 서버가 거절해서 눌러도 아무 일이 안 일어난다 —
+ * 실제로 그 버그를 한 번 냈다.
+ *
+ * 코인·강화·점수는 안 건드린다. 여기서 여는 것은 **가졌는가**뿐이다.
+ *
+ * 출시 전에 양쪽 다 `false` 로 되돌릴 것.
+ */
+// 검증 하네스는 이 값을 꺼서 돌린다 (`tools/server-harness.mjs`) — 켜 둔 채로 재면
+// "안 산 것을 못 입는다" 같은 검사가 통째로 무의미해진다.
+const DEBUG_UNLOCK_ALL = globalThis.__TW_NO_DEBUG_UNLOCK !== true;
+
 function isKnownUnit(v) {
   return (
     Object.prototype.hasOwnProperty.call(UNIT_PRICES, v) || PREMIUM_UNITS.includes(v)
@@ -546,6 +561,10 @@ class Server {
   /** 가진 것만 착용할 수 있다. */
   async selectUnitKind(kind) {
     const a = await this.#loadAccount();
+    if (DEBUG_UNLOCK_ALL) {
+      if (!isKnownUnit(kind)) throw new Error('그런 유닛이 없습니다');
+      return await this.#saveAccount({ ...a, unitKind: kind });
+    }
     if (PREMIUM_UNITS.includes(kind)) {
       if (!a.entitlements.includes(kind)) throw new Error('가지고 있지 않습니다');
       return await this.#saveAccount({ ...a, unitKind: kind });
@@ -943,7 +962,9 @@ class Server {
       ratings[slot] = numOr((players[account] || {}).rating, DEFAULT_RATING);
       // 배속 권한. **서버가 계정에서 읽어 내려야 한다** — 각자 자기 계정을 읽으면
       // 같은 `setTempo` 명령을 한쪽만 받아들여 판이 갈라진다.
-      tempo[slot] = ((players[account] || {}).entitlements || []).includes(TEMPO_ITEM);
+      tempo[slot] =
+        DEBUG_UNLOCK_ALL ||
+        ((players[account] || {}).entitlements || []).includes(TEMPO_ITEM);
     });
 
     await $global.updateRoomState(roomId, {

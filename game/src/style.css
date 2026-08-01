@@ -80,75 +80,104 @@ body {
 
 /* ── 매치 중 설정 ───────────────────────────────────────────────── */
 
-/* 캔버스 위에 얹히는 유일한 컨트롤이다. 캔버스에 그리지 않는 이유는 §4.5에 있다 —
-   전에 캔버스 버튼 하나 때문에 그 뒤에서 절단 스와이프가 시작되는 버그를 따로 막아야 했다.
+/* ── 매치 중 캔버스 위 버튼 (항복 · 배속) ────────────────────────
 
-   **아래쪽 구석에 둔다.** 판은 화면 가운데를 세로로 채우고(620×1000 비율) 위아래로
-   여백이 남는다. 위쪽 여백은 HUD가 쓰므로 항복은 아래로 내렸다 — 경로를 긋는 손이
-   지나가는 자리에서 가장 먼 구석이다.
+   캔버스에 그리지 않는 이유는 §4.5에 있다 — 전에 캔버스 버튼 하나 때문에 그 뒤에서
+   절단 스와이프가 시작되는 버그를 따로 막아야 했다.
 
-   호박색인 이유: 이 색이 이미 "되돌릴 수 없다·취소된다"를 뜻한다 (renderer 의
-   `CUT_COLOR`). 붉은색은 P2 진영색이라 여기 쓰면 적 표시와 섞인다. */
-.resign-btn {
+   **둘을 한 벌로 짠다.** 전에는 크기·모서리·글꼴이 서로 달라 "웹 UI 두 개가 게임 위에
+   떠 있는" 것으로 보였다. 지금은 같은 판때기에서 잘라 낸 두 조각처럼 보이게 한다:
+
+   - 바탕이 HUD 판때기와 같은 색(`rgba(7,11,17,.92)`)이다. 화면 위 겹침은 전부 같은
+     재질이어야 한다
+   - **아래로 두툼한 그림자를 깔아 세워 둔다.** Tiny Swords 건물이 3/4 시점으로 서
+     있는 그림이라, 납작한 사각형은 그 위에서 종잇조각처럼 뜬다
+   - 누르면 그 두께만큼 실제로 내려앉는다 (`:active`)
+   - 모서리 8px. 10px 이상은 웹 버튼으로 읽힌다 — 스프라이트가 각졌다
+
+   **자리**: 위쪽은 HUD가 통째로 쓴다(판때기 66px + 전선 막대). 그래서 둘 다 아래
+   구석이고 좌우로 갈라 둔다 — 하나는 판을 끝내고 하나는 빠르게 하니 붙여 두면
+   잘못 누른다. */
+.hud-btn {
   position: fixed;
   bottom: calc(14px + env(safe-area-inset-bottom));
-  right: calc(14px + env(safe-area-inset-right));
   z-index: 20;
   appearance: none;
-  /* 손가락으로 눌러야 한다. 높이 44px 는 iOS 휴먼 인터페이스의 최소 터치 크기다.
-     한 번 누르면 바로 항복이라(재확인 없음) 폭은 글자에 맞춰 좁게 둔다. */
-  min-width: 64px;
+  /* 44px 는 iOS 휴먼 인터페이스의 최소 터치 크기. 둘이 같은 크기라야 한 벌로 읽힌다. */
+  min-width: 62px;
   height: 44px;
-  padding: 0 14px;
-  border: 1px solid rgba(251, 191, 36, 0.55);
-  border-radius: 10px;
-  background: rgba(20, 26, 34, 0.82);
-  color: #fbbf24;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--hud-btn-line, rgba(255, 255, 255, 0.22));
+  border-radius: 8px;
+  background: rgba(7, 11, 17, 0.92);
+  color: var(--hud-btn-ink, #dbe6ef);
   font-family: inherit;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1;
+  letter-spacing: -0.01em;
   cursor: pointer;
+  /* 위 모서리의 얇은 빛 + 아래로 세우는 두께. 이 둘이 "판때기 조각" 느낌을 만든다. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 3px 0 var(--hud-btn-base, rgba(0, 0, 0, 0.5));
   /* 누르려다 드래그가 시작되면 경로가 열린다. 캔버스로 새지 않게 막는다. */
   touch-action: manipulation;
 }
 
-/* 배속 토글(유료). 항복과 화면 반대편(우상단)이다 — 하나는 판을 끝내고 하나는
-   판을 빠르게 하니, 붙여 두면 잘못 누른다.
+/* 두께만큼 내려앉는다. 그림자를 같이 줄여야 실제로 눌린 것처럼 보인다. */
+.hud-btn:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
 
-   **판 전체 배속을 적는다**: 상대가 켜도 숫자가 바뀐다. 내가 켠 상태는 테두리로
-   따로 표시한다 — 숫자만으로는 "내가 켠 건지 상대가 켠 건지"를 알 수 없다. */
-.tempo-btn {
-  position: fixed;
-  top: calc(14px + env(safe-area-inset-top));
+/* 앞에 붙는 표식. 글자만 있으면 급할 때 안 읽힌다 — 모양이 먼저 눈에 든다. */
+.hud-btn::before {
+  content: var(--hud-btn-mark, '');
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* 항복. 호박색인 이유: 이 색이 이미 "되돌릴 수 없다·취소된다"를 뜻한다 (renderer 의
+   `CUT_COLOR`). 붉은색은 P2 진영색이라 여기 쓰면 적 표시와 섞인다. */
+.resign-btn {
   right: calc(14px + env(safe-area-inset-right));
-  z-index: 20;
-  appearance: none;
-  min-width: 52px;
-  height: 44px;
-  padding: 0 12px;
-  border: 1px solid rgba(125, 211, 252, 0.4);
-  border-radius: 10px;
-  background: rgba(20, 26, 34, 0.82);
-  color: #7dd3fc;
+  --hud-btn-line: rgba(251, 191, 36, 0.5);
+  --hud-btn-ink: #fbbf24;
+  --hud-btn-base: rgba(88, 62, 6, 0.75);
+  --hud-btn-mark: '⚑';
+}
+
+.resign-btn:hover {
+  --hud-btn-line: #fbbf24;
+}
+
+/* 배속. **판 전체 배속을 적는다** — 상대가 켜도 숫자가 바뀐다. 내가 켠 상태는
+   따로 표시한다: 숫자만으로는 누가 켰는지 알 수 없다. */
+.tempo-btn {
+  left: calc(14px + env(safe-area-inset-left));
+  --hud-btn-line: rgba(125, 211, 252, 0.42);
+  --hud-btn-ink: #7dd3fc;
+  --hud-btn-base: rgba(6, 46, 66, 0.8);
+  --hud-btn-mark: '»';
+  /* 숫자가 1×↔1.5× 로 오가도 폭이 안 흔들리게 고정폭 숫자를 쓴다 (HUD 시계와 같은 이유). */
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 15px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  touch-action: manipulation;
 }
 
 /* 내가 켜 둔 상태. */
 .tempo-btn.is-on {
-  border-color: #7dd3fc;
-  background: rgba(12, 40, 56, 0.9);
-  color: #dff3ff;
+  --hud-btn-line: #7dd3fc;
+  --hud-btn-ink: #eaf8ff;
+  background: rgba(10, 38, 54, 0.94);
 }
 
-.resign-btn:hover {
-  border-color: #fbbf24;
-  background: rgba(38, 30, 12, 0.88);
+.tempo-btn:hover {
+  --hud-btn-line: #7dd3fc;
 }
 
 .account-bar {

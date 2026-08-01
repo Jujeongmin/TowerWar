@@ -114,9 +114,7 @@ const match = new MatchScene(
   () => store.current.name,
   () => store.current.profile,
   () => plan,
-  need<HTMLButtonElement>('btn-gear'),
-  need('settings'),
-  need('settings-note'),
+  need<HTMLButtonElement>('btn-resign'),
 );
 
 /**

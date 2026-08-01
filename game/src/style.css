@@ -81,61 +81,41 @@ body {
 /* ── 매치 중 설정 ───────────────────────────────────────────────── */
 
 /* 캔버스 위에 얹히는 유일한 컨트롤이다. 캔버스에 그리지 않는 이유는 §4.5에 있다 —
-   전에 캔버스 버튼 하나 때문에 그 뒤에서 절단 스와이프가 시작되는 버그를 따로 막아야 했다. */
-.gear {
+   전에 캔버스 버튼 하나 때문에 그 뒤에서 절단 스와이프가 시작되는 버그를 따로 막아야 했다.
+
+   **아래쪽 구석에 둔다.** 판은 화면 가운데를 세로로 채우고(620×1000 비율) 위아래로
+   여백이 남는다. 위쪽 여백은 HUD가 쓰므로 항복은 아래로 내렸다 — 경로를 긋는 손이
+   지나가는 자리에서 가장 먼 구석이다.
+
+   호박색인 이유: 이 색이 이미 "되돌릴 수 없다·취소된다"를 뜻한다 (renderer 의
+   `CUT_COLOR`). 붉은색은 P2 진영색이라 여기 쓰면 적 표시와 섞인다. */
+.resign-btn {
   position: fixed;
-  /* 노치 밑으로 들어가면 못 누른다. */
-  top: calc(14px + env(safe-area-inset-top));
+  bottom: calc(14px + env(safe-area-inset-bottom));
   right: calc(14px + env(safe-area-inset-right));
   z-index: 20;
   appearance: none;
-  /* 손가락으로 눌러야 한다. 44px 는 iOS 휴먼 인터페이스의 최소 터치 크기다. */
-  width: 44px;
+  /* 손가락으로 눌러야 한다. 높이 44px 는 iOS 휴먼 인터페이스의 최소 터치 크기다.
+     한 번 누르면 바로 항복이라(재확인 없음) 폭은 글자에 맞춰 좁게 둔다. */
+  min-width: 64px;
   height: 44px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 0 14px;
+  border: 1px solid rgba(251, 191, 36, 0.55);
   border-radius: 10px;
   background: rgba(20, 26, 34, 0.82);
-  color: #dbe6ef;
-  font-size: 19px;
+  color: #fbbf24;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
   line-height: 1;
   cursor: pointer;
-  /* 톱니를 누르려다 드래그가 시작되면 경로가 열린다. 캔버스로 새지 않게 막는다. */
+  /* 누르려다 드래그가 시작되면 경로가 열린다. 캔버스로 새지 않게 막는다. */
   touch-action: manipulation;
 }
 
-.gear:hover {
-  border-color: rgba(255, 255, 255, 0.4);
-}
-
-/* 결과 화면과 달리 **판이 살아 있는 위**에 뜬다. `screen-overlay` 의
-   `pointer-events: none` 을 되돌려 놓지 않으면 창 너머 캔버스로 드래그가 들어가
-   설정을 보는 동안 경로가 열린다. */
-#settings {
-  justify-content: center;
-  padding-bottom: 24px;
-  pointer-events: auto;
-  background: rgba(6, 10, 15, 0.82);
-  z-index: 30;
-}
-
-/* 재확인 창을 없앤 자리(사용자 지시). 대가는 버튼 바로 아래에서 알린다. */
-.resign-warn {
-  margin-top: -12px;
-  text-align: center;
-  pointer-events: none;
-}
-
-.settings-title {
-  font-size: 26px;
-}
-
-.btn-danger {
-  border-color: #f2555f;
-  color: #ffd9dc;
-}
-
-.btn-danger:hover {
-  border-color: #ff8b92;
+.resign-btn:hover {
+  border-color: #fbbf24;
+  background: rgba(38, 30, 12, 0.88);
 }
 
 .account-bar {

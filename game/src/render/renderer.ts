@@ -104,11 +104,41 @@ const AVATAR_R = 11;
 /** 유닛 키(논리 px)와 러닝 사이클 속도(초당 프레임). */
 const UNIT_SPRITE_H = 20;
 
+// ── HUD 레이아웃 (전부 화면 px) ─────────────────────────────────
+//
+// **HUD는 필드 위에 얹힌다는 전제로 짠다.** 판은 620×1000 비율이라 세로가 긴 화면에서는
+// 위아래에 여백이 남지만(375×812 → 위아래 104px씩), 375×667 같은 비율에서는 31px밖에
+// 안 남아 HUD가 필드를 덮는다. 그래서 글자를 바로 얹지 않고 **판때기를 깔고 그 위에**
+// 그린다 — 밝은 건물 스프라이트가 밑으로 지나가도 읽힌다.
+
+/** 판때기 좌우 여백. */
+const HUD_PAD = 12;
+/** 판때기 높이(`safeTop` 아래로). 이름 줄 + 전선 막대가 들어간다. */
+const HUD_H = 56;
+/** 이름 줄의 세로 중심. */
+const HUD_NAME_Y = 20;
+/** 전선 막대의 위쪽 y와 두께. */
+const HUD_BAR_Y = 36;
+const HUD_BAR_H = 9;
+
 /**
- * 우상단 톱니 버튼이 먹는 폭. `style.css` 의 `.gear`(44px + 여백 14px)와 맞춰 둔다.
- * HUD 막대를 이만큼 양쪽에서 줄여 이름·아바타가 버튼에 안 겹치게 한다.
+ * 타이머가 가운데에서 좌우로 차지하는 폭의 절반. 이름은 여기까지만 온다.
+ *
+ * 고정값인 이유: 타이머 글자 폭으로 잡으면 `9:59`→`10:00` 에서 자리가 넓어지며
+ * 양쪽 이름이 동시에 줄어든다. 화면이 이유 없이 들썩이는 것보다 자리를 미리 비워 두는
+ * 편이 낫다. `MATCH_TIME` 이 10분을 넘게 되면 이 값을 다시 재야 한다.
  */
-const GEAR_CLEARANCE = 58;
+const HUD_TIMER_HALF = 36;
+
+/**
+ * 아래쪽 조작 안내가 그대로 떠 있는 시간(초)과 사라지는 데 걸리는 시간.
+ *
+ * 상시 문구로 두지 않는 이유: 이건 상태가 아니라 힌트다. 한 번 읽으면 그만인데
+ * 세로 화면에서는 그 한 줄이 계속 자리를 먹는다. **판 시간(`state.elapsed`)으로
+ * 재므로 판마다 다시 뜬다** — 오랜만에 켠 사람도 한 번은 본다.
+ */
+const HINT_HOLD = 6;
+const HINT_FADE = 1.5;
 
 /**
  * 유닛 그림 방향을 바꿀 때 요구하는 우세폭. **이미 쓰던 방향에 이만큼 가산점을 준다.**
@@ -786,61 +816,58 @@ export class Renderer {
     // 노치 밑으로 들어가면 이름과 아바타가 통째로 안 보인다.
     const top = this.safeTop;
 
+    this.drawHudPlate(top, w);
+
     const p1 = totalPower(state, 1);
     const p2 = totalPower(state, 2);
-    const ratio = p1 + p2 > 0 ? p1 / (p1 + p2) : 0.5;
-    // 우상단 톱니(44px + 여백)를 피한다. **양쪽을 같이 줄여야** 막대가 가운데 남는다 —
-    // 오른쪽만 줄이면 시간 표시와 중심이 어긋난다. 넓은 화면에서는 460이라 그대로다.
-    const barW = Math.min(460, w - 40 - GEAR_CLEARANCE * 2);
-    const barX = (w - barW) / 2;
-    ctx.fillStyle = OWNER_COLOR[2].main;
-    ctx.fillRect(barX, top + 14, barW, 7);
-    ctx.fillStyle = OWNER_COLOR[1].main;
-    ctx.fillRect(barX, top + 14, barW * ratio, 7);
+    this.drawFrontBar(top, w, ui.local, p1 + p2 > 0 ? p1 / (p1 + p2) : 0.5);
 
+    // 시간은 **고정폭 숫자**로 찍는다. 비례폭이면 초가 바뀔 때마다 글자 폭이 달라져
+    // 가운데 정렬한 시계가 좌우로 흔들린다.
     const left = Math.max(0, MATCH_TIME - state.elapsed);
-    ctx.fillStyle = '#dbe6ef';
-    ctx.font = '700 18px ui-sans-serif, system-ui, sans-serif';
+    // 남은 10초는 붉게. 유일하게 "지금 서둘러라"를 뜻하는 자리다.
+    ctx.fillStyle = left <= 10 ? OWNER_COLOR[2].main : '#f2f7fb';
+    ctx.font = '700 17px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.textAlign = 'center';
     ctx.fillText(
       `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`,
       w / 2,
-      top + 42,
+      top + HUD_NAME_Y,
     );
 
     // 양 끝은 아바타 + 닉네임 한 줄이다. 전에는 이 자리에 `타워 N` 이 있고 이름이
     // 그 위에 따로 있었는데, 사용자 지시로 타워 수를 빼고 이름만 남겼다 (2026-07-30).
     //
-    // **타워 수는 이제 화면 어디에도 없다.** 세력 비교는 위쪽 막대가 맡는다 —
+    // **타워 수는 이제 화면 어디에도 없다.** 세력 비교는 전선 막대가 맡는다 —
     // 막대는 타워 수가 아니라 `totalPower`(재고+유닛) 비율이라 같은 값이 아니다.
-    // 개수를 다시 보여줘야 하면 여기에 되살릴 것.
     //
     // 이름이 없으면(오프라인 옛 저장본 등) 그쪽을 아예 안 그린다 — 빈칸을 남기면
     // 레이아웃이 흔들린 것처럼 보인다.
-    ctx.font = '700 15px ui-sans-serif, system-ui, sans-serif';
+    const nameY = top + HUD_NAME_Y;
+    const budget = w / 2 - HUD_TIMER_HALF - HUD_PAD - AVATAR_R * 2 - 6;
     if (this.names[ui.local]) {
-      const x = this.drawAvatar(ui.local, barX - 4, top + 42, 'left');
-      ctx.textAlign = 'left';
-      ctx.fillStyle = OWNER_COLOR[ui.local].main;
-      ctx.fillText(this.names[ui.local], x, top + 42);
+      const x = this.drawAvatar(ui.local, HUD_PAD, nameY, 'left');
+      this.drawHudName(this.names[ui.local], x, nameY, budget, 'left');
     }
     if (this.names[enemy]) {
-      const x = this.drawAvatar(enemy, barX + barW + 4, top + 42, 'right');
-      ctx.textAlign = 'right';
-      ctx.fillStyle = OWNER_COLOR[enemy].main;
-      ctx.fillText(this.names[enemy], x, top + 42);
+      const x = this.drawAvatar(enemy, w - HUD_PAD, nameY, 'right');
+      this.drawHudName(this.names[enemy], x, nameY, budget, 'right');
     }
 
     // 홈 인디케이터가 먹는 만큼 띄운다.
     const bottom = h - this.safeBottom;
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(170,186,202,0.6)';
-    ctx.font = '500 12px ui-sans-serif, system-ui, sans-serif';
-    ctx.fillText(
-      '드래그: 경로 개설/차단  ·  빈 곳 스와이프: 경로 절단',
-      w / 2,
-      bottom - 24,
-    );
+
+    // 조작 안내는 **처음 몇 초만** 띄우고 사라진다. 세로 화면에서 상시 문구는 자리를
+    // 계속 먹는데, 이건 상태가 아니라 힌트라 한 번 읽으면 그만이다.
+    const hint = 1 - Math.max(0, Math.min(1, (state.elapsed - HINT_HOLD) / HINT_FADE));
+    if (hint > 0) {
+      ctx.globalAlpha = hint;
+      ctx.fillStyle = 'rgba(170,186,202,0.6)';
+      ctx.font = '500 12px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillText('드래그: 경로 개설/차단  ·  빈 곳 스와이프: 경로 절단', w / 2, bottom - 24);
+      ctx.globalAlpha = 1;
+    }
 
     // 상대 입력 대기. 안 그리면 화면이 이유 없이 얼어붙은 것처럼 보인다.
     // 점 개수를 시간으로 돌려 "멈춘 화면"이 아니라 "기다리는 중"으로 읽히게 한다.
@@ -851,6 +878,99 @@ export class Renderer {
       ctx.fillText(`상대를 기다리는 중${dots}`, w / 2, bottom - 48);
     }
     ctx.restore();
+  }
+
+  /**
+   * HUD가 얹히는 판때기. 아래로 갈수록 옅어져 필드와 이어진다 — 단색 띠로 자르면
+   * 화면이 두 동강 난 것처럼 보인다.
+   */
+  private drawHudPlate(top: number, w: number): void {
+    const ctx = this.ctx;
+    const h = top + HUD_H;
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, 'rgba(7,11,17,0.92)');
+    g.addColorStop(0.75, 'rgba(7,11,17,0.78)');
+    g.addColorStop(1, 'rgba(7,11,17,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  /**
+   * 전선 막대. **이 게임의 본론이 여기 있다** — 두 진영이 밀고 밀리는 경계가
+   * 출발선(가운데)에서 얼마나 옮겨 갔는지를 그대로 보여 준다.
+   *
+   * 세 가지가 겹쳐 있다:
+   *   1. 두 색이 만나는 **경계 눈금** — 지금 전선의 위치
+   *   2. 가운데의 **출발선 자국** — 여기서 얼마나 밀렸는지 잴 기준
+   *   3. 그 둘 사이를 잇는 **가는 선** — 밀린 폭 자체
+   *
+   * `local` 을 받는 이유: 내 색이 언제나 왼쪽이어야 한다. 슬롯 번호로 그리면
+   * P2로 배정된 판에서 내 세력이 오른쪽에 붙어 매 판 좌우가 뒤집힌다.
+   */
+  private drawFrontBar(top: number, w: number, local: PlayerId, ratioP1: number): void {
+    const ctx = this.ctx;
+    const enemy: PlayerId = local === 1 ? 2 : 1;
+    const mine = local === 1 ? ratioP1 : 1 - ratioP1;
+    const x = HUD_PAD;
+    const y = top + HUD_BAR_Y;
+    const bw = w - HUD_PAD * 2;
+    const r = HUD_BAR_H / 2;
+
+    ctx.save();
+    // 막대 전체를 둥근 사각형으로 잘라 두면 안쪽은 사각형으로 칠해도 끝이 둥글다.
+    ctx.beginPath();
+    ctx.roundRect(x, y, bw, HUD_BAR_H, r);
+    ctx.clip();
+    ctx.fillStyle = OWNER_COLOR[enemy].main;
+    ctx.fillRect(x, y, bw, HUD_BAR_H);
+    ctx.fillStyle = OWNER_COLOR[local].main;
+    ctx.fillRect(x, y, bw * mine, HUD_BAR_H);
+
+    // 출발선 자국. 막대 안에 있어야 경계와 같은 자로 읽힌다.
+    ctx.fillStyle = 'rgba(11,16,23,0.55)';
+    ctx.fillRect(x + bw / 2 - 0.5, y, 1, HUD_BAR_H);
+    ctx.restore();
+
+    // 경계 눈금. 막대 위아래로 살짝 튀어나오게 그려 "지금 여기가 전선"으로 읽히게 한다.
+    const fx = x + bw * mine;
+    ctx.fillStyle = '#f2f7fb';
+    ctx.fillRect(fx - 1, y - 3, 2, HUD_BAR_H + 6);
+
+    // 출발선에서 밀린 폭. 이긴 쪽 색으로 잇는다 — 어느 쪽으로 밀렸는지가 색이다.
+    const mid = x + bw / 2;
+    if (Math.abs(fx - mid) > 1) {
+      ctx.fillStyle = mine > 0.5 ? OWNER_COLOR[local].main : OWNER_COLOR[enemy].main;
+      ctx.fillRect(Math.min(mid, fx), y - 5, Math.abs(fx - mid), 1.5);
+    }
+  }
+
+  /**
+   * 이름 한 줄. **자리를 넘치면 잘라서 말줄임표를 붙인다** — 세로 화면(375px)에서
+   * 12자 닉네임을 그대로 그리면 반대쪽 이름과 시계까지 덮어 셋이 겹쳐 읽힌다.
+   *
+   * 색은 진영색이 아니라 밝은 회백색이다. 파랑·빨강 글자는 어두운 판때기 위에서
+   * 대비가 모자라고, 어느 편인지는 옆의 아바타 테두리가 이미 말한다.
+   */
+  private drawHudName(
+    name: string,
+    x: number,
+    y: number,
+    maxW: number,
+    align: 'left' | 'right',
+  ): void {
+    const ctx = this.ctx;
+    ctx.font = '700 14px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = align;
+    ctx.fillStyle = '#e6eef7';
+
+    let text = name;
+    if (ctx.measureText(text).width > maxW) {
+      while (text.length > 1 && ctx.measureText(`${text}…`).width > maxW) {
+        text = text.slice(0, -1);
+      }
+      text = `${text}…`;
+    }
+    ctx.fillText(text, x, y);
   }
 
   /**

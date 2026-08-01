@@ -59,7 +59,6 @@ export class MatchScene implements Scene {
    * PVP에서는 멈출 수가 없다 — 상대는 계속 두고, 무엇보다 `pump()` 가 멈추면
    * 내 `ackTick` 이 안 나가 **상대까지 교착에 빠진다** (§-6).
    */
-  private paused = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -97,12 +96,8 @@ export class MatchScene implements Scene {
     private readonly getProfile: () => ProfileId,
     /** 이 판의 조건. 씬에 들어올 때마다 새로 읽는다. */
     private readonly getPlan: () => MatchPlan,
-    /** 캔버스 위 톱니. 매치 중에만 보인다. */
-    private readonly gear: HTMLButtonElement,
-    /** 설정 창. 항복이 여기 있다. */
-    private readonly settingsRoot: HTMLElement,
-    /** 봇전인지 대전인지에 따라 "판이 멈췄는가"를 알리는 줄. */
-    private readonly settingsNote: HTMLElement,
+    /** 캔버스 위 [항복] 버튼. 매치 중에만 보인다. */
+    private readonly resignBtn: HTMLButtonElement,
   ) {
     const again = resultRoot.querySelector<HTMLButtonElement>('#btn-again');
     const lobby = resultRoot.querySelector<HTMLButtonElement>('#btn-lobby');
@@ -112,22 +107,14 @@ export class MatchScene implements Scene {
     again.addEventListener('click', () => this.restart(true));
     lobby.addEventListener('click', () => this.toLobby());
 
-    this.gear.addEventListener('click', () => this.openSettings());
-    this.need('#btn-settings-close').addEventListener('click', () => this.closeSettings());
-    // **재확인 창이 없다** (사용자 지시). 되돌릴 수 없고 보상도 0이라는 것은
-    // 버튼 바로 아래 문구가 알린다 — 확인 단계를 되살릴 거면 그 문구도 같이 옮길 것.
-    this.need('#btn-resign').addEventListener('click', () => this.resign());
-  }
-
-  private need(sel: string): HTMLButtonElement {
-    const el = this.settingsRoot.querySelector<HTMLButtonElement>(sel);
-    if (!el) throw new Error(`설정 화면에 ${sel} 가 없습니다`);
-    return el;
+    // **재확인도 설정 창도 없다.** 한 번 누르면 바로 항복이다 (§-23 사용자 지시).
+    // 되돌릴 수 없고 보상도 0이라는 것은 버튼 글자 자체가 알린다.
+    this.resignBtn.addEventListener('click', () => this.resign());
   }
 
   enter(): void {
     this.canvas.hidden = false;
-    this.gear.hidden = false;
+    this.resignBtn.hidden = false;
     // 숨겨져 있는 동안 레이아웃 크기가 0이 된다. 안 부르면 첫 프레임이 찌그러진다.
     this.renderer.resize();
     this.restart();
@@ -136,44 +123,21 @@ export class MatchScene implements Scene {
   exit(): void {
     this.teardown();
     this.canvas.hidden = true;
-    // 매치 밖에서 톱니가 남아 있으면 로비 위에 떠서 아무 데도 안 걸린다.
-    this.gear.hidden = true;
-    this.closeSettings();
+    // 매치 밖에서 남아 있으면 로비 위에 떠서 아무 데도 안 걸린다.
+    this.resignBtn.hidden = true;
     this.hideResult();
-  }
-
-  private openSettings(): void {
-    // 이미 끝난 판에서는 열 것이 없다. 결과창 위에 또 얹히면 [로비로]를 가린다.
-    if (this.state.winner !== null) return;
-    // **봇전에서만 멈춘다.** PVP에서 멈추면 `pump()` 가 안 돌아 상대까지 교착이 된다(§-6).
-    this.paused = !this.pvp;
-    this.settingsNote.textContent = this.pvp
-      ? '대전 중에는 판이 멈추지 않습니다.'
-      : '판이 멈춰 있습니다.';
-    this.settingsRoot.hidden = false;
-  }
-
-  private closeSettings(): void {
-    this.paused = false;
-    this.settingsRoot.hidden = true;
-    // 누산기를 비운다. 멈춰 있던 동안 흐른 벽시계가 그대로 들어오면
-    // 닫는 순간 수십 틱이 한 프레임에 몰려 화면이 튄다 (`restart` 와 같은 이유).
-    this.accumulator = 0;
   }
 
   /**
    * 항복. **커맨드로 낸다** — 씬에서 직접 `winner` 를 박으면 PVP에서 상대 시뮬레이션과
    * 갈라진다. 여기서 판이 끝나는 것이 아니라, 이 명령이 `inputDelayTicks` 뒤에 적용될 때
-   * **양쪽에서 동시에** 끝난다.
-   *
-   * 그래서 `closeSettings()` 로 판을 다시 돌려 놓아야 한다. 멈춘 채로 두면 명령이
-   * 적용될 틱까지 시뮬레이션이 안 굴러 아무 일도 안 일어난다.
+   * **양쪽에서 동시에** 끝난다. 그래서 판을 멈추면 안 된다 — 멈추면 명령이 적용될 틱까지
+   * 시뮬레이션이 안 굴러 아무 일도 안 일어난다.
    */
   private resign(): void {
     const local = this.input?.ui.local;
     if (local === undefined || this.state.winner !== null) return;
     this.resigned = true;
-    this.closeSettings();
     this.source.submit({ kind: 'resign', player: local });
   }
 
@@ -246,20 +210,13 @@ export class MatchScene implements Scene {
     // [다시 하기]로 들어온 판이면 앞 판의 항복 상태가 남아 있다. 안 지우면
     // 새 판을 이기고도 '항복 — 보상 없음'이 뜬다.
     this.resigned = false;
-    this.paused = false;
-    this.gear.hidden = false;
+    this.resignBtn.hidden = false;
     this.hideResult();
   }
 
   frame(dt: number): void {
-    // 봇전에서 설정을 열어 둔 동안. **렌더는 계속 돈다** — 화면이 얼면 멈춘 것인지
-    // 죽은 것인지 구분이 안 된다. PVP에서는 `paused` 가 참이 되지 않는다.
-    if (this.paused) {
-      const pausedUi = this.input?.ui;
-      if (pausedUi) this.renderer.render(this.state, pausedUi, 0, dt);
-      return;
-    }
-
+    // **판을 멈추는 경로가 없다.** 설정 창이 있던 시절에는 봇전에서만 멈췄는데,
+    // 그것이 곧 "상대가 봇이다"를 알려 주는 신호였다 (§-7은 안 알리기로 했다).
     this.accumulator = Math.min(this.accumulator + dt, MAX_ACCUMULATOR);
 
     while (this.accumulator >= TICK_DT) {
@@ -293,9 +250,8 @@ export class MatchScene implements Scene {
   }
 
   private showResult(): void {
-    // 판이 끝났으니 설정은 닫는다. 열어 둔 채로 결과가 나면 [로비로]를 가린다.
-    this.closeSettings();
-    this.gear.hidden = true;
+    // 끝난 판에서 항복 버튼이 남아 있으면 결과창 위에 떠서 [로비로]를 가린다.
+    this.resignBtn.hidden = true;
 
     const local = this.input?.ui.local ?? 1;
     const w = this.state.winner;

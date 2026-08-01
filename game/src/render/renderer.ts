@@ -25,7 +25,7 @@ import { type Vec } from '../sim/geometry';
 import { routeBlockedBy, towerCount, unitPosition, unitProgressRate } from '../sim/sim';
 import type { MatchState, Owner, PlayerId, Route, TickEvents, Tower } from '../sim/types';
 import { DEFAULT_PROFILE, profileBg, type ProfileId } from '../profiles';
-import { DEFAULT_UNIT_KIND, UNIT_KIND_META, type UnitKind } from '../units';
+import { DEFAULT_UNIT_KIND, UNIT_KIND_META, sizeFactorOf, type UnitKind } from '../units';
 import { Profiles } from './profiles';
 import { Sprites, type UnitDir } from './sprites';
 
@@ -718,7 +718,11 @@ export class Renderer {
       const sprite = this.sprites.unit(u.owner, kind, dir, this.time * UNIT_FPS + u.id * 2);
       if (sprite) {
         // 종류마다 잘린 상자 비율이 달라 높이를 그대로 맞추면 크기가 들쭉날쭉해진다.
-        const h = UNIT_SPRITE_H * UNIT_KIND_META[kind].scale;
+        // `scale` 은 추출 상자 비율 보정이고, `sizeFactorOf` 는 **힘을 크기로 보여주는**
+        // 축이다 (`units.ts`). 상점 카드도 같은 함수를 쓴다 — 한쪽만 크게 그리면
+        // 산 것이 판에서는 똑같아 보인다.
+        const meta = UNIT_KIND_META[kind];
+        const h = UNIT_SPRITE_H * meta.scale * sizeFactorOf(meta.power);
         const w = (sprite.w / sprite.h) * h;
 
         ctx.save();

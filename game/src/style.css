@@ -594,6 +594,24 @@ body {
   image-rendering: pixelated;
 }
 
+/* 힘 막대. 카탈로그 최댓값 대비 비율이다 (`shop-scene.ts`).
+   크기 차이가 최대 1.2배라 옆에 안 놓인 두 카드를 비교하려면 이게 필요하다. */
+.unit-bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.unit-bar i {
+  display: block;
+  height: 100%;
+  /* 약함(청록) → 강함(호박). 진영색 파랑·빨강을 피한다 — 상점 카드가 "이건 P1 것"으로
+     읽히면 안 된다 (`units.ts` 의 변형색 제약과 같은 이유). */
+  background: linear-gradient(90deg, #34d399, #fbbf24);
+}
+
 .unit-name {
   font-weight: 700;
   font-size: 13px;

@@ -105,6 +105,32 @@ export function unitPowerOf(kind: UnitKind): number {
   return UNIT_KIND_META[kind]?.power ?? UNIT_KIND_META[DEFAULT_UNIT_KIND].power;
 }
 
+/** 카탈로그에서 가장 센 값. 힘 막대의 분모이자 크기 사다리의 위쪽 끝이다. */
+export const MAX_UNIT_POWER = Math.max(
+  ...Object.values(UNIT_KIND_META).map((m) => m.power),
+);
+
+/**
+ * 힘 → 그릴 때 곱하는 크기 배수. **센 것이 크게 보인다.**
+ *
+ * 다섯 종이 같은 캐릭터를 하의 색만 바꿔 구운 것이라(위 주석) **색만으로는 어느 쪽이
+ * 센지 알 수가 없다.** 흰·금·초록·보라 사이에는 세다·약하다의 순서가 없다.
+ * 크기는 있다 — 설명 없이 읽히는 유일한 축이다 (2026-08-03 사용자 지시).
+ *
+ * **상점과 실제 판이 같은 함수를 쓴다.** 상점에서만 크게 그리면 화면이 거짓말이 된다 —
+ * 산 것이 판에서는 똑같아 보인다.
+ *
+ * 폭이 1.00~1.20으로 좁은 이유: 판에서 유닛은 26px이고 경로 위에 여럿이 붙어 다닌다.
+ * 여기서 1.5배까지 벌리면 센 유닛 줄이 서로 겹쳐 몇 기인지 안 보인다.
+ * 나란히 놓고 비교할 때 읽히면 충분하다.
+ */
+export function sizeFactorOf(power: number): number {
+  const span = MAX_UNIT_POWER - 1;
+  if (span <= 0) return 1;
+  const t = Math.max(0, Math.min(1, (power - 1) / span));
+  return 1 + t * 0.2;
+}
+
 /** 상점에 늘어놓는 순서. 가격 오름차순이라 카탈로그 선언 순서를 그대로 쓴다. */
 export const SHOP_UNIT_ORDER: readonly UnitKind[] = [
   'beergang',

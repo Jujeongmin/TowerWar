@@ -19,7 +19,7 @@ import {
   type UpgradeKind,
 } from '../account/account';
 import { speedMulFor } from '../sim/config';
-import { SHOP_UNIT_ORDER, UNIT_KIND_META, type UnitKind } from '../units';
+import { MAX_UNIT_POWER, SHOP_UNIT_ORDER, UNIT_KIND_META, sizeFactorOf, type UnitKind } from '../units';
 import type { Scene } from './scene';
 
 /** 다음 단계를 사면 무엇이 어떻게 변하는가. 만렙이면 현재 값만 보여준다. */
@@ -27,6 +27,12 @@ function effectText(kind: UpgradeKind, level: number): string {
   const val = (lv: number) => `×${speedMulFor(lv).toFixed(2)}`;
   return level >= upgradeMaxOf(kind) ? val(level) : `${val(level)} → ${val(level + 1)}`;
 }
+
+/**
+ * 가장 약한 유닛의 미리보기 높이(px). 여기에 `sizeFactorOf` 를 곱한다.
+ * `.unit-art` 의 상자 높이(56px)보다 낮아야 가장 센 것도 안 잘린다.
+ */
+const UNIT_ART_BASE_H = 44;
 
 /** 미리보기 이미지. 러닝 사이클 첫 프레임을 그대로 쓴다 — P1(파랑) 기준. */
 function previewSrc(kind: UnitKind): string {
@@ -102,11 +108,24 @@ export class ShopScene implements Scene {
     const el = document.createElement('button');
     el.className = 'unit-card';
     el.id = `unit-${kind}`;
-    // 힘을 카드에 박아 둔다. 색 차이가 곧 세기 차이라, 안 적으면 무엇을 사는 것인지
-    // 그림만으로는 알 수가 없다. 체력과 공격력이 같은 값인 것도 그대로 보여 준다.
+    // 다섯 종이 같은 캐릭터를 하의 색만 바꿔 구운 것이라 **색만으로는 순서가 없다** —
+    // 흰·금·초록·보라 중 어느 쪽이 센지 알 방법이 없다. 그래서 셋으로 말한다:
+    //
+    //   1. **크기** — `sizeFactorOf`. 실제 판에서 그리는 것과 **같은 함수**다.
+    //      상점에서만 크게 그리면 산 것이 판에서는 똑같아 보인다 (화면이 거짓말한다)
+    //   2. **힘 막대** — 카탈로그 최댓값 대비 몇 %인가. 크기 차이(최대 1.2배)만으로는
+    //      옆에 안 놓인 두 카드를 비교하기 어렵다
+    //   3. 숫자 — 체력·공격력이 같은 값인 것까지 그대로
+    //
+    // 카드가 아래 정렬이라(`.unit-art`) 미리보기들이 **같은 바닥선 위에 선다** —
+    // 키 재는 자처럼 읽히게 하려는 것이다.
+    // px로 준다. `%` 로 주면 `.unit-art img` 의 `max-height: 100%` 에 걸려 잘린다.
+    const artH = Math.round(UNIT_ART_BASE_H * sizeFactorOf(meta.power));
+    const fill = Math.round((meta.power / MAX_UNIT_POWER) * 100);
     el.innerHTML = `
-      <span class="unit-art"><img alt="" src="${previewSrc(kind)}" /></span>
+      <span class="unit-art"><img alt="" src="${previewSrc(kind)}" style="height:${artH}px" /></span>
       <span class="unit-name">${meta.label}</span>
+      <span class="unit-bar"><i style="width:${fill}%"></i></span>
       <span class="unit-power">체력 ${meta.power} · 공격력 ${meta.power}</span>
       <span class="unit-blurb">${meta.blurb}</span>
       <span class="unit-state" data-role="state"></span>

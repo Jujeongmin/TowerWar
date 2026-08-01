@@ -215,9 +215,16 @@ function eloExpected(mine, theirs) {
   return 1 / (1 + Math.pow(10, (theirs - mine) / 400));
 }
 
-/** 한 판 뒤 변동량(반올림 정수). `score` 는 승 1 / 무 0.5 / 패 0. */
+/**
+ * 한 판 뒤 변동량(반올림 정수). `score` 는 승 1 / 무 0.5 / 패 0.
+ *
+ * **`±k` 로 한 번 더 자른다.** 수식상 이미 그 안에 들어오지만, 점수 스냅샷이 어딘가에서
+ * 이상한 값으로 오염되면(옛 룸 상태, 손댄 저장본) 한 판에 사다리가 통째로 뒤집힌다.
+ * 자르는 비용이 0이라 그냥 잘라 둔다.
+ */
 function eloDelta(mine, theirs, score, k) {
-  return Math.round(k * (score - eloExpected(mine, theirs)));
+  const raw = Math.round(k * (score - eloExpected(mine, theirs)));
+  return Math.max(-k, Math.min(k, raw));
 }
 
 /**
@@ -248,6 +255,23 @@ function ratingBandFor(waitedMs) {
  * 있더라도 계정 수에 비례해 느려진다. 판이 끝날 때마다 10칸짜리 표를 고치는 편이 싸다.
  */
 const BOARD_SIZE = 10;
+
+/**
+ * 이 시간(ms)보다 짧게 끝난 판은 **점수에 안 센다.** 코인과 전적은 그대로 준다.
+ *
+ * 서버가 시뮬레이션을 안 돌려서 승패를 클라이언트 보고로 믿는다(§7의 "서버 권위" 항목).
+ * 그 상태에서 가장 싼 치팅이 **부계정이 즉시 항복하고 본계정이 점수를 먹는 것**이다 —
+ * 판 하나가 몇 초면 끝나므로 사다리를 통째로 밀어 올릴 수 있다.
+ *
+ * 값의 근거(실측, `sim/` 을 헤드리스로 30시드씩 돌려 잼):
+ *   - 양쪽이 다 싸운 판의 최단 결판 **48.8초**
+ *   - 한쪽이 아무 명령도 안 낸 판(가장 빨리 쓸리는 경우)의 최단 **32.4초**
+ *
+ * 그래서 20초 밑으로 끝나는 판은 **정상 플레이로는 안 나온다.** 유일하게 걸리는 것이
+ * 초반 항복승인데, 그건 막으려는 바로 그 경로다. "상대가 20초 안에 나가떨어진 판은
+ * 점수에 안 센다"는 규칙 자체가 납득 가능하기도 하다.
+ */
+const MIN_RATED_MS = 20000;
 
 /** 닉네임 길이 상한. 화면 상단 HUD에 들어가야 해서 짧게 잡는다. */
 const NAME_MAX = 12;
@@ -662,6 +686,9 @@ class Server {
     // **끝난 판에서도 받아야 한다.** 양쪽이 각자 보고하는데, 먼저 온 보고가 방을
     // finished 로 바꾼다. 여기서 거절하면 두 번째 사람은 보상을 못 받는다.
     if (state.phase !== PHASE_PLAYING && state.phase !== PHASE_FINISHED) return false;
+    // 시작한 적 없는 방은 보고를 못 받는다. `#start`/`#soloStart` 만 이 값을 찍는다 —
+    // 방을 만들어 놓고 곧바로 결과부터 보내는 경로를 여기서 끊는다.
+    if (!state.startedAt) return false;
 
     const account = $sender.account;
     const slot = (state.slots || {})[account];
@@ -671,19 +698,30 @@ class Server {
     const first = !rewarded[account];
     rewarded[account] = true;
 
+    const said = Number(winner) || 0;
+    // 양쪽이 서로 다른 승자를 댔다. 결정론이 지켜졌다면 있을 수 없으므로 **데싱크이거나
+    // 한쪽이 거짓말한 것이다.** 지금은 지불을 바꾸지 않고 기록만 남긴다 — 서버가
+    // 시뮬레이션을 안 돌려서 어느 쪽이 맞는지 가릴 방법이 없다 (§-34의 남은 구멍).
+    const reports = { ...(state.reports || {}), [slot]: said };
+    const mismatch =
+      state.resultMismatch ||
+      Object.values(reports).some((v) => v !== said);
+
     await $room.updateRoomState({
       phase: PHASE_FINISHED,
       // 승자는 먼저 온 보고로 정한다. 결정론이 지켜졌다면 양쪽 값이 같다 —
       // 어긋났다면 그건 데싱크이고 `desync` 에 이미 잡혀 있다.
       winner: state.winner ?? this.#accountOfPlayer(state, winner),
-      winnerSlot: state.winnerSlot || Number(winner) || 0,
+      winnerSlot: state.winnerSlot || said,
       reason: state.reason ?? 'reported',
       endedAt: state.endedAt ?? Date.now(),
       rewarded,
+      reports,
+      resultMismatch: !!mismatch,
     });
 
     // 판당 한 사람 한 번. rewarded 가 그 자물쇠다.
-    return first ? await this.#grantReward(state, slot, Number(winner) || 0, towers) : false;
+    return first ? await this.#grantReward(state, slot, said, towers) : false;
   }
 
   // ── 주기 작업 ──────────────────────────────────────────────────
@@ -908,6 +946,10 @@ class Server {
    * 볼 때 표본이 뭐였는지 알 수 있어야 한다.
    */
   async #grantReward(state, slot, winnerSlot, towers) {
+    // 이 판이 점수에 셀 만큼 길었는가 (`MIN_RATED_MS`). `endedAt` 은 첫 보고가 찍고
+    // 두 번째 보고는 그 값을 그대로 읽으므로, 양쪽이 같은 판정을 받는다.
+    const played = (state.endedAt || Date.now()) - (state.startedAt || 0);
+    const rated = state.startedAt > 0 && played >= MIN_RATED_MS;
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();
       const outcome = winnerSlot === 0 ? 'draw' : winnerSlot === slot ? 'win' : 'loss';
@@ -924,7 +966,7 @@ class Server {
         soloWins: a.soloWins + (solo && outcome === 'win' ? 1 : 0),
         soloLosses: a.soloLosses + (solo && outcome === 'loss' ? 1 : 0),
         soloDraws: a.soloDraws + (solo && outcome === 'draw' ? 1 : 0),
-        rating: this.#ratingAfter(state, slot, outcome, a.rating),
+        rating: rated ? this.#ratingAfter(state, slot, outcome, a.rating) : a.rating,
       });
     }).then(async (saved) => {
       // 순위표는 계정 자물쇠 **밖에서** 고친다. 안에서 부르면 계정 락을 쥔 채로
@@ -932,7 +974,10 @@ class Server {
       //
       // 봇전도 올린다. 점수가 움직이는데 표에 안 오르면 어디서 밀렸는지 알 수가 없고,
       // 인구가 적을 때 표가 통째로 비는 문제(`BOT_RATING` 주석)가 그대로 남는다.
-      await this.#recordOnBoard(saved);
+      //
+      // **점수가 안 움직인 판은 표도 안 건드린다.** 짧은 판으로 순위만 갱신되면
+      // `MIN_RATED_MS` 를 세운 의미가 없다.
+      if (rated) await this.#recordOnBoard(saved);
       return saved;
     });
   }

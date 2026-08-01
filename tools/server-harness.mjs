@@ -131,6 +131,16 @@ const B = { account: '0xBBB', roomId: null };
 const C = { account: '0xCCC', roomId: null };
 const as = (s) => (sender = s);
 
+/**
+ * 방을 `ms` 전에 시작한 것으로 만든다.
+ *
+ * `MIN_RATED_MS`(20초)보다 짧게 끝난 판은 점수가 안 움직인다. 하네스는 판을 실제로
+ * 돌리지 않고 곧바로 결과를 보고하므로, **점수를 보는 검사는 전부 방을 늙혀야 한다.**
+ */
+function age(roomId, ms = 30000) {
+  rooms.get(roomId).state.startedAt = Date.now() - ms;
+}
+
 // 1) A가 매칭 → 새 방
 as(A);
 const r1 = await server.findMatch();
@@ -575,6 +585,7 @@ await server.joinRoomByCode(eroom.code);
 await server.setReady(true);
 await server.$roomTick(300, eroom.roomId);
 const es = await $global.getRoomState(eroom.roomId);
+age(eroom.roomId);
 check(
   '시작 시 점수 스냅샷이 찍힌다',
   es.ratings[es.slots['0xAAA']] === 1200 && es.ratings[es.slots['0xBBB']] === 1000,
@@ -600,6 +611,7 @@ async function soloMatch(who, winner) {
   rooms.get(r.roomId).state.players[who.account].joinedAt = Date.now() - 60000;
   rooms.get(r.roomId).state.private = false; // 봇 폴백을 받게 한다
   await server.$roomTick(300, r.roomId);
+  age(r.roomId);
   return await server.reportResult(winner, 0);
 }
 userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1100 });
@@ -654,6 +666,7 @@ await server.joinRoomByCode(lroom.code);
 await server.setReady(true);
 await server.$roomTick(300, lroom.roomId);
 const ls = await $global.getRoomState(lroom.roomId);
+age(lroom.roomId);
 as(A); await server.reportResult(ls.slots['0xAAA'], 0);
 as(B); await server.reportResult(ls.slots['0xAAA'], 0);
 as(A);
@@ -674,6 +687,7 @@ await server.joinRoomByCode(rroom.code);
 await server.setReady(true);
 await server.$roomTick(300, rroom.roomId);
 const rs = await $global.getRoomState(rroom.roomId);
+age(rroom.roomId);
 as(A); const revA = await server.reportResult(rs.slots['0xBBB'], 0); // 이번엔 밥이 이긴다
 as(B); await server.reportResult(rs.slots['0xBBB'], 0);
 as(A);
@@ -706,11 +720,77 @@ await server.joinRoomByCode(croom.code);
 await server.setReady(true);
 await server.$roomTick(300, croom.roomId);
 const cs = await $global.getRoomState(croom.roomId);
+age(croom.roomId);
 as(A); await server.reportResult(cs.slots['0xAAA'], 0);
 as(A);
 const board3 = await server.getLeaderboard();
 check('10명을 안 넘는다', board3.length === 10, board3.length);
 check('점수가 모자라면 표에 못 든다', board3.every((e) => e.name !== '앨리스'), board3);
+
+// 44) 짧게 끝난 판은 점수에 안 센다 (MIN_RATED_MS). 코인과 전적은 그대로 준다.
+//     막으려는 것: 부계정이 즉시 항복하고 본계정이 점수를 먹는 경로.
+globalState = { ...globalState, board: [] };
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', rating: 1000 });
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), name: '밥', rating: 1000 });
+as(A);
+const qroom = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(qroom.code);
+await server.setReady(true);
+await server.$roomTick(300, qroom.roomId);
+// 방금 시작한 판을 곧바로 보고한다 (경과 ≈ 0ms)
+as(A);
+const quick = await server.reportResult((await $global.getRoomState(qroom.roomId)).slots['0xAAA'], 3);
+check('짧은 판은 점수가 안 움직인다', quick.rating === 1000, quick.rating);
+check('그래도 코인은 준다 = 100 + 3*8', quick.coins === 124, quick.coins);
+check('전적도 쌓인다', quick.wins === 1, quick);
+as(A);
+check('짧은 판은 순위표에도 안 오른다', (await server.getLeaderboard()).length === 0, await server.getLeaderboard());
+
+// 45) 20초를 넘긴 판은 정상적으로 점수가 움직인다 (같은 방을 손으로 늙힌다)
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', rating: 1000 });
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), name: '밥', rating: 1000 });
+as(A);
+const lroom2 = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(lroom2.code);
+await server.setReady(true);
+await server.$roomTick(300, lroom2.roomId);
+age(lroom2.roomId); // 30초 전에 시작한 판
+as(A);
+const slow = await server.reportResult(rooms.get(lroom2.roomId).state.slots['0xAAA'], 0);
+check('긴 판은 점수가 움직인다 1000 → 1016', slow.rating === 1016, slow.rating);
+as(A);
+check('긴 판은 순위표에 오른다', (await server.getLeaderboard()).some((e) => e.name === '앨리스'), await server.getLeaderboard());
+
+// 46) 시작한 적 없는 방에는 보고를 못 한다
+as(C); await server.leaveMatch().catch(() => {});
+const fake = await server.createRoom();
+check('시작 전 방에 보고하면 거부', (await server.reportResult(1, 12)) === false);
+
+// 47) 양쪽이 다른 승자를 대면 기록에 남는다 (지불은 안 바꾼다 — 가릴 방법이 없다)
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+as(A);
+const droom = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(droom.code);
+await server.setReady(true);
+await server.$roomTick(300, droom.roomId);
+const ds = await $global.getRoomState(droom.roomId);
+age(droom.roomId);
+as(A); await server.reportResult(ds.slots['0xAAA'], 0); // 나는 내가 이겼다
+as(B); await server.reportResult(ds.slots['0xBBB'], 0); // 상대도 자기가 이겼다
+const dsAfter = await $global.getRoomState(droom.roomId);
+check('서로 다른 승자를 대면 resultMismatch', dsAfter.resultMismatch === true, dsAfter.resultMismatch);
+check('양쪽 신고가 남는다', Object.keys(dsAfter.reports || {}).length === 2, dsAfter.reports);
 
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);

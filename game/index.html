@@ -148,7 +148,16 @@
       <div class="shop">
         <p class="shop-title" data-i18n="shopVx">VX — Real-money</p>
         <div class="unit-grid" id="premium-grid"></div>
+        <!-- 유닛이 아닌 유료 항목(배속 등). 카드 모양이 달라 자리를 갈라 둔다. -->
+        <div id="premium-items"></div>
         <p id="vx-note" class="pvp-detail"></p>
+      </div>
+
+      <!-- 광고. **볼 광고가 없으면 이 칸이 통째로 사라진다** — 눌러도 아무 일이 없는
+           버튼은 고장으로 읽힌다 (`net/ads.ts`). -->
+      <div class="shop" id="ad-box" hidden>
+        <button id="btn-ad-coins" class="btn">Watch an ad</button>
+        <p id="ad-note" class="pvp-detail"></p>
       </div>
 
       <div class="menu">
@@ -175,6 +184,8 @@
       <p id="result-reward" class="reward"></p>
       <!-- 점수 변동. 서버가 계산해 돌려주므로 보상보다 늦게 채워진다 (app/match-scene.ts). -->
       <p id="result-rating" class="result-rating" hidden></p>
+      <!-- 판이 끝난 뒤 광고로 보상 2배. 서버가 지불한 값을 한 번 더 준다. -->
+      <button id="btn-ad-double" class="btn btn-ad" hidden>Watch an ad — double it</button>
       <div class="menu menu-row">
         <button id="btn-again" class="btn btn-primary" data-i18n="playAgain">Play Again</button>
         <button id="btn-lobby" class="btn" data-i18n="toLobby">Lobby</button>

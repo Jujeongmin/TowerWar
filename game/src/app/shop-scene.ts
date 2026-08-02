@@ -10,6 +10,7 @@
  * 씬마다 localStorage를 만지면 어느 쪽이 최신인지 알 수 없게 된다.
  */
 import {
+  canUseTempo,
   ownsUnitKind,
   upgradeCostOf,
   upgradeLevelOf,
@@ -19,6 +20,12 @@ import {
   type UpgradeKind,
 } from '../account/account';
 import { speedMulFor } from '../sim/config';
+
+/**
+ * 광고 한 번에 주는 코인. **`server.js` 의 `AD_COINS` 와 같아야 한다** — 여기 값은
+ * 버튼에 적는 용도일 뿐이고, 실제로 주는 것은 서버다. 어긋나면 화면이 거짓말을 한다.
+ */
+const AD_COINS = 60;
 import {
   MAX_UNIT_POWER,
   SHOP_PREMIUM_ORDER,
@@ -32,7 +39,8 @@ import {
   tierOf,
   type UnitKind,
 } from '../units';
-import { isPurchasable } from '../net/vx';
+import { isAdReady } from '../net/ads';
+import { isPurchasable, TEMPO_ITEM } from '../net/vx';
 import { t } from '../i18n';
 import type { Scene } from './scene';
 
@@ -61,6 +69,10 @@ export class ShopScene implements Scene {
   private readonly unitCards: { kind: UnitKind; el: HTMLButtonElement }[];
   private readonly premiumCards: { kind: UnitKind; el: HTMLButtonElement }[];
   private readonly vxNote: HTMLElement;
+  private readonly adBox: HTMLElement;
+  private readonly adBtn: HTMLButtonElement;
+  private readonly adNote: HTMLElement;
+  private readonly tempoRow: HTMLButtonElement;
 
   constructor(
     private readonly root: HTMLElement,
@@ -73,15 +85,56 @@ export class ShopScene implements Scene {
      * 새 탭으로 연다 (`net/vx.ts`). 열 수 없으면 `false` 를 돌려준다.
      */
     private readonly openVxShop: () => Promise<boolean>,
+    /** 광고를 보고 코인. `null` 이면 성공, 아니면 실패 이유. */
+    private readonly watchAdForCoins: () => Promise<string | null>,
     back: () => void,
   ) {
     const coins = root.querySelector<HTMLElement>('#shop-coins');
     const grid = root.querySelector<HTMLElement>('#unit-grid');
     const pgrid = root.querySelector<HTMLElement>('#premium-grid');
     const vxNote = root.querySelector<HTMLElement>('#vx-note');
+    const pitems = root.querySelector<HTMLElement>('#premium-items');
+    const adBox = root.querySelector<HTMLElement>('#ad-box');
+    const adBtn = root.querySelector<HTMLButtonElement>('#btn-ad-coins');
+    const adNote = root.querySelector<HTMLElement>('#ad-note');
     const backBtn = root.querySelector<HTMLButtonElement>('#btn-shop-back');
-    if (!coins || !grid || !pgrid || !vxNote || !backBtn) throw new Error('상점 DOM이 예상과 다릅니다');
+    if (!coins || !grid || !pgrid || !vxNote || !pitems || !adBox || !adBtn || !adNote || !backBtn) {
+      throw new Error('상점 DOM이 예상과 다릅니다');
+    }
     this.vxNote = vxNote;
+    this.adBox = adBox;
+    this.adBtn = adBtn;
+    this.adNote = adNote;
+
+    // **유닛이 아닌 유료 항목.** 지금은 배속 하나뿐이라 카드도 하나다.
+    const tempo = document.createElement('button');
+    tempo.className = 'shop-row premium-row';
+    tempo.id = 'buy-tempo';
+    tempo.innerHTML = `
+      <span class="shop-head">
+        <span class="shop-name" data-role="name"></span>
+        <span class="shop-price" data-role="state"></span>
+      </span>
+      <span class="shop-foot"><span class="shop-effect" data-role="blurb"></span></span>
+    `;
+    tempo.addEventListener('click', () => {
+      // 이미 가진 것이면 누를 이유가 없다 (`render` 가 비활성으로 둔다).
+      void this.openVxShop().then((ok) => {
+        if (!ok) this.vxNote.textContent = t().vxOpenFailed;
+      });
+    });
+    pitems.appendChild(tempo);
+    this.tempoRow = tempo;
+
+    adBtn.addEventListener('click', () => {
+      // 광고를 보는 동안 두 번 눌리면 두 번 재생된다.
+      adBtn.disabled = true;
+      this.adNote.textContent = '';
+      void this.watchAdForCoins().then((err) => {
+        this.adNote.textContent = err === null ? '' : adMessage(err);
+        this.render();
+      });
+    });
     this.coins = coins;
     backBtn.addEventListener('click', back);
 
@@ -244,9 +297,40 @@ export class ShopScene implements Scene {
     }
     // 자산 id 표(`ASSET_IDS`)가 비어 있으면 아직 팔 수 없다. 배포 전에는 늘 이 상태다 —
     // 이유를 안 적으면 버튼이 왜 죽어 있는지 알 수가 없다.
+    // 배속. 유닛이 아니라 능력이라 카드 모양이 다르다.
+    const hasTempo = canUseTempo(a);
+    const tempoSellable = isPurchasable(TEMPO_ITEM);
+    anyPurchasable = anyPurchasable || tempoSellable;
+    set(this.tempoRow, 'name', t().tempoItem);
+    set(this.tempoRow, 'blurb', t().tempoItemBlurb);
+    set(this.tempoRow, 'state', hasTempo ? t().owned : tempoSellable ? t().buyWithVx : t().comingSoon);
+    this.tempoRow.classList.toggle('is-owned', hasTempo);
+    this.tempoRow.disabled = hasTempo || !tempoSellable;
+
     this.vxNote.textContent = anyPurchasable ? '' : t().vxNotListed;
     this.vxNote.hidden = anyPurchasable;
+
+    // **볼 광고가 없으면 칸을 통째로 숨긴다.** 눌러도 아무 일이 없는 버튼은 고장으로
+    // 읽힌다 — VX 상품이 없을 때 `준비 중` 으로 두는 것과 같은 규칙이다.
+    this.adBox.hidden = !isAdReady();
+    this.adBtn.textContent = t().adWatch(AD_COINS);
+    this.adBtn.disabled = false;
   }
+}
+
+/**
+ * 서버가 거절한 이유를 화면 문구로.
+ *
+ * **서버가 코드로 던진다** (`ad_limit` 등). 전에는 한국어 문장을 던지고 여기서
+ * 문자열을 맞춰 봤는데, 간격 제한이 "광고를 안 봤다"로 표시되는 버그가 났고
+ * 영어 화면에서는 애초에 안 맞았다.
+ */
+function adMessage(err: string): string {
+  if (err === 'notFinished') return t().adFailed;
+  if (err === 'offline') return t().adUnavailable;
+  if (err.includes('ad_limit')) return t().adLimit;
+  if (err.includes('ad_cooldown')) return t().adCooldown;
+  return t().adFailed;
 }
 
 function set(row: HTMLElement, role: string, text: string): void {

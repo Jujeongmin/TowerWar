@@ -15,6 +15,7 @@
  * 씬들은 `current` 를 읽고 콜백으로 사기만 한다. 온라인/오프라인 분기는 이 파일에만 있다.
  */
 import type { Agent8Client, BoardEntry } from '../net/agent8';
+import { watchRewardedAd } from '../net/ads';
 import { entitlementsFromAssets } from '../net/vx';
 import type { ProfileId } from '../profiles';
 import type { UnitKind } from '../units';
@@ -168,6 +169,41 @@ export class AccountStore {
         onChange();
       })();
     });
+  }
+
+  // ── 광고 보상 ──────────────────────────────────────────────────
+  //
+  // **광고를 먼저 보고, 끝까지 본 경우에만 서버를 부른다** (`watchRewardedAd`).
+  // 중간에 닫았는데 보상을 주면 광고를 볼 이유가 없어진다.
+
+  /**
+   * 광고를 보고 코인을 받는다. 실패 이유를 문자열로 돌려준다 — `null` 이면 성공이다.
+   *
+   * 오프라인에서는 안 준다. 코인을 로컬로 주면 콘솔에서 고쳐 두고 접속하는 것과
+   * 같아진다 (이 파일 머리말).
+   */
+  async watchAdForCoins(): Promise<string | null> {
+    if (!this.net) return 'offline';
+    if (!(await watchRewardedAd())) return 'notFinished';
+    try {
+      this.setLocal(fromRemote(await this.net.claimAdCoins()));
+      return null;
+    } catch (e) {
+      // 서버가 거절했다 (하루 상한·간격). 문구는 화면이 고른다.
+      return String((e as Error)?.message ?? 'failed');
+    }
+  }
+
+  /** 판이 끝난 뒤 광고를 보고 보상을 한 번 더. 금액은 서버가 정한다. */
+  async watchAdForDouble(): Promise<string | null> {
+    if (!this.net) return 'offline';
+    if (!(await watchRewardedAd())) return 'notFinished';
+    try {
+      this.setLocal(fromRemote(await this.net.claimDoubleReward()));
+      return null;
+    } catch (e) {
+      return String((e as Error)?.message ?? 'failed');
+    }
   }
 
   /** 강화 구매. 못 사면 조용히 아무 일도 안 일어난다 — 버튼이 이미 비활성이다. */

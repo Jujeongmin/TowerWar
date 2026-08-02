@@ -292,6 +292,16 @@ export class Agent8Client {
     return fn.call(this.server, this.server.account, handler);
   }
 
+  /** 광고를 보고 코인을 받는다. 금액·횟수 제한은 전부 서버가 정한다. */
+  async claimAdCoins(): Promise<RemoteAccount> {
+    return await withTimeout(this.server.remoteFunction('claimAdCoins', []), '광고 보상');
+  }
+
+  /** 판이 끝난 뒤 보상을 한 번 더. 금액은 서버가 지불한 값 그대로다. */
+  async claimDoubleReward(): Promise<RemoteAccount> {
+    return await withTimeout(this.server.remoteFunction('claimDoubleReward', []), '두 배 보상');
+  }
+
   /**
    * 유료 항목을 계정에 연다. **서버가 이걸 검증하지 못한다** —
    * `server.js` 의 `grantEntitlement` 주석에 그 이유와 남은 구멍이 적혀 있다.

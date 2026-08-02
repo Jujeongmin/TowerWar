@@ -32,12 +32,22 @@ import type { UnitKind } from '../units';
  *   2. 아래 표를 채운다
  *   3. `subscribeAsset` 이 그 id를 실제로 내려주는지 콘솔에서 확인한다
  */
-export const ASSET_IDS: Partial<Record<UnitKind, string>> = {
+export const ASSET_IDS: Partial<Record<PremiumItem, string>> = {
   // beergang_rainbow: '<Verse8 자산 id>',
+  // tempo_boost: '<Verse8 자산 id>',
 };
 
+/**
+ * 살 수 있는 유료 항목. **유닛만 있는 게 아니다** — 배속(`tempo_boost`)은 종류가 아니라
+ * 능력이다. `server.js` 의 `PREMIUM_ITEMS` 와 같은 값이어야 한다.
+ */
+export type PremiumItem = UnitKind | 'tempo_boost';
+
+/** 배속을 여는 항목의 id. `account.ts` 의 `TEMPO_ITEM` 과 같아야 한다. */
+export const TEMPO_ITEM = 'tempo_boost';
+
 /** 이 항목을 살 수 있는가. 자산 id가 아직 없으면 상점에 "준비 중"으로 나간다. */
-export function isPurchasable(item: UnitKind): boolean {
+export function isPurchasable(item: PremiumItem): boolean {
   return typeof ASSET_IDS[item] === 'string' && ASSET_IDS[item]!.length > 0;
 }
 
@@ -47,9 +57,9 @@ export function isPurchasable(item: UnitKind): boolean {
  * 수량이 1 이상이면 가진 것으로 본다. **소모품이 아니다** — 한 번 사면 계속 쓰는
  * 물건이라 수량을 세지 않는다.
  */
-export function entitlementsFromAssets(assets: Record<string, number>): UnitKind[] {
-  const out: UnitKind[] = [];
-  for (const [item, assetId] of Object.entries(ASSET_IDS) as [UnitKind, string][]) {
+export function entitlementsFromAssets(assets: Record<string, number>): PremiumItem[] {
+  const out: PremiumItem[] = [];
+  for (const [item, assetId] of Object.entries(ASSET_IDS) as [PremiumItem, string][]) {
     if (assetId && (assets[assetId] ?? 0) > 0) out.push(item);
   }
   return out;

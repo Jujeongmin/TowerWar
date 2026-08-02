@@ -9,6 +9,7 @@
 import { rewardFor, type Reward } from '../account/account';
 import type { RatingChange } from '../account/store';
 import { audio } from '../audio';
+import { isAdReady } from '../net/ads';
 import { t } from '../i18n';
 import { Lockstep } from '../net/lockstep';
 import { TICK_DT, speedMulFor } from '../sim/config';
@@ -98,6 +99,10 @@ export class MatchScene implements Scene {
     private readonly resignBtn: HTMLButtonElement,
     /** 캔버스 위 배속 토글. **살 수 있는 사람에게만** 보인다. */
     private readonly tempoBtn: HTMLButtonElement,
+    /** 결과 화면의 [광고 보고 두 배] 버튼. */
+    private readonly adDoubleBtn: HTMLButtonElement,
+    /** 광고를 보고 보상 두 배. `null` 이면 성공, 아니면 실패 이유. */
+    private readonly watchAdForDouble: () => Promise<string | null>,
   ) {
     const again = resultRoot.querySelector<HTMLButtonElement>('#btn-again');
     const lobby = resultRoot.querySelector<HTMLButtonElement>('#btn-lobby');
@@ -111,6 +116,21 @@ export class MatchScene implements Scene {
     // 되돌릴 수 없고 보상도 0이라는 것은 버튼 글자 자체가 알린다.
     this.resignBtn.addEventListener('click', () => this.resign());
     this.tempoBtn.addEventListener('click', () => this.toggleTempo());
+
+    this.adDoubleBtn.addEventListener('click', () => {
+      // 광고를 보는 동안 두 번 눌리면 두 번 재생된다. 성공하면 버튼이 사라지므로
+      // 되살릴 필요가 없다 — **판당 한 번**이다 (서버의 `doubled` 가 자물쇠).
+      this.adDoubleBtn.disabled = true;
+      void this.watchAdForDouble().then((err) => {
+        if (err === null) {
+          this.adDoubleBtn.hidden = true;
+          audio.play('purchase');
+          return;
+        }
+        // 실패했으면 다시 누를 수 있어야 한다 — 광고가 안 뜬 것일 수도 있다.
+        this.adDoubleBtn.disabled = false;
+      });
+    });
   }
 
   enter(): void {
@@ -127,6 +147,7 @@ export class MatchScene implements Scene {
     // 매치 밖에서 남아 있으면 로비 위에 떠서 아무 데도 안 걸린다.
     this.resignBtn.hidden = true;
     this.tempoBtn.hidden = true;
+    this.adDoubleBtn.hidden = true;
     this.hideResult();
   }
 
@@ -351,6 +372,13 @@ export class MatchScene implements Scene {
     // **화면에 뜬 글자와 같은 소리를 낸다.** 항복도 패배고, 무승부는 이긴 소리를
     // 내면 안 된다 — 소리가 화면보다 먼저 들리므로 어긋나면 그게 더 눈에 띈다.
     audio.play(!this.resigned && w !== 0 && w === local ? 'victory' : 'defeat');
+
+    // **항복은 보상이 0이라 두 배도 없다.** 서버도 `paid` 가 없어 거절한다.
+    // 광고가 안 붙어 있으면(`isAdReady`) 아예 안 보여 준다 — 눌러도 아무 일이 없는
+    // 버튼은 고장으로 읽힌다.
+    this.adDoubleBtn.hidden = this.resigned || !isAdReady();
+    this.adDoubleBtn.disabled = false;
+    this.adDoubleBtn.textContent = t().adDouble;
 
     if (this.resigned) {
       this.resultReward.textContent = t().resignNoReward;

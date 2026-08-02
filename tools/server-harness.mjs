@@ -828,6 +828,62 @@ userStates.set('0xGGG', {
 const vxClean = await server.getAccount();
 check('중복·모르는 항목이 걸러진다', JSON.stringify(vxClean.entitlements) === JSON.stringify(['beergang_rainbow']), vxClean.entitlements);
 
+// 51) 광고 코인 — 금액은 서버가 정하고, 간격·하루 상한이 걸린다
+const H = { account: '0xHHH', roomId: null };
+as(H);
+userStates.set('0xHHH', { ...defaultsFor('0xHHH'), coins: 0 });
+const ad1 = await server.claimAdCoins();
+check('광고 코인 +60', ad1.coins === 60, ad1.coins);
+let aerr = null;
+try { await server.claimAdCoins(); } catch (e) { aerr = e.message; }
+check('연달아 부르면 거절', aerr === 'ad_cooldown', aerr);
+
+// 간격을 넘긴 것으로 만들고 하루 상한까지 밀어붙인다
+for (let i = 1; i < 10; i++) {
+  const cur = userStates.get('0xHHH');
+  userStates.set('0xHHH', { ...cur, adAt: 0 });
+  await server.claimAdCoins();
+}
+check('하루 10번까지 = 600코인', (await server.getAccount()).coins === 600, (await server.getAccount()).coins);
+userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 });
+aerr = null;
+try { await server.claimAdCoins(); } catch (e) { aerr = e.message; }
+check('하루 상한을 넘으면 거절', aerr === 'ad_limit', aerr);
+
+// 날이 바뀌면 다시 받는다
+userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0, adDay: 0 });
+const ad2 = await server.claimAdCoins();
+check('날이 바뀌면 다시 받는다', ad2.coins === 660, ad2.coins);
+
+// 52) 광고 2배 — 서버가 지불한 금액을 그대로 한 번 더, 판당 한 번
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', coins: 0 });
+as(A);
+const droom2 = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(droom2.code);
+await server.setReady(true);
+await server.$roomTick(300, droom2.roomId);
+age(droom2.roomId);
+const ds2 = await $global.getRoomState(droom2.roomId);
+as(A);
+const won = await server.reportResult(ds2.slots['0xAAA'], 5);
+check('승리 보상 = 100 + 5*8', won.coins === 140, won.coins);
+const dbl = await server.claimDoubleReward();
+check('광고 2배 = 140 + 140', dbl.coins === 280, dbl.coins);
+let derr = null;
+try { await server.claimDoubleReward(); } catch (e) { derr = e.message; }
+check('판당 한 번만', derr === 'already_claimed', derr);
+
+// 53) 보상을 안 받은 사람은 2배도 못 받는다
+as(C); await server.leaveMatch().catch(() => {});
+const eroom2 = await server.createRoom();
+let cerr = null;
+try { await server.claimDoubleReward(); } catch (e) { cerr = e.message; }
+check('안 끝난 판에서는 거절', cerr === 'not_finished_match', cerr);
+
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  ← ' + JSON.stringify(r.extra)}`);

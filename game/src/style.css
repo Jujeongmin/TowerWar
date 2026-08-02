@@ -226,6 +226,33 @@ body {
   touch-action: none;
 }
 
+/* 유료 항목 줄(배속 등). 코인 강화 줄과 같은 모양이되 테두리로 갈라 둔다 —
+   누르면 코인이 아니라 외부 결제 창이 열린다. */
+.premium-row {
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.premium-row.is-owned {
+  border-color: rgba(125, 211, 252, 0.45);
+  opacity: 1;
+}
+
+/* 광고 버튼. 코인을 주는 쪽이라 코인 색(호박)을 쓴다. */
+.btn-ad {
+  border-color: rgba(251, 191, 36, 0.5);
+  color: #fbbf24;
+}
+
+.btn-ad:hover {
+  border-color: #fbbf24;
+}
+
+/* 결과 화면의 두 배 버튼은 `.screen-overlay` 안이라 클릭을 되살려야 한다. */
+#btn-ad-double {
+  pointer-events: auto;
+  margin-top: 4px;
+}
+
 .account-bar {
   position: absolute;
   top: calc(20px + env(safe-area-inset-top));

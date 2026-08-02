@@ -108,6 +108,16 @@ export interface Strings {
   volMaster: string;
   volSfx: string;
   volBgm: string;
+  // 유료·광고
+  tempoItem: string;
+  tempoItemBlurb: string;
+  owned: string;
+  adWatch: (coins: number) => string;
+  adDouble: string;
+  adUnavailable: string;
+  adFailed: string;
+  adLimit: string;
+  adCooldown: string;
 }
 
 const en: Strings = {
@@ -207,6 +217,15 @@ const en: Strings = {
   volMaster: 'Overall',
   volSfx: 'Effects',
   volBgm: 'Music',
+  tempoItem: 'Speed Boost',
+  tempoItemBlurb: 'Toggle 1.5× / 2× during a match',
+  owned: 'Owned',
+  adWatch: (coins) => `Watch an ad · +${coins}`,
+  adDouble: 'Watch an ad — double it',
+  adUnavailable: 'No ad available right now',
+  adFailed: 'Ad was not finished, so no reward',
+  adLimit: "You've claimed all of today's ads",
+  adCooldown: 'Try again in a moment',
 };
 
 const ko: Strings = {
@@ -306,6 +325,15 @@ const ko: Strings = {
   volMaster: '전체',
   volSfx: '효과음',
   volBgm: '배경음',
+  tempoItem: '배속',
+  tempoItemBlurb: '판에서 1.5× / 2× 토글',
+  owned: '보유 중',
+  adWatch: (coins) => `광고 보고 +${coins}`,
+  adDouble: '광고 보고 두 배 받기',
+  adUnavailable: '지금은 볼 광고가 없습니다',
+  adFailed: '광고를 끝까지 안 봐서 보상이 없습니다',
+  adLimit: '오늘 받을 수 있는 광고를 다 받았습니다',
+  adCooldown: '조금 뒤에 다시 시도하세요',
 };
 
 const TABLE: Record<Lang, Strings> = { en, ko };

@@ -201,6 +201,27 @@ const REWARD_PER_TOWER = 8;
 /** 한 판에서 들고 있을 수 있는 타워 수 상한. 보고가 부풀려져도 여기서 잘린다. */
 const MAX_TOWERS = 12;
 
+// ── 보상형 광고 ──────────────────────────────────────────────────
+//
+// **서버는 광고를 봤는지 확인할 수 없다.** 광고 SDK는 클라이언트에 있고, 이 샌드박스에서
+// 그쪽에 물어볼 방법이 없다 (`grantEntitlement` 와 같은 구멍이다).
+//
+// 그래서 **막을 수 있는 것만 막는다**:
+//   1. 금액을 서버가 정한다. 클라이언트가 액수를 보내면 무한 코인이 된다
+//   2. 횟수를 제한한다. 확인은 못 해도 **얼마나 자주** 는 서버가 안다
+//
+// 이걸로 "광고를 안 보고 부르는" 것은 못 막지만, 그래도 **하루에 받을 수 있는 총액이
+// 정해진다.** 완전히 막으려면 광고 제공자가 서버로 보내 주는 검증 콜백이 필요하다.
+
+/** 광고 한 번에 주는 코인. 승리 보상(100)보다 낮게 잡았다 — 판을 이기는 편이 낫다. */
+const AD_COINS = 60;
+/** 광고 사이 최소 간격(ms). 연타로 하루치를 몇 초에 소진하지 못하게 한다. */
+const AD_COOLDOWN_MS = 90000;
+/** 하루 상한. 이걸로 광고 코인의 총량이 정해진다. */
+const AD_DAILY_MAX = 10;
+/** 하루의 길이(ms). UTC 기준으로 자른다 — 서버가 시간대를 모른다. */
+const DAY_MS = 86400000;
+
 function num(v) {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
@@ -388,6 +409,10 @@ function defaultAccount(account) {
     // 유료(VX)로 열린 것들. 코인으로 산 `ownedUnits` 와 갈라 둔다 — 획득 경로가 다르고,
     // 코인 목록에 섞으면 환불·초기화 때 무엇이 유료였는지 구분이 안 된다.
     entitlements: [],
+    // 광고 보상 기록. 마지막으로 받은 시각과, 그날 몇 번 받았는지.
+    adAt: 0,
+    adCount: 0,
+    adDay: 0,
   };
 }
 
@@ -418,6 +443,9 @@ function normalizeAccount(raw, account) {
     // 여기 못 쓴다. 0은 "많이 져서 0점"과 "한 번도 안 쟀음"을 구분 못 한다.
     rating: numOr(raw.rating, DEFAULT_RATING),
     entitlements: cleanEntitlements(raw.entitlements),
+    adAt: num(raw.adAt),
+    adCount: num(raw.adCount),
+    adDay: num(raw.adDay),
   };
 }
 
@@ -555,6 +583,68 @@ class Server {
       const a = await this.#loadAccount();
       if (a.entitlements.includes(item)) return a;
       return await this.#saveAccount({ ...a, entitlements: [...a.entitlements, item] });
+    });
+  }
+
+  /**
+   * 광고를 보고 코인을 받는다.
+   *
+   * **광고를 봤는지 서버가 확인할 수 없다** (위 주석). 막는 것은 두 가지뿐이다 —
+   * 금액을 서버가 정하고, 간격과 하루 상한을 건다.
+   *
+   * 거절할 때 던지는 이유: 화면이 "왜 안 되는지"를 말해야 한다. 조용히 실패하면
+   * 광고를 다 보고도 아무 일이 없는 것으로 보인다.
+   */
+  async claimAdCoins() {
+    return await $lock(`acct:${$sender.account}`, async () => {
+      const a = await this.#loadAccount();
+      const now = Date.now();
+      // UTC 기준 날짜. 서버가 사용자 시간대를 모르므로 한 기준으로 잘라야
+      // 사람마다 상한이 달라지지 않는다.
+      const day = Math.floor(now / DAY_MS);
+      const count = a.adDay === day ? a.adCount : 0;
+
+      // **기계가 읽는 코드로 던진다.** 화면 문구는 언어마다 달라야 하는데(§-40),
+      // 여기서 한국어 문장을 던지면 클라이언트가 그 문장을 문자열로 맞춰 봐야 한다 —
+      // 실제로 그렇게 했다가 간격 제한이 "광고를 안 봤다"로 표시되는 버그를 냈다.
+      if (count >= AD_DAILY_MAX) throw new Error('ad_limit');
+      if (now - a.adAt < AD_COOLDOWN_MS) throw new Error('ad_cooldown');
+
+      return await this.#saveAccount({
+        ...a,
+        coins: a.coins + AD_COINS,
+        adAt: now,
+        adDay: day,
+        adCount: count + 1,
+      });
+    });
+  }
+
+  /**
+   * 판이 끝난 뒤 광고를 보고 **보상을 한 번 더** 받는다 (합쳐서 2배).
+   *
+   * **금액은 방 상태에 적힌 값을 쓴다** (`#grantReward` 가 지불하면서 남긴다).
+   * 클라이언트가 액수를 보내면 무한 코인이 되고, 다시 계산하면 그때의 타워 수를
+   * 또 믿어야 한다 — 이미 서버가 잘라서 지불한 값을 그대로 한 번 더 주는 것이 가장 좁다.
+   *
+   * **판당 한 번.** `doubled` 가 그 자물쇠다 (`rewarded` 와 같은 방식).
+   */
+  async claimDoubleReward() {
+    const state = await $room.getRoomState();
+    if (!state || state.phase !== PHASE_FINISHED) throw new Error('not_finished_match');
+
+    const account = $sender.account;
+    const paid = num((state.paid || {})[account]);
+    if (paid <= 0) throw new Error('no_reward');
+
+    const doubled = { ...(state.doubled || {}) };
+    if (doubled[account]) throw new Error('already_claimed');
+    doubled[account] = true;
+    await $room.updateRoomState({ doubled });
+
+    return await $lock(`acct:${account}`, async () => {
+      const a = await this.#loadAccount();
+      return await this.#saveAccount({ ...a, coins: a.coins + paid });
     });
   }
 
@@ -1047,12 +1137,15 @@ class Server {
     // 두 번째 보고는 그 값을 그대로 읽으므로, 양쪽이 같은 판정을 받는다.
     const played = (state.endedAt || Date.now()) - (state.startedAt || 0);
     const rated = state.startedAt > 0 && played >= MIN_RATED_MS;
+    // 락 밖에서도 지불액을 알아야 한다 — 광고 2배가 이 값을 그대로 한 번 더 준다.
+    let paid = 0;
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();
       const outcome = winnerSlot === 0 ? 'draw' : winnerSlot === slot ? 'win' : 'loss';
       const base = outcome === 'win' ? REWARD_WIN : outcome === 'draw' ? REWARD_DRAW : REWARD_LOSS;
       const kept = Math.min(MAX_TOWERS, num(towers));
       const total = base + kept * REWARD_PER_TOWER;
+      paid = total;
       const solo = !!state.solo;
       return await this.#saveAccount({
         ...a,
@@ -1066,6 +1159,9 @@ class Server {
         rating: rated ? this.#ratingAfter(state, slot, outcome, a.rating) : a.rating,
       });
     }).then(async (saved) => {
+      // **얼마를 줬는지 방에 적어 둔다.** 광고 2배(`claimDoubleReward`)가 이 값을
+      // 그대로 한 번 더 준다 — 클라이언트가 액수를 보내면 무한 코인이 된다.
+      await $room.updateRoomState({ paid: { ...(state.paid || {}), [$sender.account]: paid } });
       // 순위표는 계정 자물쇠 **밖에서** 고친다. 안에서 부르면 계정 락을 쥔 채로
       // 순위표 락을 기다리게 되고, 두 사람이 동시에 보고하면 서로를 막는다.
       //

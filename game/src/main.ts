@@ -18,6 +18,7 @@ import { SettingsScene } from './app/settings-scene';
 import { ShopScene } from './app/shop-scene';
 import { Agent8Client } from './net/agent8';
 import { audio, installAudioUnlock } from './audio';
+import { devAdProvider, setAdProvider } from './net/ads';
 import { openShopWindow } from './net/vx';
 import { applyStaticText, getLang, setLang } from './i18n';
 import { Renderer } from './render/renderer';
@@ -129,6 +130,7 @@ const shop = new ShopScene(
   buy,
   pickUnit,
   openVxShop,
+  () => store.watchAdForCoins(),
   () => switchTo(lobby),
 );
 const nameScene = new NameScene(
@@ -153,6 +155,8 @@ const match = new MatchScene(
   () => plan,
   need<HTMLButtonElement>('btn-resign'),
   need<HTMLButtonElement>('btn-tempo'),
+  need<HTMLButtonElement>('btn-ad-double'),
+  () => store.watchAdForDouble(),
 );
 
 /**
@@ -180,6 +184,10 @@ function showFirstScreen(): void {
 
 // 첫 입력에서 오디오를 깨운다. 모바일은 제스처 없이 소리를 못 낸다.
 installAudioUnlock();
+
+// **광고는 Verse8 쪽에서 붙인다** (`net/ads.ts`). 개발 빌드에서만 가짜를 물려 보상
+// 흐름을 시험할 수 있게 한다 — 프로덕션에서는 이 분기가 통째로 떨어져 나간다.
+if (import.meta.env.DEV) setAdProvider(devAdProvider());
 // 버튼 소리. **한 곳에서 위임으로 잡는다** — 씬마다 붙이면 새 버튼이 생길 때마다
 // 잊어버린다. 캔버스 위 버튼(항복·배속)까지 같이 잡힌다.
 document.addEventListener('pointerdown', (e) => {

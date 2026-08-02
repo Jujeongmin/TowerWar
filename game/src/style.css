@@ -205,6 +205,27 @@ body {
   cursor: default;
 }
 
+/* 음량 한 줄. 라벨과 슬라이더가 한 쌍이라 `label` 로 감싼다 — 라벨을 눌러도 잡힌다. */
+.vol-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.vol-label {
+  font-size: 13px;
+  color: rgba(170, 186, 202, 0.85);
+}
+
+.vol-slider {
+  width: 100%;
+  accent-color: #3fbdf1;
+  /* 끌다가 화면이 같이 스크롤되면 조절이 안 된다. */
+  touch-action: none;
+}
+
 .account-bar {
   position: absolute;
   top: calc(20px + env(safe-area-inset-top));

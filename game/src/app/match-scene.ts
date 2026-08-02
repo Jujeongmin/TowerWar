@@ -8,12 +8,13 @@
  */
 import { rewardFor, type Reward } from '../account/account';
 import type { RatingChange } from '../account/store';
+import { audio } from '../audio';
 import { t } from '../i18n';
 import { Lockstep } from '../net/lockstep';
 import { TICK_DT, speedMulFor } from '../sim/config';
 import { generateMap } from '../sim/maps';
 import { createMatch, step, tempoScaleOf } from '../sim/sim';
-import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
+import type { MatchState, PlayerId, PlayerMods, TickEvents } from '../sim/types';
 import { InputController } from '../render/input';
 import type { Renderer } from '../render/renderer';
 import { stepDownKind, unitPowerOf, type UnitKind } from '../units';
@@ -220,12 +221,39 @@ export class MatchScene implements Scene {
     // [다시 하기]로 들어온 판이면 앞 판의 항복 상태가 남아 있다. 안 지우면
     // 새 판을 이기고도 '항복 — 보상 없음'이 뜬다.
     this.resigned = false;
+    audio.setBgm('match');
+    audio.play('match-start');
     this.resignBtn.hidden = false;
     // 배속 버튼은 **살 수 있는 사람에게만** 보인다. 못 켜는 사람에게 죽은 버튼을
     // 보여 주면 눌러 보고 왜 안 되는지 묻게 된다.
     this.tempoBtn.hidden = !this.canTempo();
     this.paintTempo();
     this.hideResult();
+  }
+
+  /** 내 경로 수. 소리를 내는 데만 쓴다 — 열렸는지 닫혔는지는 이 값의 변화로 안다. */
+  private myRoutes(): number {
+    const local = this.input?.ui.local ?? 1;
+    return this.state.routes.reduce((n, r) => n + (r.owner === local ? 1 : 0), 0);
+  }
+
+  /**
+   * 이 틱에 난 일을 소리로 낸다. **읽기만 한다** — 렌더러와 같은 규칙이고,
+   * 소리가 시뮬레이션에 흘러들면 서버 권위 PVP에서 결과가 갈라진다.
+   *
+   * 경로 개설·절단은 `TickEvents` 에 없다 (자동으로 닫힌 것만 `routesClosed` 로 온다).
+   * **내 경로 수의 변화로 안다** — 명령이 적용되는 틱에 정확히 한 번 바뀐다.
+   * 남의 경로는 안 센다: 상대가 그을 때마다 내 쪽에서 소리가 나면 무엇이 내 조작인지
+   * 알 수가 없다.
+   */
+  private hear(ev: TickEvents, routesBefore: number): void {
+    // 점령은 이 게임에서 가장 중요한 사건이다. 뺏긴 것도 들려야 한다.
+    if (ev.captures.length > 0) audio.play('capture');
+    if (ev.clashes.length > 0) audio.play('clash');
+
+    const now = this.myRoutes();
+    if (now > routesBefore) audio.play('route-open');
+    else if (now < routesBefore) audio.play('route-cut');
   }
 
   /** 이 판에서 내가 배속을 켤 수 있는가. 판정은 `mods` 에 있고 서버가 정한다. */
@@ -273,8 +301,10 @@ export class MatchScene implements Scene {
       // null = 상대 입력이 아직 안 왔다. 시간을 누산기에 남겨 두고 다음 프레임에 다시 본다.
       if (commands === null) break;
 
+      const before = this.myRoutes();
       const events = step(this.state, commands);
       this.renderer.ingest(this.state, events);
+      this.hear(events, before);
       this.accumulator -= TICK_DT;
     }
 
@@ -317,6 +347,10 @@ export class MatchScene implements Scene {
     // 여기서 먼저 지운다.
     this.resultRating.hidden = true;
     this.resultRating.textContent = '';
+
+    // **화면에 뜬 글자와 같은 소리를 낸다.** 항복도 패배고, 무승부는 이긴 소리를
+    // 내면 안 된다 — 소리가 화면보다 먼저 들리므로 어긋나면 그게 더 눈에 띈다.
+    audio.play(!this.resigned && w !== 0 && w === local ? 'victory' : 'defeat');
 
     if (this.resigned) {
       this.resultReward.textContent = t().resignNoReward;

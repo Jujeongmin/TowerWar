@@ -104,6 +104,10 @@ export interface Strings {
   botJoin: (head: string, tail: string, tag: number) => string;
   // 설정
   language: string;
+  sound: string;
+  volMaster: string;
+  volSfx: string;
+  volBgm: string;
 }
 
 const en: Strings = {
@@ -199,6 +203,10 @@ const en: Strings = {
   ],
   botJoin: (head, tail, tag) => `${head}${tail}${tag}`,
   language: 'Language',
+  sound: 'Sound',
+  volMaster: 'Overall',
+  volSfx: 'Effects',
+  volBgm: 'Music',
 };
 
 const ko: Strings = {
@@ -294,6 +302,10 @@ const ko: Strings = {
   ],
   botJoin: (head, tail, tag) => `${head}${tail}${tag}`,
   language: '언어',
+  sound: '소리',
+  volMaster: '전체',
+  volSfx: '효과음',
+  volBgm: '배경음',
 };
 
 const TABLE: Record<Lang, Strings> = { en, ko };

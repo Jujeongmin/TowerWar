@@ -17,6 +17,7 @@ import { PvpScene } from './app/pvp-scene';
 import { SettingsScene } from './app/settings-scene';
 import { ShopScene } from './app/shop-scene';
 import { Agent8Client } from './net/agent8';
+import { audio, installAudioUnlock } from './audio';
 import { openShopWindow } from './net/vx';
 import { applyStaticText, getLang, setLang } from './i18n';
 import { Renderer } from './render/renderer';
@@ -54,7 +55,10 @@ function grantReward(reward: Reward, winnerSlot: number): Promise<RatingChange |
 
 /** 못 사는 구매는 조용히 무시된다 — 버튼이 이미 비활성이라 여기까지 오면 경쟁 상태다. */
 function buy(kind: UpgradeKind): void {
-  void store.buyUpgrade(kind).then(() => shop.refresh());
+  void store.buyUpgrade(kind).then(() => {
+    audio.play('purchase');
+    shop.refresh();
+  });
 }
 
 /**
@@ -71,7 +75,10 @@ async function openVxShop(): Promise<boolean> {
 
 /** 안 가진 생김새면 사고, 가진 것이면 착용한다. 둘 다 못 하면 아무 일도 안 일어난다. */
 function pickUnit(kind: UnitKind): void {
-  void store.pickUnit(kind).then(() => shop.refresh());
+  void store.pickUnit(kind).then(() => {
+    audio.play('purchase');
+    shop.refresh();
+  });
 }
 
 const lobby = new LobbyScene(
@@ -160,6 +167,9 @@ function switchTo(next: Scene): void {
   if (current === next) return; // 버튼 연타 방어
   current?.exit();
   current = next;
+  // **배경음은 매치인지 아닌지로만 가른다.** 씬마다 곡을 두면 로비↔상점을 오가는
+  // 것만으로 음악이 계속 끊긴다 (`audio.setBgm` 이 같은 곡은 무시한다).
+  audio.setBgm(next === match ? 'match' : 'lobby');
   current.enter();
 }
 
@@ -167,6 +177,14 @@ function switchTo(next: Scene): void {
 function showFirstScreen(): void {
   switchTo(store.current.name ? lobby : nameScene);
 }
+
+// 첫 입력에서 오디오를 깨운다. 모바일은 제스처 없이 소리를 못 낸다.
+installAudioUnlock();
+// 버튼 소리. **한 곳에서 위임으로 잡는다** — 씬마다 붙이면 새 버튼이 생길 때마다
+// 잊어버린다. 캔버스 위 버튼(항복·배속)까지 같이 잡힌다.
+document.addEventListener('pointerdown', (e) => {
+  if ((e.target as HTMLElement | null)?.closest('button')) audio.play('tap');
+});
 
 showFirstScreen();
 

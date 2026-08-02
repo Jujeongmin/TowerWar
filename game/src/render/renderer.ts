@@ -25,7 +25,14 @@ import { type Vec } from '../sim/geometry';
 import { routeBlockedBy, towerCount, unitPosition, unitProgressRate } from '../sim/sim';
 import type { MatchState, Owner, PlayerId, Route, TickEvents, Tower } from '../sim/types';
 import { DEFAULT_PROFILE, profileBg, type ProfileId } from '../profiles';
-import { DEFAULT_UNIT_KIND, UNIT_KIND_META, sizeFactorOf, type UnitKind } from '../units';
+import {
+  DEFAULT_UNIT_KIND,
+  MAX_TIER,
+  UNIT_KIND_META,
+  sizeFactorOf,
+  tierOf,
+  type UnitKind,
+} from '../units';
 import { t } from '../i18n';
 import { Profiles } from './profiles';
 import { Sprites, type UnitDir } from './sprites';
@@ -162,6 +169,12 @@ const HUD_BOTTOM = 48;
  *
  * 1.0이면 히스테리시스가 없는 것과 같다. 1.35는 **약 8° 폭의 불감대**에 해당한다.
  */
+/** `#rrggbb` 에 알파를 입힌다. 카탈로그 색이 16진수라 그라데이션에 바로 못 넣는다. */
+function withAlpha(hex: string, a: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
 const DIR_HYSTERESIS = 1.35;
 const UNIT_FPS = 12;
 
@@ -717,9 +730,13 @@ export class Renderer {
         ctx.translate(p.x, p.y);
         // 아우라는 뒤집기 **전에** 그린다. 원이라 뒤집어도 같지만, 뒤집힌 좌표계에서
         // 그리면 나중에 색 순서를 바꿀 때 좌우가 반대가 된다.
-        if (meta.aura === 'rainbow') this.drawRainbowAura(h);
+        this.drawTierAura(kind, h);
         if (facingLeft) ctx.scale(-1, 1);
         ctx.drawImage(sprite.canvas, -w / 2, -h / 2, w, h);
+        // 표식은 **뒤집기를 되돌리고** 그린다. 뒤집힌 채로 그리면 왼쪽으로 가는 유닛의
+        // 표식이 오른쪽부터 채워져 개수가 같은데도 달라 보인다.
+        if (facingLeft) ctx.scale(-1, 1);
+        this.drawTierPips(kind, h);
         ctx.restore();
         continue;
       }
@@ -1046,30 +1063,90 @@ export class Renderer {
   }
 
   /**
-   * 유료 종류의 무지개 아우라. **캐릭터 뒤에 깐다** — 위에 얹으면 재킷 색을 덮는데
-   * 그게 "누구 편인가"의 유일한 신호다 (`units.ts` 의 변형색 주석).
+   * 등급 아우라. **캐릭터 뒤에 깐다** — 위에 얹으면 재킷 색을 덮는데 그게 "누구
+   * 편인가"의 유일한 신호다 (`units.ts` 의 변형색 주석).
    *
-   * 그림이 없어서 코드로 그리는 구분이다. 무지개 비어갱은 기본 스프라이트를 빌려 쓰므로
-   * (`spriteKindOf`) 이게 없으면 기본과 구분이 안 된다. 상점 카드도 같은 것을 CSS로 낸다.
+   * 다섯 종이 같은 캐릭터를 하의 색만 바꿔 구운 것이라 **그림 자체에 세기가 없다.**
+   * 크기 사다리(`sizeFactorOf`)는 폭이 1.0~1.2라 나란히 놓아야 읽힌다 — 아우라가
+   * 실전에서 읽히는 쪽을 맡는다 (2026-08-03 사용자 지시).
    *
-   * 시간으로 색을 돌린다 — 정지 상태로 두면 그냥 얼룩으로 보인다.
+   * **기본 등급은 안 그린다.** 가장 흔한 유닛이 제일 깨끗해야 화면이 안 시끄럽다.
+   * 무지개만 색이 돈다 — 정지색으로 두면 다른 등급과 같은 물건으로 보인다.
    */
-  private drawRainbowAura(h: number): void {
+  private drawTierAura(kind: UnitKind, h: number): void {
+    const meta = UNIT_KIND_META[kind];
+    const tier = tierOf(kind);
+    if (tier <= 0 || !meta.accent) return;
+
     const ctx = this.ctx;
-    const r = h * 0.42;
-    // `time` 은 판 시작부터의 초. 유닛마다 위상을 안 나눈다 — 같은 종류가 같은 색으로
-    // 함께 도는 편이 "이건 특별한 부대"로 읽힌다.
-    const t = (this.time * 0.5) % 1;
+    // 등급이 높을수록 넓고 진하다. 0.28~0.46 반경, 알파 0.22~0.5.
+    const k = tier / MAX_TIER;
+    const r = h * (0.28 + k * 0.18);
+    const alpha = 0.22 + k * 0.28;
+
     const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-    const hue = Math.floor(t * 360);
-    g.addColorStop(0, `hsla(${hue}, 90%, 65%, 0.55)`);
-    g.addColorStop(0.6, `hsla(${(hue + 120) % 360}, 90%, 60%, 0.28)`);
-    g.addColorStop(1, 'hsla(0, 0%, 100%, 0)');
+    if (meta.aura === 'rainbow') {
+      // `time` 은 판 시작부터의 초. 유닛마다 위상을 안 나눈다 — 같은 종류가 같은 색으로
+      // 함께 도는 편이 "이건 특별한 부대"로 읽힌다.
+      const hue = Math.floor(((this.time * 0.5) % 1) * 360);
+      g.addColorStop(0, `hsla(${hue}, 90%, 65%, ${alpha})`);
+      g.addColorStop(0.6, `hsla(${(hue + 120) % 360}, 90%, 60%, ${alpha * 0.5})`);
+    } else {
+      g.addColorStop(0, withAlpha(meta.accent, alpha));
+      g.addColorStop(0.6, withAlpha(meta.accent, alpha * 0.45));
+    }
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+
     ctx.save();
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  }
+
+  /**
+   * 등급 표식. 머리 위에 등급 수만큼 작은 마름모를 찍는다.
+   *
+   * 아우라는 "센 놈이다"까지만 말하고 **몇 등급인지는 못 센다** — 그 자리를 이게 맡는다
+   * (2026-08-03 사용자 지시).
+   *
+   * **기본 등급은 안 찍는다.** 판에 유닛이 수십 기라 가장 흔한 것에까지 찍으면
+   * 화면이 점으로 덮인다.
+   *
+   * 어두운 테두리를 두르는 이유: 밝은 건물 스프라이트 위를 지날 때 흰 표식이 사라진다.
+   */
+  private drawTierPips(kind: UnitKind, h: number): void {
+    const meta = UNIT_KIND_META[kind];
+    const tier = tierOf(kind);
+    if (tier <= 0 || !meta.accent) return;
+
+    const ctx = this.ctx;
+    // **줄 전체가 캐릭터 폭 안에 들어와야 한다.** 고정 크기로 찍으면 5개짜리가 29px라
+    // 유닛(약 20px)보다 넓어져 옆 유닛의 표식과 섞인다. 폭에 맞춰 크기를 줄인다.
+    //
+    // 줄 폭 = (n-1)·간격 + 2·반지름, 간격 = 2.6·반지름 → 반지름·(2.6n − 0.6).
+    const room = h * 0.62; // 스프라이트 폭(59/91 비율)에 맞춘 값
+    const s = Math.min(h * 0.075, room / (2.6 * tier - 0.6));
+    const gap = s * 2.6;
+    const y = -h / 2 - s * 1.8;
+    const x0 = -((tier - 1) * gap) / 2;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(8,12,18,0.85)';
+    ctx.lineWidth = Math.max(0.6, s * 0.5);
+    ctx.fillStyle = meta.accent;
+    for (let i = 0; i < tier; i++) {
+      const x = x0 + i * gap;
+      ctx.beginPath();
+      ctx.moveTo(x, y - s);
+      ctx.lineTo(x + s, y);
+      ctx.lineTo(x, y + s);
+      ctx.lineTo(x - s, y);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fill();
+    }
     ctx.restore();
   }
 

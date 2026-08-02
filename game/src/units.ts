@@ -97,6 +97,16 @@ export interface UnitKindMeta {
   spriteOf?: UnitKind;
   /** 코드로 그리는 아우라. 유료 종류를 그림 없이 구분하는 수단이다. */
   aura?: 'rainbow';
+  /**
+   * 등급 표시에 쓰는 색. **그 종류의 하의 색이다** — 화면에 이미 보이는 색이라
+   * 따로 배울 것이 없다.
+   *
+   * 기본(`beergang`)은 없다: 아우라도 표식도 안 그린다. 가장 흔한 유닛이 제일 깨끗해야
+   * 화면이 안 시끄럽다.
+   *
+   * **진영색(파랑 `#3fbdf1`·빨강 `#f2555f`)을 피한다** — 변형색과 같은 제약이다.
+   */
+  accent?: string;
 }
 
 /**
@@ -107,10 +117,10 @@ export interface UnitKindMeta {
  */
 export const UNIT_KIND_META: Record<UnitKind, UnitKindMeta> = {
   beergang: { frames: 8, scale: 1.3, price: 0, power: 1 },
-  beergang_white: { frames: 8, scale: 1.3, price: 400, power: 1.5 },
-  beergang_gold: { frames: 8, scale: 1.3, price: 900, power: 2 },
-  beergang_green: { frames: 8, scale: 1.3, price: 1500, power: 2.5 },
-  beergang_purple: { frames: 8, scale: 1.3, price: 2400, power: 3 },
+  beergang_white: { frames: 8, scale: 1.3, price: 400, power: 1.5, accent: '#e8eef5' },
+  beergang_gold: { frames: 8, scale: 1.3, price: 900, power: 2, accent: '#f5c542' },
+  beergang_green: { frames: 8, scale: 1.3, price: 1500, power: 2.5, accent: '#34d399' },
+  beergang_purple: { frames: 8, scale: 1.3, price: 2400, power: 3, accent: '#a78bfa' },
   beergang_rainbow: {
     frames: 8,
     scale: 1.3,
@@ -119,6 +129,7 @@ export const UNIT_KIND_META: Record<UnitKind, UnitKindMeta> = {
     premium: true,
     spriteOf: 'beergang',
     aura: 'rainbow',
+    accent: '#f2f7fb',
   },
 };
 
@@ -201,10 +212,23 @@ export const POWER_ORDER: readonly UnitKind[] = [...UNIT_KINDS].sort(
 );
 
 /**
+ * 등급. `POWER_ORDER` 에서의 자리다 — 기본이 0, 가장 센 것이 마지막.
+ *
+ * **표식 개수이자 아우라 세기다.** 힘 숫자(1·1.5·2…)를 그대로 쓰면 반 단계가 섞여
+ * 세기 어렵고, 표가 바뀌면 표식 수가 통째로 흔들린다.
+ */
+export function tierOf(kind: UnitKind): number {
+  const i = POWER_ORDER.indexOf(kind);
+  return i < 0 ? 0 : i;
+}
+
+/** 가장 높은 등급. 아우라 세기를 0~1로 정규화하는 분모다. */
+export const MAX_TIER = POWER_ORDER.length - 1;
+
+/**
  * 한 단계 아래 종류. **가장 약한 것이면 그대로 돌려준다** — 더 내려갈 곳이 없다.
  *
  * 봇이 사람보다 한 단계 낮게 입는 데 쓴다 (2026-08-03 사용자 지시, `app/difficulty.ts`).
- * 힘 순서로 세므로 상점에 없는 유료 종류도 자리를 갖는다.
  */
 export function stepDownKind(kind: UnitKind): UnitKind {
   const i = POWER_ORDER.indexOf(kind);

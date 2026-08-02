@@ -29,6 +29,7 @@ import {
   unitBlurbOf,
   unitLabelOf,
   spriteKindOf,
+  tierOf,
   type UnitKind,
 } from '../units';
 import { isPurchasable } from '../net/vx';
@@ -169,6 +170,7 @@ export class ShopScene implements Scene {
     el.innerHTML = `
       <span class="unit-art${meta.aura === 'rainbow' ? ' aura-rainbow' : ''}"><img alt="" src="${previewSrc(kind)}" style="height:${artH}px" /></span>
       <span class="unit-name" data-role="name"></span>
+      <span class="unit-tier" data-role="tier"></span>
       <span class="unit-bar"><i style="width:${fill}%"></i></span>
       <span class="unit-power" data-role="stats"></span>
       <span class="unit-blurb" data-role="blurb"></span>
@@ -200,6 +202,14 @@ export class ShopScene implements Scene {
       set(el, 'name', unitLabelOf(kind));
       set(el, 'stats', t().unitStats(UNIT_KIND_META[kind].power));
       set(el, 'blurb', unitBlurbOf(kind));
+      // 판에서 머리 위에 찍히는 표식과 **개수가 같다** — 상점과 화면이 다른 말을 하면
+      // 무엇을 산 것인지 알 수가 없다 (`renderer.drawTierPips`).
+      const tier = tierOf(kind);
+      const pips = el.querySelector<HTMLElement>('[data-role="tier"]');
+      if (pips) {
+        pips.textContent = '◆'.repeat(tier);
+        pips.style.color = UNIT_KIND_META[kind].accent ?? 'transparent';
+      }
     }
 
     const worn = unitKindOf(a);

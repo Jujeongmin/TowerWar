@@ -47,6 +47,11 @@ function bakeWriter() {
 // Vite는 CWD에서 이 설정 파일을 먼저 찾은 뒤 root를 game/으로 바꿔 잡는다.
 export default defineConfig({
   root: 'game',
+  // **`.env` 는 저장소 루트에 있다.** Verse8이 `.agent8.lock` 과 `.env` 를 루트에 두고
+  // 관리하기 때문이다 (플랫폼이 만든 파일이라 옮기면 프로젝트 연결이 끊긴다).
+  // `envDir` 기본값은 `root`(= game/)라, 이 줄이 없으면 `VITE_AGENT8_VERSE` 를 못 읽어
+  // 접속이 영원히 대기 상태가 된다 (`game/src/net/agent8.ts` 참고).
+  envDir: resolve(__dirname),
   publicDir: 'public',
   plugins: [bakeWriter()],
   build: {

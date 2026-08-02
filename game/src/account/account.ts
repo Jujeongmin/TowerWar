@@ -38,9 +38,9 @@ export const NAME_MAX = 12;
  * **화면에만 먹는다.** 서버는 이 값을 모르므로 온라인에서 실제로 입으려 하면
  * `selectUnitKind` 가 거절한다 (오프라인·봇전에서는 그대로 먹는다).
  *
- * 출시 전에 `false` 로 되돌릴 것. 여기 하나만 고치면 된다.
+ * **출시 전에 `false` 로 되돌릴 것. 여기 하나만 고치면 된다.**
  */
-export const DEBUG_UNLOCK_ALL = true;
+export const DEBUG_UNLOCK_ALL = false;
 
 /** 배속을 여는 유료 항목의 id. `server.js` 의 `PREMIUM_ITEMS` 와 같아야 한다. */
 export const TEMPO_ITEM = 'tempo_boost';

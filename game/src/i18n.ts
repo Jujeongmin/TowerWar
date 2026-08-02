@@ -223,7 +223,7 @@ const en: Strings = {
   tempoItem: 'Speed Boost',
   tempoItemBlurb: 'Speed the whole match up',
   tempoItemDesc:
-    'A button appears during a match. Turning it on runs the match at 1.5x for BOTH sides, not just you. If your opponent has it and turns it on too, it becomes 2x. Units, production and the clock all speed up together, so the odds do not change: the match simply finishes sooner.',
+    'A button appears during a match. Turning it on runs the match at 1.5x for BOTH sides, not just you. If your opponent has it and turns it on too, it becomes 2x.',
   adCard: 'Ad reward',
   adCardAction: 'Watch',
   owned: 'Owned',
@@ -335,7 +335,7 @@ const ko: Strings = {
   tempoItem: '배속',
   tempoItemBlurb: '판 전체를 빠르게',
   tempoItemDesc:
-    '판에 버튼이 생긴다. 켜면 판이 1.5배로 돈다 — 나만이 아니라 양쪽 다. 상대도 가지고 있고 같이 켜면 2배가 된다. 유닛도 생산도 시계도 함께 빨라지므로 유불리는 안 바뀌고, 판이 더 빨리 끝난다.',
+    '판에 버튼이 생긴다. 켜면 판이 1.5배로 돈다 — 나만이 아니라 양쪽 다. 상대도 가지고 있고 같이 켜면 2배가 된다.',
   adCard: '광고 보상',
   adCardAction: '보기',
   owned: '보유 중',

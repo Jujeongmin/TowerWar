@@ -5,6 +5,14 @@
  * 흘러들면 서버 권위 PVP에서 결과가 갈라진다. 여기서 나는 소리는 판을 한 글자도
  * 안 바꾼다.
  *
+ * ── 확장자를 순서대로 시도한다 ────────────────────────────────
+ *
+ * `.mp3` → `.ogg` → `.wav`. **먼저 찾은 것을 쓴다.**
+ *
+ * `.mp3` 를 앞에 둔 이유: iOS 사파리에서 `.ogg` 가 안 되는 기기가 아직 있다. 그래도
+ * `.ogg` 를 받아 주는 이유는 무료 음원 팩이 대개 `.ogg` 로 오기 때문이다 (Kenney 등).
+ * **변환 도구 없이 팩을 그대로 떨어뜨릴 수 있어야 한다.**
+ *
  * ── 파일이 없어도 돈다 ────────────────────────────────────────
  *
  * `game/public/assets/{sfx,bgm}/` 가 `.gitignore` 에 있다(그림과 같은 이유). 그래서
@@ -26,6 +34,9 @@
 const SFX_BASE = '/assets/sfx';
 const BGM_BASE = '/assets/bgm';
 
+/** 찾아볼 확장자. 앞에서부터 시도하고 먼저 200이 오는 것을 쓴다. */
+const EXTS = ['mp3', 'ogg', 'wav'] as const;
+
 export const SFX = [
   'capture',
   'clash',
@@ -41,6 +52,17 @@ export const SFX = [
 export type SfxName = (typeof SFX)[number];
 
 export type BgmName = 'lobby' | 'match';
+
+/**
+ * 곡이 없을 때 대신 쓸 곡. **같은 파일을 두 번 싣지 않으려는 것이다** —
+ * 로비 곡이 6MB인데 매치용으로 한 벌 더 두면 배포물이 12MB가 된다.
+ *
+ * 매치 전용 곡이 생기면 `match.mp3` 를 넣기만 하면 된다. 그쪽이 먼저 잡힌다.
+ */
+const BGM_FALLBACK: Record<BgmName, BgmName | null> = {
+  lobby: null,
+  match: 'lobby',
+};
 
 /**
  * 소리마다 두는 최소 간격(ms). **같은 소리가 이보다 촘촘히 오면 버린다.**
@@ -74,7 +96,14 @@ interface Settings {
   bgm: number;
 }
 
-const DEFAULTS: Settings = { master: 0.8, sfx: 1, bgm: 0.5 };
+/**
+ * 기본 음량. **배경음이 확실히 작다** (2026-08-03 사용자 지시: "잔잔하게 깔리게").
+ *
+ * 0.22인 이유: 배경음이 `capture` 를 덮으면 정보가 사라진다. 효과음은 사건을 알리는
+ * 신호이고 배경음은 분위기라, 둘이 비슷하면 신호가 묻힌다. 크게 듣고 싶은 사람은
+ * 설정에서 올리면 된다 — **기본값은 안 거슬리는 쪽**이어야 한다.
+ */
+const DEFAULTS: Settings = { master: 0.8, sfx: 1, bgm: 0.22 };
 
 function clamp01(v: unknown): number {
   const n = typeof v === 'number' ? v : Number(v);
@@ -172,7 +201,7 @@ class AudioManager {
 
     const buf = this.buffers.get(name);
     if (buf === undefined) {
-      void this.fetchBuffer(name, `${SFX_BASE}/${name}.mp3`);
+      void this.fetchBuffer(name, `${SFX_BASE}/${name}`);
       return;
     }
     if (buf === null) return; // 없는 파일
@@ -215,7 +244,7 @@ class AudioManager {
     const buf = this.buffers.get(`bgm:${name}`);
     if (buf === undefined) {
       // 받아 두고, 받아지면 그때도 여전히 이 곡이 필요한지 다시 본다.
-      void this.fetchBuffer(`bgm:${name}`, `${BGM_BASE}/${name}.mp3`).then(() => {
+      void this.fetchBuffer(`bgm:${name}`, `${BGM_BASE}/${name}`).then(() => {
         if (this.bgmNow === name) {
           this.bgmNow = null; // 같은 곡으로 다시 들어가게 초기화
           this.setBgm(name);
@@ -223,7 +252,17 @@ class AudioManager {
       });
       return;
     }
-    if (buf === null) return;
+    if (buf === null) {
+      // 이 곡이 없다. 대타가 있으면 그걸 튼다 (`BGM_FALLBACK`).
+      const alt = BGM_FALLBACK[name];
+      if (alt && this.buffers.get(`bgm:${alt}`) !== null) {
+        this.bgmNow = alt;
+        this.stopBgm();
+        this.bgmNow = null;
+        this.setBgm(alt);
+      }
+      return;
+    }
 
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
@@ -244,23 +283,30 @@ class AudioManager {
   }
 
   /**
-   * 받아서 디코드한다. **없으면 `null` 을 넣어 두고 다시 안 받는다.**
+   * 받아서 디코드한다. **확장자를 순서대로 시도하고**(`EXTS`), 다 없으면 `null` 을
+   * 넣어 두고 다시 안 받는다.
    *
    * 콘솔에 안 찍는 이유: 음원이 없는 것이 지금은 정상 상태다(저장소에 안 올라간다).
    * 매 판마다 404 열 줄을 보여 줄 이유가 없다.
+   *
+   * @param base 확장자를 뺀 경로
    */
-  private async fetchBuffer(key: string, url: string): Promise<void> {
+  private async fetchBuffer(key: string, base: string): Promise<void> {
     if (this.buffers.has(key)) return;
     // 먼저 표시해 둔다. 안 하면 같은 파일을 동시에 여러 번 받는다.
     this.buffers.set(key, null);
-    try {
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const bytes = await res.arrayBuffer();
-      const buf = await this.ctx!.decodeAudioData(bytes);
-      this.buffers.set(key, buf);
-    } catch {
-      // 없거나 못 읽는 형식. `null` 인 채로 둔다 — 다시 안 받는다.
+    for (const ext of EXTS) {
+      try {
+        const res = await fetch(`${base}.${ext}`);
+        if (!res.ok) continue;
+        const bytes = await res.arrayBuffer();
+        // **디코드까지 해 봐야 안다.** dev 서버가 없는 파일에 index.html 을 돌려주는
+        // 설정이면 `res.ok` 가 참인데 오디오가 아니다 — 그때 다음 확장자로 넘어간다.
+        this.buffers.set(key, await this.ctx!.decodeAudioData(bytes));
+        return;
+      } catch {
+        // 이 확장자는 없거나 못 읽는다. 다음 것을 본다.
+      }
     }
   }
 }

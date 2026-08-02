@@ -168,8 +168,9 @@ const PREMIUM_ITEMS = [...PREMIUM_UNITS, TEMPO_ITEM];
  * 출시 전에 양쪽 다 `false` 로 되돌릴 것.
  */
 // 검증 하네스는 이 값을 꺼서 돌린다 (`tools/server-harness.mjs`) — 켜 둔 채로 재면
-// "안 산 것을 못 입는다" 같은 검사가 통째로 무의미해진다.
-const DEBUG_UNLOCK_ALL = globalThis.__TW_NO_DEBUG_UNLOCK !== true;
+// "안 산 것을 못 입는다" 같은 검사가 통째로 무의미해진다. 프로덕션에서 항상 꺼지도록
+// `false` 로 박는다 (이전의 `__TW_NO_DEBUG_UNLOCK` 분기는 테스트 하네스 전용이었다).
+const DEBUG_UNLOCK_ALL = false;
 
 function isKnownUnit(v) {
   return (

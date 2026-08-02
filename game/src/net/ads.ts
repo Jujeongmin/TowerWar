@@ -1,24 +1,59 @@
 /**
  * 보상형 광고. **여기가 유일한 이음매다.**
  *
- * ── 지금은 붙어 있지 않다 ─────────────────────────────────────
+ * ── Verse8 실물 SDK를 붙였다 (2026-08-02) ──────────────────
  *
- * `@agent8/gameserver` 타입 선언에 광고 API가 **없다** (직접 확인했다). Verse8 쪽에서
- * 붙이기로 했으므로, 실제 SDK 호출이 들어갈 자리를 `provider` 하나로 몰아 뒀다.
- * **다른 파일은 이 모듈만 보면 된다** — 붙일 때 고칠 곳이 여기 하나여야 한다.
+ * `@agent8/gameserver` 타입 선언에 광고 API가 **없다** (직접 확인했다). 대신
+ * `@verse8/ads` 의 `Verse8Ads.showRewarded()` 가 실물 보상형 광고를 튼다
+ * (`verse8AdProvider`). 실제 SDK 호출은 전부 이 provider 하나에 몰아 뒀다 —
+ * **다른 파일은 이 모듈만 보면 된다.**
  *
  * ── 안 붙어 있으면 버튼이 안 보인다 ───────────────────────────
  *
  * `isAdReady()` 가 거짓이면 화면이 광고 버튼을 아예 안 그린다. 눌러도 아무 일이 없는
  * 버튼을 보여 주면 고장으로 읽힌다 — VX 상품이 없을 때 `준비 중` 으로 두는 것과 같은
- * 규칙이다 (`net/vx.ts`).
+ * 규칙이다 (`net/vx.ts`). `verse8AdProvider` 는 이 환경이 광고를 못 틀 때만
+ * (`unsupported_env`) `ready()` 가 거짓이다.
  *
  * ── 개발 중에는 흉내만 낸다 ───────────────────────────────────
  *
- * `import.meta.env.DEV` 에서만 가짜 제공자가 붙는다. 광고 없이 보상 흐름을 시험할 수
- * 있어야 하기 때문이고, **프로덕션 빌드에는 이 분기가 통째로 떨어져 나간다** —
- * 안 그러면 배포본에서 광고를 안 보고도 보상을 받는다.
+ * `import.meta.env.DEV` 에서만 가짜 제공자가 붙는다 (`main.ts`). 광고 없이 보상
+ * 흐름을 시험할 수 있어야 하기 때문이다 — 가짜는 광고를 안 봐도 `true` 를 주므로
+ * **프로덕션 빌드에는 실리면 안 된다**.
  */
+
+import { Verse8Ads } from '@verse8/ads';
+
+/**
+ * 이 게임의 보상형 광고 배치 id. Verse8 대시보드의 광고 배치에서 정한 값을 쓴다.
+ * 두 쓰임(상점 +60, 결과 2배)이 같은 provider 를 공유하므로 배치도 하나다.
+ */
+const AD_PLACEMENT_ID = 'towerwar-rewarded';
+
+/**
+ * Verse8 실물 광고 제공자.
+ *
+ * `@verse8/ads` 의 `showRewarded` 를 그대로 감싼다. `status === 'rewarded'` 일 때만
+ * `true` — 광고를 끝까지 본 경우에만 보상을 준다. 중간에 닫으면(`dismissed`) `false` 이고,
+ * 실패해도 `false` 다. 광고를 안 봤는데 보상을 주는 길을 여기서 다 막는다.
+ *
+ * `ready()` 는 이 환경이 광고를 못 틀 때만 `false` 다. SDK는 "지금 틀 수 있나"를
+ * 따로 묻는 API가 없어서, 최초에는 틀 수 있는 것으로 보고 첫 실패에서
+ * `unsupported_env` 를 받으면 그 세션 동안 버튼을 숨긴다.
+ */
+export function verse8AdProvider(): AdProvider {
+  let unsupported = false;
+  return {
+    ready: () => !unsupported,
+    show: async () => {
+      const result = await Verse8Ads.showRewarded({ placementId: AD_PLACEMENT_ID });
+      if (result.status === 'failed' && result.error.code === 'unsupported_env') {
+        unsupported = true;
+      }
+      return result.status === 'rewarded';
+    },
+  };
+}
 
 /** 광고를 트는 쪽. Verse8 SDK가 붙으면 여기에 실물을 끼운다. */
 export interface AdProvider {

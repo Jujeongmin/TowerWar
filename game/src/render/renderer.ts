@@ -242,18 +242,26 @@ export class Renderer {
    */
   private safeTop = 0;
   private safeBottom = 0;
+  /** 배치 폭/높이(화면 px). CSS `--app-w` 가 정한 게임 컬럼 크기다 — HUD와 결과
+   *  화면이 이 폭에 맞춰 그려진다. 넓은 화면에서 뷰포트를 그대로 쓰면 필드와 따로 논다. */
+  private viewW = 1;
+  private viewH = 1;
 
   resize(): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.max(1, window.innerWidth);
-    const h = Math.max(1, window.innerHeight);
+    // 배치 폭은 CSS(`--app-w`)가 정한다 — 넓은 화면에서 필드만 좁고 HUD가 화면
+    // 전체 폭을 차지하면 따로 논다. `getBoundingClientRect` 로 실제 폭을 읽는다
+    // (숨겨져 있는 동안은 0이라 폭만 뷰포트로 대체한다 — 보이는 순간 다시 불린다).
+    const rect = this.canvas.getBoundingClientRect();
+    const w = Math.max(1, rect.width || window.innerWidth);
+    const h = Math.max(1, rect.height || window.innerHeight);
     const cs = getComputedStyle(document.documentElement);
     this.safeTop = parseFloat(cs.getPropertyValue('--safe-top')) || 0;
     this.safeBottom = parseFloat(cs.getPropertyValue('--safe-bottom')) || 0;
     this.canvas.width = Math.round(w * dpr);
     this.canvas.height = Math.round(h * dpr);
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
+    this.viewW = w;
+    this.viewH = h;
 
     // 논리 좌표계를 화면에 레터박스로 맞춘다. **HUD가 먹는 높이를 먼저 빼고 남은
     // 자리에 넣는다** — 전에는 화면 전체에 맞춰서, 620×1000보다 짧은 비율(375×667 등)
@@ -856,8 +864,8 @@ export class Renderer {
 
   private drawHud(state: MatchState, ui: UiState): void {
     const ctx = this.ctx;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = this.viewW;
+    const h = this.viewH;
     const enemy: PlayerId = ui.local === 1 ? 2 : 1;
 
     ctx.save();
@@ -1198,8 +1206,8 @@ export class Renderer {
    */
   private drawResult(state: MatchState, ui: UiState): void {
     const ctx = this.ctx;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = this.viewW;
+    const h = this.viewH;
     ctx.save();
     ctx.fillStyle = 'rgba(6,10,16,0.78)';
     ctx.fillRect(0, 0, w, h);

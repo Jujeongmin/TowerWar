@@ -1,6 +1,11 @@
 # Status — TowerWar
 
-## 마지막 작업 (Verse8 SDK 연동)
+## 마지막 작업 (세로형 반응형)
+
+- **게임 컬럼 폭 제한**: `style.css` 에 `--app-w: min(100vw, 620px)` 추가. 캔버스·DOM 화면(`.screen`)·HUD 버튼(항복·배속)이 넓은 화면에서도 컬럼 안에 붙는다 (이전에는 필드만 좁고 HUD/DOM이 뷰포트 전체 폭을 차지해 따로 놀았다).
+- **렌더러**: `resize()` 가 `window.innerWidth` 대신 캔버스 실제 배치 폭(`getBoundingClientRect`)을 읽고 `viewW/viewH` 로 저장. `drawHud`/`drawResult` 가 이 값을 씀.
+
+## 이전 작업 (Verse8 SDK 연동)
 
 1. **보상형 광고 실물 붙임** — `@verse8/ads` 추가. `net/ads.ts` 에 `verse8AdProvider()` 구현 (showRewarded, `rewarded`일 때만 true, `unsupported_env`면 ready false). `main.ts` 에서 프로덕션은 실물, DEV는 가짜.
 2. **VX 자산 id** — `ASSET_IDS` (net/vx.ts)는 여전히 비어 있음. **Verse8 대시보드에 상품 등록 + 실제 자산 id 필요.** 지어내면 안 됨 (사용자 지시).

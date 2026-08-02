@@ -237,6 +237,37 @@ body {
   opacity: 1;
 }
 
+/* 유료 항목의 긴 설명. 한 줄 요약(`shop-effect`)만으로는 배속이 무엇을 하는지
+   알 수가 없어서 따로 둔다 — 양쪽이 같이 빨라진다는 것이 핵심인데 그게 안 읽혔다. */
+.shop-desc {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(170, 186, 202, 0.8);
+  text-align: left;
+  white-space: normal;
+}
+
+/* 광고 카드. **유닛 격자 안에 산다** — 유닛 5개 + 광고 1개로 두 줄이 정확히 찬다.
+   코인을 주는 쪽이라 코인 색(호박)을 쓴다. */
+.ad-card {
+  border-color: rgba(251, 191, 36, 0.42);
+}
+
+.ad-card .unit-name,
+.ad-card .unit-power {
+  color: #fbbf24;
+}
+
+/* 유닛 카드는 이 자리에 그림이 오는데 광고는 그림이 없다. 코인 기호를 같은 크기로
+   세워 카드 높이가 안 어긋나게 한다. */
+.ad-art {
+  font-size: 30px;
+  color: #fbbf24;
+  opacity: 0.85;
+}
+
 /* 광고 버튼. 코인을 주는 쪽이라 코인 색(호박)을 쓴다. */
 .btn-ad {
   border-color: rgba(251, 191, 36, 0.5);

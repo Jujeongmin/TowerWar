@@ -111,6 +111,9 @@ export interface Strings {
   // 유료·광고
   tempoItem: string;
   tempoItemBlurb: string;
+  tempoItemDesc: string;
+  adCard: string;
+  adCardAction: string;
   owned: string;
   adWatch: (coins: number) => string;
   adDouble: string;
@@ -218,7 +221,11 @@ const en: Strings = {
   volSfx: 'Effects',
   volBgm: 'Music',
   tempoItem: 'Speed Boost',
-  tempoItemBlurb: 'Toggle 1.5× / 2× during a match',
+  tempoItemBlurb: 'Speed the whole match up',
+  tempoItemDesc:
+    'A button appears during a match. Turning it on runs the match at 1.5x for BOTH sides, not just you. If your opponent has it and turns it on too, it becomes 2x. Units, production and the clock all speed up together, so the odds do not change: the match simply finishes sooner.',
+  adCard: 'Ad reward',
+  adCardAction: 'Watch',
   owned: 'Owned',
   adWatch: (coins) => `Watch an ad · +${coins}`,
   adDouble: 'Watch an ad — double it',
@@ -326,7 +333,11 @@ const ko: Strings = {
   volSfx: '효과음',
   volBgm: '배경음',
   tempoItem: '배속',
-  tempoItemBlurb: '판에서 1.5× / 2× 토글',
+  tempoItemBlurb: '판 전체를 빠르게',
+  tempoItemDesc:
+    '판에 버튼이 생긴다. 켜면 판이 1.5배로 돈다 — 나만이 아니라 양쪽 다. 상대도 가지고 있고 같이 켜면 2배가 된다. 유닛도 생산도 시계도 함께 빨라지므로 유불리는 안 바뀌고, 판이 더 빨리 끝난다.',
+  adCard: '광고 보상',
+  adCardAction: '보기',
   owned: '보유 중',
   adWatch: (coins) => `광고 보고 +${coins}`,
   adDouble: '광고 보고 두 배 받기',

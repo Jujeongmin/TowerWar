@@ -40,19 +40,29 @@ export type PvpMode = 'auto' | 'friend';
 
 type Phase = 'idle' | 'searching' | 'hosting' | 'joining' | 'starting' | 'error';
 
-const STATUS_TEXT: Record<Phase, string> = {
-  idle: t().makeRoomOrCode,
-  searching: t().searching,
-  hosting: t().waitingFriend,
-  joining: t().joiningRoom,
-  starting: t().startingSoon,
-  error: t().couldNotJoin,
-};
+/**
+ * **함수여야 한다.** 전에는 모듈 최상단 상수였는데, 그러면 `t()` 가 **앱이 처음
+ * 로드될 때 한 번만** 평가된다 — 언어를 바꿔도 이 표는 영어인 채로 남았다.
+ * 증상은 "한글로 설정했는데 매칭 화면만 영어"였다.
+ *
+ * 같은 함정이 이 저장소에 또 있으면 안 된다: **`t()` 를 모듈 최상단에서 부르지 말 것.**
+ * 쓰는 순간에 읽어야 언어 전환을 따라간다.
+ */
+function statusText(phase: Phase): string {
+  const s = t();
+  return {
+    idle: s.makeRoomOrCode,
+    searching: s.searching,
+    hosting: s.waitingFriend,
+    joining: s.joiningRoom,
+    starting: s.startingSoon,
+    error: s.couldNotJoin,
+  }[phase];
+}
 
-const TITLE_TEXT: Record<PvpMode, string> = {
-  auto: t().pvpTitleAuto,
-  friend: t().pvpTitleFriend,
-};
+function titleText(mode: PvpMode): string {
+  return mode === 'auto' ? t().pvpTitleAuto : t().pvpTitleFriend;
+}
 
 /** 경과 시간을 `0:07` 로. 분이 넘어가도 자리가 안 흔들리게 초를 두 자리로 채운다. */
 function formatElapsed(sec: number): string {
@@ -159,7 +169,7 @@ export class PvpScene implements Scene {
     this.handedOff = false;
     this.codeInput.value = '';
     this.codeShown.hidden = true;
-    this.title.textContent = TITLE_TEXT[this.mode];
+    this.title.textContent = titleText(this.mode);
     this.friendBox.hidden = this.mode !== 'friend';
     this.root.hidden = false;
 
@@ -318,7 +328,7 @@ export class PvpScene implements Scene {
     this.timerShown = counting ? formatElapsed(0) : '';
     this.timer.textContent = this.timerShown;
 
-    this.status.textContent = STATUS_TEXT[phase];
+    this.status.textContent = statusText(phase);
     // 안내문은 오류가 아니다. 크게 띄우면 뭔가 잘못된 것처럼 보인다.
     this.status.classList.toggle('is-hint', phase === 'idle');
     this.status.classList.toggle('is-error', phase === 'error');

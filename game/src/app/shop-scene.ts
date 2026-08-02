@@ -69,9 +69,8 @@ export class ShopScene implements Scene {
   private readonly unitCards: { kind: UnitKind; el: HTMLButtonElement }[];
   private readonly premiumCards: { kind: UnitKind; el: HTMLButtonElement }[];
   private readonly vxNote: HTMLElement;
-  private readonly adBox: HTMLElement;
-  private readonly adBtn: HTMLButtonElement;
   private readonly adNote: HTMLElement;
+  private readonly adCard: HTMLButtonElement;
   private readonly tempoRow: HTMLButtonElement;
 
   constructor(
@@ -94,16 +93,12 @@ export class ShopScene implements Scene {
     const pgrid = root.querySelector<HTMLElement>('#premium-grid');
     const vxNote = root.querySelector<HTMLElement>('#vx-note');
     const pitems = root.querySelector<HTMLElement>('#premium-items');
-    const adBox = root.querySelector<HTMLElement>('#ad-box');
-    const adBtn = root.querySelector<HTMLButtonElement>('#btn-ad-coins');
     const adNote = root.querySelector<HTMLElement>('#ad-note');
     const backBtn = root.querySelector<HTMLButtonElement>('#btn-shop-back');
-    if (!coins || !grid || !pgrid || !vxNote || !pitems || !adBox || !adBtn || !adNote || !backBtn) {
+    if (!coins || !grid || !pgrid || !vxNote || !pitems || !adNote || !backBtn) {
       throw new Error('상점 DOM이 예상과 다릅니다');
     }
     this.vxNote = vxNote;
-    this.adBox = adBox;
-    this.adBtn = adBtn;
     this.adNote = adNote;
 
     // **유닛이 아닌 유료 항목.** 지금은 배속 하나뿐이라 카드도 하나다.
@@ -116,6 +111,7 @@ export class ShopScene implements Scene {
         <span class="shop-price" data-role="state"></span>
       </span>
       <span class="shop-foot"><span class="shop-effect" data-role="blurb"></span></span>
+      <span class="shop-desc" data-role="desc"></span>
     `;
     tempo.addEventListener('click', () => {
       // 이미 가진 것이면 누를 이유가 없다 (`render` 가 비활성으로 둔다).
@@ -126,15 +122,33 @@ export class ShopScene implements Scene {
     pitems.appendChild(tempo);
     this.tempoRow = tempo;
 
-    adBtn.addEventListener('click', () => {
+    // **광고 카드는 유닛 격자 안에 들어간다** (2026-08-03 사용자 지시).
+    // 유닛 5개 + 광고 1개 = 3열 두 줄이 정확히 찬다 — 전에는 광고가 따로 있어
+    // 격자 마지막 줄에 빈칸이 남았다.
+    const ad = document.createElement('button');
+    ad.className = 'unit-card ad-card';
+    ad.id = 'unit-ad';
+    ad.innerHTML = `
+      <span class="unit-art ad-art">◈</span>
+      <span class="unit-name" data-role="name"></span>
+      <span class="unit-tier"></span>
+      <span class="unit-power" data-role="amount"></span>
+      <span class="unit-blurb"></span>
+      <span class="unit-state" data-role="state"></span>
+    `;
+    ad.addEventListener('click', () => {
       // 광고를 보는 동안 두 번 눌리면 두 번 재생된다.
-      adBtn.disabled = true;
+      ad.disabled = true;
       this.adNote.textContent = '';
+      this.adNote.hidden = true;
       void this.watchAdForCoins().then((err) => {
-        this.adNote.textContent = err === null ? '' : adMessage(err);
+        const msg = err === null ? '' : adMessage(err);
+        this.adNote.textContent = msg;
+        this.adNote.hidden = msg.length === 0;
         this.render();
       });
     });
+    this.adCard = ad;
     this.coins = coins;
     backBtn.addEventListener('click', back);
 
@@ -159,6 +173,8 @@ export class ShopScene implements Scene {
       grid.appendChild(el);
       return { kind, el };
     });
+    // 유닛 카드 **뒤에** 붙어야 마지막 빈칸을 메운다.
+    grid.appendChild(this.adCard);
 
     this.premiumCards = SHOP_PREMIUM_ORDER.map((kind) => {
       const el = this.buildUnitCard(kind);
@@ -303,6 +319,7 @@ export class ShopScene implements Scene {
     anyPurchasable = anyPurchasable || tempoSellable;
     set(this.tempoRow, 'name', t().tempoItem);
     set(this.tempoRow, 'blurb', t().tempoItemBlurb);
+    set(this.tempoRow, 'desc', t().tempoItemDesc);
     set(this.tempoRow, 'state', hasTempo ? t().owned : tempoSellable ? t().buyWithVx : t().comingSoon);
     this.tempoRow.classList.toggle('is-owned', hasTempo);
     this.tempoRow.disabled = hasTempo || !tempoSellable;
@@ -310,11 +327,13 @@ export class ShopScene implements Scene {
     this.vxNote.textContent = anyPurchasable ? '' : t().vxNotListed;
     this.vxNote.hidden = anyPurchasable;
 
-    // **볼 광고가 없으면 칸을 통째로 숨긴다.** 눌러도 아무 일이 없는 버튼은 고장으로
+    // **볼 광고가 없으면 카드를 통째로 숨긴다.** 눌러도 아무 일이 없는 버튼은 고장으로
     // 읽힌다 — VX 상품이 없을 때 `준비 중` 으로 두는 것과 같은 규칙이다.
-    this.adBox.hidden = !isAdReady();
-    this.adBtn.textContent = t().adWatch(AD_COINS);
-    this.adBtn.disabled = false;
+    this.adCard.hidden = !isAdReady();
+    set(this.adCard, 'name', t().adCard);
+    set(this.adCard, 'amount', `+${AD_COINS}`);
+    set(this.adCard, 'state', t().adCardAction);
+    this.adCard.disabled = false;
   }
 }
 

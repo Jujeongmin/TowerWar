@@ -99,7 +99,8 @@
     <!-- 대기 화면. 자동 매칭과 친구랑 하기가 같은 판을 만드는 길이라 화면 하나를 나눠 쓴다.
          `pvp-friend` 만 켜고 끄면 되고, 방·시드·플레이어 번호는 어느 길이든 서버가 정한다. -->
     <div id="pvp" class="screen" hidden>
-      <p id="pvp-title" class="pvp-title">Match</p>
+      <!-- 씬이 `titleText()` 로 덮는다. 여기 글자는 첫 프레임용 자리표다. -->
+      <p id="pvp-title" class="pvp-title" data-i18n="pvpTitleAuto">Match</p>
       <p id="pvp-status" class="pvp-status"></p>
       <!-- 자동 매칭에서 상대를 찾는 동안만 흐른다. 오류 문구(#pvp-detail)와 자리를
            나눠 쓰면 실패했을 때 시간이 오류를 밀어낸다. -->
@@ -152,7 +153,10 @@
       <!-- 유닛 카드는 카탈로그(src/units.ts)에서 만들어 넣는다. 종류가 늘면 여기는 안 고친다. -->
       <div class="shop">
         <p class="shop-title" data-i18n="shopUnits">Units — pricier means more health and attack</p>
+        <!-- 광고 카드도 이 격자에 들어간다 (`shop-scene.ts`). 유닛 5개 + 광고 1개 =
+             3열 두 줄이 정확히 찬다 — 전에는 광고가 따로 있어 격자에 빈칸이 남았다. -->
         <div class="unit-grid" id="unit-grid"></div>
+        <p id="ad-note" class="pvp-detail" hidden></p>
       </div>
 
       <!-- 유료(VX). 코인 칸과 갈라 둔다 — 사는 곳이 다르다 (Verse8 CrossRamp). -->
@@ -162,13 +166,6 @@
         <!-- 유닛이 아닌 유료 항목(배속 등). 카드 모양이 달라 자리를 갈라 둔다. -->
         <div id="premium-items"></div>
         <p id="vx-note" class="pvp-detail"></p>
-      </div>
-
-      <!-- 광고. **볼 광고가 없으면 이 칸이 통째로 사라진다** — 눌러도 아무 일이 없는
-           버튼은 고장으로 읽힌다 (`net/ads.ts`). -->
-      <div class="shop" id="ad-box" hidden>
-        <button id="btn-ad-coins" class="btn">Watch an ad</button>
-        <p id="ad-note" class="pvp-detail"></p>
       </div>
 
       <div class="menu">

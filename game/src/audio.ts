@@ -135,7 +135,15 @@ class AudioManager {
   private voices: AudioBufferSourceNode[] = [];
   private lastAt = new Map<string, number>();
   private bgmNode: AudioBufferSourceNode | null = null;
-  private bgmNow: BgmName | null = null;
+  /**
+   * **틀고 싶은 곡**과 **실제로 우는 곡을 갈라 둔다.**
+   *
+   * 하나로 두면 이 버그가 난다: 앱이 시작하며 `setBgm('lobby')` 를 부르는데 그때는
+   * 아직 첫 탭 전이라 못 튼다. 그런데 "지금 곡 = lobby" 로 적어 두면, 탭해서 오디오가
+   * 열린 뒤 `setBgm('lobby')` 가 다시 와도 **같은 곡이라 아무 일도 안 한다.**
+   * 매치에 들어갔다 나와야(`match` → `lobby`) 그제야 울렸다. 실제로 그렇게 났다.
+   */
+  private bgmWanted: BgmName | null = null;
 
   get volumes(): Settings {
     return { ...this.settings };
@@ -160,6 +168,8 @@ class AudioManager {
     this.applyGains();
     this.unlocked = true;
     void this.ctx.resume();
+    // **여기서 다시 튼다.** 앱 시작에 이미 `setBgm('lobby')` 가 왔지만 그때는 못 틀었다.
+    this.startBgm();
   }
 
   /** 탭이 백그라운드로 갔다 오면 컨텍스트가 멈춰 있을 수 있다. */
@@ -236,36 +246,51 @@ class AudioManager {
    * **배속을 안 따라간다.** `playbackRate` 를 올리면 음정이 같이 올라가 딴 곡이 된다.
    */
   setBgm(name: BgmName | null): void {
-    if (this.bgmNow === name) return;
-    this.bgmNow = name;
+    // **울고 있을 때만 "같은 곡"으로 넘긴다.** 원하는 곡만 보고 넘기면, 못 틀었던
+    // 상태에서 같은 곡이 다시 와도 영영 안 울린다 (`bgmWanted` 주석).
+    if (this.bgmWanted === name && (name === null || this.bgmNode)) return;
+    this.bgmWanted = name;
+    this.startBgm();
+  }
+
+  /**
+   * `bgmWanted` 를 실제로 튼다. **아직 못 트는 상황이면 조용히 넘어간다** —
+   * 첫 탭 전이거나 파일을 받는 중이다. 조건이 갖춰지면 다시 불린다:
+   * `unlock()` 끝과 파일 도착 시점 두 곳이다.
+   */
+  private startBgm(): void {
+    const name = this.bgmWanted;
     this.stopBgm();
     if (!name || !this.unlocked || !this.ctx || !this.bgmGain) return;
 
-    const buf = this.buffers.get(`bgm:${name}`);
+    const key = `bgm:${name}`;
+    const buf = this.buffers.get(key);
     if (buf === undefined) {
       // 받아 두고, 받아지면 그때도 여전히 이 곡이 필요한지 다시 본다.
-      void this.fetchBuffer(`bgm:${name}`, `${BGM_BASE}/${name}`).then(() => {
-        if (this.bgmNow === name) {
-          this.bgmNow = null; // 같은 곡으로 다시 들어가게 초기화
-          this.setBgm(name);
-        }
+      void this.fetchBuffer(key, `${BGM_BASE}/${name}`).then(() => {
+        if (this.bgmWanted === name) this.startBgm();
       });
       return;
     }
-    if (buf === null) {
-      // 이 곡이 없다. 대타가 있으면 그걸 튼다 (`BGM_FALLBACK`).
+
+    // 이 곡이 없다. 대타가 있으면 그걸 튼다 (`BGM_FALLBACK`).
+    let play = buf;
+    if (play === null) {
       const alt = BGM_FALLBACK[name];
-      if (alt && this.buffers.get(`bgm:${alt}`) !== null) {
-        this.bgmNow = alt;
-        this.stopBgm();
-        this.bgmNow = null;
-        this.setBgm(alt);
+      if (!alt) return;
+      const altBuf = this.buffers.get(`bgm:${alt}`);
+      if (altBuf === undefined) {
+        void this.fetchBuffer(`bgm:${alt}`, `${BGM_BASE}/${alt}`).then(() => {
+          if (this.bgmWanted === name) this.startBgm();
+        });
+        return;
       }
-      return;
+      if (altBuf === null) return;
+      play = altBuf;
     }
 
     const src = this.ctx.createBufferSource();
-    src.buffer = buf;
+    src.buffer = play;
     src.loop = true;
     src.connect(this.bgmGain);
     src.start();

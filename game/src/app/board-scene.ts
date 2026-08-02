@@ -14,6 +14,7 @@ import type { Scene } from './scene';
 export class BoardScene implements Scene {
   private readonly list: HTMLElement;
   private readonly note: HTMLElement;
+  private readonly mascot: HTMLElement;
   /**
    * 이번에 연 화면의 번호. 응답이 늦게 오는 사이에 나갔다 다시 들어오면
    * 앞 응답이 뒤 화면을 덮어쓴다 — 번호가 다르면 버린다.
@@ -28,10 +29,12 @@ export class BoardScene implements Scene {
   ) {
     const list = root.querySelector<HTMLElement>('#board-list');
     const note = root.querySelector<HTMLElement>('#board-note');
+    const mascot = root.querySelector<HTMLElement>('#board-mascot');
     const backBtn = root.querySelector<HTMLButtonElement>('#btn-board-back');
-    if (!list || !note || !backBtn) throw new Error('순위 DOM이 예상과 다릅니다');
+    if (!list || !note || !mascot || !backBtn) throw new Error('순위 DOM이 예상과 다릅니다');
     this.list = list;
     this.note = note;
+    this.mascot = mascot;
     backBtn.addEventListener('click', back);
   }
 
@@ -57,6 +60,8 @@ export class BoardScene implements Scene {
     const text = board && board.length === 0 ? t().boardEmpty : note;
     this.note.textContent = text;
     this.note.hidden = text.length === 0;
+    // 목록이 있으면 마스코트는 자리만 먹는다. 빈 화면일 때만 세운다.
+    this.mascot.hidden = (board?.length ?? 0) > 0;
   }
 
   private row(e: BoardEntry): HTMLElement {

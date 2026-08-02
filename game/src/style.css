@@ -410,6 +410,36 @@ body {
   color: #f2555f;
 }
 
+/* 로비 마스코트. **로고 위에 배지로 세운다.**
+   로비가 글자만 있어서 무엇을 하는 게임인지 그림으로 안 읽혔다.
+
+   글자 뒤에 옅게 까는 워터마크로 먼저 해 봤다가 되돌렸다 — 375px에서 아래쪽이
+   버튼 줄(323~636)과 겹쳐서, 버튼 사이 12px 틈으로 캐릭터가 비쳤다. **배지는 자리가
+   명확해서 버튼을 절대 안 건드린다.**
+
+   원형에 진영색 테두리는 아바타(`.acc-avatar`·`.avatar-card`)와 같은 처리다 —
+   화면 안에서 같은 물건은 같게 보여야 한다. */
+.mascot {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 2px solid rgba(63, 189, 241, 0.45);
+  background: rgba(20, 26, 34, 0.9);
+  /* 원본이 908px 정사각형이라 그대로 원으로 잘라도 잘리는 부분이 없다. */
+  object-fit: cover;
+  /* 로고와 붙여 한 덩어리로 읽히게. `.screen` 의 gap(22px)이 너무 벌어진다. */
+  margin-bottom: -14px;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 순위가 비었을 때. 글자만 있으면 화면이 고장난 것처럼 보인다. */
+.board-mascot {
+  width: 96px;
+  opacity: 0.35;
+  filter: grayscale(0.4);
+}
+
 .logo {
   font-size: clamp(38px, 9vw, 68px);
   font-weight: 800;

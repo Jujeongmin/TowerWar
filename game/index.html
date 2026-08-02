@@ -11,6 +11,11 @@
     <meta name="theme-color" content="#0b1017" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- 탭 아이콘. **아바타를 그대로 쓴다** — 이 게임의 얼굴이 비어갱이고, 따로 그린
+         아이콘이 없다. `assets/` 가 `.gitignore` 라 클론하면 안 뜨는데, 그때는 브라우저
+         기본 아이콘으로 떨어질 뿐 아무것도 안 깨진다 (그림 폴백과 같은 규칙). -->
+    <link rel="icon" type="image/png" href="/assets/profile/beergang.png" />
+    <link rel="apple-touch-icon" href="/assets/profile/beergang.png" />
     <title>TowerWar</title>
   </head>
   <body>
@@ -42,6 +47,10 @@
         <span id="acc-rating" class="rating"></span>
         <span id="acc-record" class="record"></span>
       </div>
+      <!-- 마스코트. **글자 뒤에 옅게 깐다** — 로비가 글자만 있어서 무엇을 하는
+           게임인지 그림으로 안 읽혔다. `alt` 가 비어 있는 것은 장식이라서다
+           (스크린리더가 읽을 내용이 없다). 클릭을 막지 않게 `pointer-events: none`. -->
+      <img class="mascot" src="/assets/profile/beergang.png" alt="" aria-hidden="true" />
       <h1 class="logo">TowerWar</h1>
       <p class="tagline" data-i18n="tagline">Draw supply lines. Push the front.</p>
       <div class="menu">
@@ -59,6 +68,8 @@
       <ol id="board-list" class="board-list"></ol>
       <!-- 서버에 못 붙었거나 아직 아무도 대전을 안 끝냈을 때. 빈 목록만 두면
            고장인지 비어 있는 건지 구분이 안 된다. -->
+      <!-- 표가 비었을 때만 뜬다. 글자만 있으면 화면이 고장난 것처럼 보인다. -->
+      <img id="board-mascot" class="board-mascot" src="/assets/profile/beergang.png" alt="" aria-hidden="true" hidden />
       <p id="board-note" class="pvp-detail" hidden></p>
       <div class="menu">
         <button id="btn-board-back" class="btn" data-i18n="back">Back</button>

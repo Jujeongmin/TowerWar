@@ -1,0 +1,13 @@
+﻿Tiny Swords - Pixel Frog
+https://pixelfrog-assets.itch.io/tiny-swords
+
+License (as stated by the author on the asset pack page):
+
+  Feel free to use this asset pack in both personal and commercial projects,
+  modifying the assets as needed.
+  Crediting is not required, but it helps and is always welcome.
+  You may not redistribute, resell, or repackage the assets, even if the
+  files are modified.
+
+Assets in this directory are cropped frames extracted from the Free Pack for
+use inside this game. They are not offered for redistribution as an asset pack.

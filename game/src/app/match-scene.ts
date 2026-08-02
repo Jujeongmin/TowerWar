@@ -272,9 +272,11 @@ export class MatchScene implements Scene {
     if (ev.captures.length > 0) audio.play('capture');
     if (ev.clashes.length > 0) audio.play('clash');
 
+    // **경로를 여는 소리는 안 낸다** (사용자 결정). 판 하나에서 가장 자주 하는 조작이라
+    // 소리가 붙으면 계속 울려 시끄럽고, 점령·충돌처럼 알아야 할 소리를 덮는다.
+    // 자르는 것은 남긴다 — 빈도가 훨씬 낮고, 되돌릴 수 없는 조작이라 확인이 필요하다.
     const now = this.myRoutes();
-    if (now > routesBefore) audio.play('route-open');
-    else if (now < routesBefore) audio.play('route-cut');
+    if (now < routesBefore) audio.play('route-cut');
   }
 
   /** 이 판에서 내가 배속을 켤 수 있는가. 판정은 `mods` 에 있고 서버가 정한다. */

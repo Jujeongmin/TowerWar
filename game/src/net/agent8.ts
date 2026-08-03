@@ -71,6 +71,9 @@ export interface RoomSnapshot {
   desync?: { tick: number } | null;
   reason?: string;
   $users?: string[];
+  /** Friend-room invite code. Kept in room state so the host can recover it. */
+  code?: string;
+  private?: boolean;
 }
 
 /**
@@ -87,14 +90,17 @@ export interface RoomSnapshot {
  * 타임아웃이 없으면 매칭 화면이 "연결하는 중"에 갇혀 원인을 알 수 없다.
  */
 const CALL_TIMEOUT_MS = 8000;
+/** Creating a private room also acquires a distributed lock and persists its code. */
+const ROOM_CALL_TIMEOUT_MS = 20000;
 
-function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`${what} 응답이 없습니다 (${CALL_TIMEOUT_MS}ms)`)), CALL_TIMEOUT_MS),
-    ),
-  ]);
+function withTimeout<T>(p: Promise<T>, what: string, timeoutMs = CALL_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${what} 응답이 없습니다 (${Math.round(timeoutMs / 1000)}초)`)),
+      timeoutMs,
+    );
+    void p.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
 }
 
 /** `Agent8Client` 가 실제로 쓰는 서버 표면. 개발용 로컬 백엔드를 끼우려고 뽑아 뒀다. */
@@ -147,9 +153,16 @@ export class Agent8Client {
 
   /** 친구를 부를 방을 판다. 코드는 서버가 발급한다 (락 안에서). */
   async createRoom(): Promise<{ roomId: string; code: string }> {
-    const res = await withTimeout(this.server.remoteFunction('createRoom', []), '방 만들기');
+    const res = await withTimeout(
+      this.server.remoteFunction('createRoom', []),
+      '방 만들기',
+      ROOM_CALL_TIMEOUT_MS,
+    );
+    if (typeof res?.roomId !== 'string' || typeof res?.code !== 'string' || !res.code.trim()) {
+      throw new Error('서버가 방 코드를 보내지 않았습니다. 다시 시도해 주세요.');
+    }
     this.roomId = res.roomId;
-    return { roomId: res.roomId, code: res.code };
+    return { roomId: res.roomId, code: res.code.trim().toUpperCase() };
   }
 
   /** 코드로 친구 방에 들어간다. 실패는 그대로 던진다 — 이유가 화면에 보여야 한다. */

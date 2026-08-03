@@ -215,8 +215,7 @@ export class PvpScene implements Scene {
     await this.enterRoom('hosting', false, async (c) => {
       const { code } = await c.createRoom();
       if (this.attempt !== mine) return;
-      this.codeShown.textContent = code;
-      this.codeShown.hidden = false;
+      this.showRoomCode(code);
     });
   }
 
@@ -284,6 +283,12 @@ export class PvpScene implements Scene {
   private onRoom(state: RoomSnapshot, silentFallback: boolean): void {
     if (!this.active || !this.client) return;
 
+    // The server persists the invite code in room state. Recovering it here
+    // covers delayed RPC responses and keeps the code visible after updates.
+    if (this.mode === 'friend' && typeof state.code === 'string') {
+      this.showRoomCode(state.code);
+    }
+
     if (state.phase === 'finished') {
       if (!silentFallback) {
         this.show('error', t().roomClosed(state.reason ?? '종료'));
@@ -305,6 +310,13 @@ export class PvpScene implements Scene {
 
     const transport = this.client.transport();
     this.handOff(() => this.startPvp(setup, transport));
+  }
+
+  private showRoomCode(rawCode: string): void {
+    const code = rawCode.trim().toUpperCase();
+    if (!code) return;
+    this.codeShown.textContent = code;
+    this.codeShown.hidden = false;
   }
 
   /** 판을 넘기고 이 씬의 일을 끝낸다. 무작위 매칭이면 넘기는 이유를 화면에 남기지 않는다. */

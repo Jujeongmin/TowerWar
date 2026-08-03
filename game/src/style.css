@@ -15,6 +15,12 @@
   /* 컬럼을 화면 중앙에 두었을 때 좌우 여백. 뷰포트 끝에 붙는 고정 요소(HUD 버튼)를
      컬럼 가장자리로 밀어 주는 데 쓴다. */
   --app-margin: calc((100vw - var(--app-w)) / 2);
+  /* 화면 높이에 비례한 UI 축소 계수. **세로형 게임이 주 타겟이라 780px 이상
+     세로 화면에서는 1(원본 크기)** 이고, 그보다 짧은 화면(가로 모드·작은 창)에서
+     상점·메뉴가 한 화면을 넘지 않게 폰트·간격에 곱한다 (2026-08-03 사용자 지시:
+     "스크롤하지 않게 대응"). `100dvh` 를 모르는 브라우저는 위 기본값(1)이 남는다. */
+  --ui-scale: 1;
+  --ui-scale: clamp(0.78, calc(100dvh / 780px), 1);
 }
 
 html,
@@ -72,7 +78,10 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 22px;
+  gap: calc(22px * var(--ui-scale));
+  /* 화면이 스크롤되면 게임 드래그 조작과 겹쳐 고장처럼 보인다. 넘치는 콘텐츠는
+     아래 요소들(`--ui-scale`, 폰트 clamp)이 줄여서 화면 안에 넣는다. */
+  overflow: hidden;
   /* 노치·홈 인디케이터 밑으로 버튼이 들어가지 않게 안전영역만큼 더 민다.
      `viewport-fit=cover` 를 켰기 때문에 이게 없으면 실제로 가려진다. */
   padding: calc(24px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right))
@@ -283,9 +292,9 @@ body {
    알 수가 없어서 따로 둔다 — 양쪽이 같이 빨라진다는 것이 핵심인데 그게 안 읽혔다. */
 .shop-desc {
   display: block;
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1.5;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
   color: rgba(170, 186, 202, 0.8);
   text-align: left;
   white-space: normal;
@@ -328,19 +337,19 @@ body {
 
 .account-bar {
   position: absolute;
-  top: calc(20px + env(safe-area-inset-top));
+  top: calc(14px + env(safe-area-inset-top));
   left: 0;
   right: 0;
   display: flex;
   justify-content: center;
-  gap: 18px;
+  gap: 16px;
   align-items: baseline;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .coins {
   font-weight: 800;
-  font-size: 18px;
+  font-size: 16px;
   color: #fbbf24;
 }
 
@@ -519,8 +528,8 @@ body {
    원형에 진영색 테두리는 아바타(`.acc-avatar`·`.avatar-card`)와 같은 처리다 —
    화면 안에서 같은 물건은 같게 보여야 한다. */
 .mascot {
-  width: 88px;
-  height: 88px;
+  width: calc(88px * var(--ui-scale));
+  height: calc(88px * var(--ui-scale));
   border-radius: 50%;
   border: 2px solid rgba(63, 189, 241, 0.45);
   background: rgba(20, 26, 34, 0.9);
@@ -540,14 +549,14 @@ body {
 }
 
 .logo {
-  font-size: clamp(38px, 9vw, 68px);
+  font-size: calc(clamp(38px, 9vw, 68px) * var(--ui-scale));
   font-weight: 800;
   letter-spacing: -0.02em;
   color: #f2f7fb;
 }
 
 .tagline {
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale));
   color: rgba(170, 186, 202, 0.75);
   margin-top: -14px;
 }
@@ -563,7 +572,7 @@ body {
 .menu {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: calc(12px * var(--ui-scale));
   width: min(320px, 100%);
 }
 
@@ -579,8 +588,8 @@ body {
   color: #dbe6ef;
   font: inherit;
   font-weight: 700;
-  font-size: 16px;
-  padding: 14px 22px;
+  font-size: calc(16px * var(--ui-scale));
+  padding: calc(14px * var(--ui-scale)) calc(22px * var(--ui-scale));
   border-radius: 10px;
   cursor: pointer;
   touch-action: manipulation;
@@ -895,30 +904,30 @@ body {
 .shop {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   width: min(320px, 100%);
 }
 
 .shop-title {
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.16em;
   color: rgba(170, 186, 202, 0.55);
   text-align: center;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .shop-row {
   appearance: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(20, 26, 34, 0.92);
   color: #dbe6ef;
   font: inherit;
-  padding: 11px 14px;
-  border-radius: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
   cursor: pointer;
   text-align: left;
   touch-action: manipulation;
@@ -949,22 +958,22 @@ body {
 
 .shop-name {
   font-weight: 700;
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale));
 }
 
 .shop-pips {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   letter-spacing: 0.24em;
   color: #3fbdf1;
 }
 
 .shop-effect {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: rgba(170, 186, 202, 0.75);
 }
 
 .shop-price {
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   font-weight: 700;
   color: #fbbf24;
   white-space: nowrap;
@@ -976,18 +985,18 @@ body {
   color: rgba(170, 186, 202, 0.6);
 }
 
-/* 상점은 항목이 늘면 화면을 넘긴다. 넘칠 때만 스크롤되게 두고 위아래 여백을 준다. */
+/* 상점은 항목이 늘어도 **한 화면 안에** 들어가야 한다 (2026-08-03 사용자 지시:
+   "스크롤하지 않게 대응"). 스크롤 대신 `--ui-scale` 이 화면 높이에 맞춰 전체를
+   조이고, 넘치는 카드·간격은 아래에서 세로 화면 기준으로 압축해 둔다. */
 .screen-scroll {
   justify-content: flex-start;
-  padding-top: calc(62px + env(safe-area-inset-top));
-  padding-bottom: calc(32px + env(safe-area-inset-bottom));
-  overflow-y: auto;
+  padding-top: calc(56px + env(safe-area-inset-top));
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  /* 스크롤바를 없앤다. 내용이 넘치지 않도록 아래에서 크기를 조였다. */
+  overflow-y: hidden;
   /* 가로로는 못 밀게 둔다 — 가로 스크롤이 생기면 드래그 조작과 헷갈린다. */
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  /* 끝까지 스크롤한 뒤에도 계속 밀면 페이지 전체가 튀는 것을 막는다. */
-  overscroll-behavior: contain;
-  gap: 18px;
+  gap: calc(12px * var(--ui-scale));
 }
 
 /* ── PVP 매칭 화면 ─────────────────────────────────────────────── */
@@ -999,7 +1008,7 @@ body {
 }
 
 .pvp-status {
-  font-size: clamp(20px, 5vw, 30px);
+  font-size: calc(clamp(20px, 5vw, 30px) * var(--ui-scale));
   font-weight: 800;
   text-align: center;
 }
@@ -1284,7 +1293,7 @@ body {
 
 /* 발급받은 코드. 친구가 옮겨 적는 값이라 크고 자간을 벌려 둔다. */
 .pvp-code-shown {
-  font-size: clamp(30px, 8vw, 46px);
+  font-size: calc(clamp(30px, 8vw, 46px) * var(--ui-scale));
   font-weight: 800;
   letter-spacing: 0.22em;
   /* 자간이 마지막 글자 뒤에도 붙어 중앙이 왼쪽으로 밀린다. 그만큼 되민다. */
@@ -1303,7 +1312,7 @@ body {
   background: rgba(20, 26, 34, 0.92);
   color: #dbe6ef;
   font: inherit;
-  font-size: 16px;
+  font-size: calc(16px * var(--ui-scale));
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -1320,8 +1329,8 @@ body {
 
 .unit-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 6px;
 }
 
 .unit-card {
@@ -1329,13 +1338,13 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(20, 26, 34, 0.92);
   color: #dbe6ef;
   font: inherit;
-  padding: 10px 6px 8px;
-  border-radius: 10px;
+  padding: 6px 4px 5px;
+  border-radius: 8px;
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -1367,7 +1376,7 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  height: 56px;
+  height: 36px;
 }
 
 .unit-art img {
@@ -1426,16 +1435,16 @@ body {
 /* 등급 표식. **판에서 머리 위에 찍히는 것과 개수가 같다** (`drawTierPips`).
    색은 카탈로그의 `accent` 를 그대로 받는다 — 하의 색이라 화면에 이미 보인다. */
 .unit-tier {
-  font-size: 9px;
+  font-size: 8px;
   letter-spacing: 1px;
   line-height: 1;
   /* 등급 0(기본)은 빈 문자열이라 자리만 남는다. 높이를 고정해 카드가 안 흔들린다. */
-  min-height: 10px;
+  min-height: 9px;
 }
 
 .unit-bar {
   width: 100%;
-  height: 4px;
+  height: 3px;
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
@@ -1451,28 +1460,28 @@ body {
 
 .unit-name {
   font-weight: 700;
-  font-size: 13px;
+  font-size: calc(12px * var(--ui-scale));
 }
 
 /* 사는 이유가 여기 있다. 이름 다음으로 눈에 들어와야 해서 blurb 보다 밝고 굵다. */
 .unit-power {
-  font-size: 10px;
+  font-size: calc(9px * var(--ui-scale));
   font-weight: 700;
   color: #fbbf24;
   text-align: center;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 
 .unit-blurb {
-  font-size: 10px;
+  font-size: calc(9px * var(--ui-scale));
   color: rgba(170, 186, 202, 0.65);
   text-align: center;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 
 .unit-state {
-  margin-top: 2px;
-  font-size: 11px;
+  margin-top: 1px;
+  font-size: calc(10px * var(--ui-scale));
   font-weight: 700;
   color: #fbbf24;
 }
@@ -1484,3 +1493,21 @@ body {
 .unit-card.is-equipped .unit-state {
   color: #3fbdf1;
 }
+
+/* ── 상점 한 화면 압축 (2026-08-03 사용자 지시: "스크롤하지 않게 대응") ──────
+   상점은 `.screen-scroll` 이라 콘텐츠가 많다. 다른 화면(로비 등)의 크기는
+   건드리지 않고 상점 안에서만 버튼·간격을 조여 한 화면에 들어가게 한다. */
+#shop .shop {
+  gap: 4px;
+}
+
+#shop .menu {
+  gap: 6px;
+  margin-top: 2px;
+}
+
+#shop .btn {
+  padding: calc(10px * var(--ui-scale)) calc(22px * var(--ui-scale));
+  font-size: calc(15px * var(--ui-scale));
+}
+

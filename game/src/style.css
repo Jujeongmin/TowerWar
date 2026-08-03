@@ -1211,8 +1211,45 @@ body {
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
 
-  #lobby { gap: 13px; }
+  /* The id selector above normally keeps the lobby at overflow:hidden, so it
+     needs an explicit override. Without this, laptop browser chrome or 125%
+     display scaling clips the last menu buttons with no way to reach them. */
+  #lobby {
+    gap: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-top: calc(74px + env(safe-area-inset-top));
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  #lobby .account-bar {
+    top: calc(9px + env(safe-area-inset-top));
+    min-height: 44px;
+  }
+
+  #lobby .mascot {
+    width: 68px;
+    height: 68px;
+    margin-bottom: 4px;
+  }
+
+  .lobby-title-block { padding: 6px 14px 8px; }
+  #lobby .logo { font-size: 36px; }
+  #lobby .tagline { margin-top: 3px; font-size: 11px; }
+  #lobby .menu { gap: 5px; padding: 8px; }
+  #lobby .btn { min-height: 38px; padding-top: 7px; padding-bottom: 7px; }
   #pvp { overflow-y: auto; }
+}
+
+@media (max-height: 560px) {
+  /* Very short split-screen windows prioritize controls over decoration. */
+  #lobby .mascot { display: none; }
+  .lobby-kicker { display: none; }
+  #lobby .logo { font-size: 31px; }
+  #lobby .tagline { display: none; }
+  .match-radar { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

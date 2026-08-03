@@ -1248,7 +1248,10 @@ class Server {
   #ratingAfter(state, slot, outcome, current) {
     const score = outcome === 'win' ? 1 : outcome === 'draw' ? 0.5 : 0;
     if (state.solo) {
-      return Math.max(0, current + eloDelta(current, BOT_RATING, score, RATING_K_SOLO));
+      const delta = eloDelta(current, BOT_RATING, score, RATING_K_SOLO);
+      // A bot victory must always feel like a victory. At high ratings the
+      // normal Elo result rounds to zero, so guarantee at least +1 on a win.
+      return Math.max(0, current + (outcome === 'win' ? Math.max(1, delta) : delta));
     }
     const ratings = state.ratings || {};
     const mine = numOr(ratings[slot], DEFAULT_RATING);

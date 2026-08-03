@@ -670,11 +670,10 @@ const soloLoss = await soloMatch(C, 2);
 // 지는 쪽이 이기는 쪽보다 크다 — 봇보다 점수가 높으니 이기는 게 당연한 판이다
 check('봇전 패배 1100 → 1095', soloLoss.rating === 1095, soloLoss.rating);
 
-// 37-b) 천장. 점수가 오를수록 봇을 이겨서 얻는 것이 줄고, 결국 0이 된다 —
-//       파밍을 따로 막는 장치가 없는 이유가 이것이다 (`BOT_RATING` 주석).
+// 37-b) 고점에서도 봇 승리는 최소 +1이다. Elo 반올림으로 승리 보상이 0이 되면 안 된다.
 userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1500 });
 const capped = await soloMatch(C, 1);
-check('1500점에서는 봇을 이겨도 안 오른다', capped.rating === 1500, capped.rating);
+check('1500점에서도 봇을 이기면 최소 1점 오른다', capped.rating === 1501, capped.rating);
 
 // 38) 점수 필드가 없던 계정(v8 이하)은 0이 아니라 기본 점수에서 출발한다
 const F = { account: '0xFFF', roomId: null };

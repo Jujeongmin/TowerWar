@@ -71,7 +71,49 @@ export function entitlementsFromAssets(assets: Record<string, number>): PremiumI
  * 팝업 차단에 걸릴 수 있어 `null` 이 올 수 있다. 그때는 화면이 "다시 눌러 주세요"를
  * 말해야 한다 — 조용히 실패하면 눌렀는데 아무 일도 안 일어난 것으로 보인다.
  */
-export function openShopWindow(url: string): boolean {
-  const w = window.open(url, '_blank', 'noopener,noreferrer');
-  return w !== null;
+export interface ReservedShopWindow {
+  navigate(url: string): boolean;
+  close(): void;
+}
+
+/**
+ * 클릭 이벤트가 살아 있는 동안 결제 탭을 먼저 확보한다.
+ *
+ * URL을 `await`한 뒤 `window.open`을 호출하면 모바일 Safari와 인앱 브라우저가 팝업으로
+ * 판단해 차단한다. 따라서 동기적으로 빈 탭을 열고, SDK 응답이 오면 그 탭만 이동시킨다.
+ */
+export function reserveShopWindow(): ReservedShopWindow | null {
+  const w = window.open('about:blank', '_blank');
+  if (!w) return null;
+
+  // 새 탭에서 원래 게임 창을 조작하지 못하게 한다. `noopener` 기능 문자열을 사용하면
+  // 정상적으로 열린 창도 반환값이 null일 수 있어 직접 끊는다.
+  w.opener = null;
+
+  try {
+    w.document.title = 'Verse8 Shop';
+    w.document.body.style.cssText = 'margin:0;background:#0b1017;color:#dbe6ef;font:600 14px system-ui;display:grid;place-items:center;min-height:100vh';
+    w.document.body.textContent = 'Opening Verse8 Shop…';
+  } catch {
+    // 일부 WebView는 about:blank 문서 접근을 막는다. 탭 확보에는 영향이 없다.
+  }
+
+  return {
+    navigate(url: string): boolean {
+      try {
+        w.location.replace(url);
+        return true;
+      } catch {
+        w.close();
+        return false;
+      }
+    },
+    close(): void {
+      try {
+        w.close();
+      } catch {
+        // 이미 닫힌 탭이면 할 일이 없다.
+      }
+    },
+  };
 }

@@ -380,6 +380,32 @@ body {
   color: #f2f7fb;
 }
 
+.acc-name-edit {
+  appearance: none;
+  border: 0;
+  padding: 4px 2px;
+  background: none;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.acc-name-edit::after {
+  content: '✎';
+  margin-left: 5px;
+  color: #7dd3fc;
+  font-size: 10px;
+  opacity: .65;
+}
+
+.acc-name-edit:hover,
+.acc-name-edit:focus-visible {
+  color: #7dd3fc;
+  outline: none;
+  text-shadow: 0 0 12px rgba(63, 189, 241, .35);
+}
+
 .acc-avatar {
   width: 26px;
   height: 26px;

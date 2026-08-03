@@ -34,6 +34,7 @@ export class LobbyScene implements Scene {
     openBoard: () => void,
     /** 설정. 지금은 언어뿐이다 (`settings-scene.ts`). */
     openSettings: () => void,
+    editAccount: () => void,
   ) {
     const name = root.querySelector<HTMLElement>('#acc-name');
     const avatar = root.querySelector<HTMLImageElement>('#acc-avatar');
@@ -59,6 +60,7 @@ export class LobbyScene implements Scene {
     shop.addEventListener('click', openShop);
     board.addEventListener('click', openBoard);
     settings.addEventListener('click', openSettings);
+    name.addEventListener('click', editAccount);
   }
 
   enter(): void {

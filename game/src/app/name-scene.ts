@@ -20,6 +20,11 @@ import {
 import { t } from '../i18n';
 import type { Scene } from './scene';
 
+interface NameDraft {
+  name: string;
+  profile: ProfileId;
+}
+
 export class NameScene implements Scene {
   private readonly input: HTMLInputElement;
   private readonly error: HTMLElement;
@@ -32,6 +37,7 @@ export class NameScene implements Scene {
     /** 이름과 아바타를 저장한다. 실패하면 메시지를 던진다. */
     private readonly submit: (name: string, profile: ProfileId) => Promise<void>,
     private readonly done: () => void,
+    private readonly getDraft: () => NameDraft,
   ) {
     const input = root.querySelector<HTMLInputElement>('#name-input');
     const error = root.querySelector<HTMLElement>('#name-error');
@@ -69,6 +75,9 @@ export class NameScene implements Scene {
   }
 
   enter(): void {
+    const draft = this.getDraft();
+    this.input.value = draft.name;
+    this.picked = draft.profile;
     this.error.textContent = '';
     this.paint();
     this.root.hidden = false;

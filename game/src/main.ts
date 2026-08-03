@@ -19,7 +19,7 @@ import { ShopScene } from './app/shop-scene';
 import { Agent8Client } from './net/agent8';
 import { audio, installAudioUnlock } from './audio';
 import { devAdProvider, setAdProvider, verse8AdProvider } from './net/ads';
-import { openShopWindow } from './net/vx';
+import { reserveShopWindow } from './net/vx';
 import { applyStaticText, getLang, setLang } from './i18n';
 import { Renderer } from './render/renderer';
 import type { UnitKind } from './units';
@@ -70,8 +70,15 @@ function buy(kind: UpgradeKind): void {
  * "다시 눌러 주세요"를 말한다.
  */
 async function openVxShop(): Promise<boolean> {
+  // 반드시 첫 await 전에 열어야 모바일/인앱 브라우저가 사용자 클릭으로 인정한다.
+  const popup = reserveShopWindow();
+  if (!popup) return false;
   const url = await store.shopUrl();
-  return url ? openShopWindow(url) : false;
+  if (!url) {
+    popup.close();
+    return false;
+  }
+  return popup.navigate(url);
 }
 
 /** 안 가진 생김새면 사고, 가진 것이면 착용한다. 둘 다 못 하면 아무 일도 안 일어난다. */
@@ -81,6 +88,8 @@ function pickUnit(kind: UnitKind): void {
     shop.refresh();
   });
 }
+
+let nameScene: NameScene;
 
 const lobby = new LobbyScene(
   need('lobby'),
@@ -96,6 +105,7 @@ const lobby = new LobbyScene(
   () => switchTo(shop),
   () => switchTo(board),
   () => switchTo(settings),
+  () => switchTo(nameScene),
 );
 const settings = new SettingsScene(
   need('settings'),
@@ -133,10 +143,11 @@ const shop = new ShopScene(
   () => store.watchAdForCoins(),
   () => switchTo(lobby),
 );
-const nameScene = new NameScene(
+nameScene = new NameScene(
   need('name'),
   (name, profile) => store.setName(name, profile),
   () => switchTo(lobby),
+  () => ({ name: store.current.name, profile: store.current.profile }),
 );
 const match = new MatchScene(
   canvas,

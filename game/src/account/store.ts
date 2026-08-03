@@ -16,7 +16,6 @@
  */
 import type { Agent8Client, BoardEntry } from '../net/agent8';
 import { watchRewardedAd } from '../net/ads';
-import { entitlementsFromAssets } from '../net/vx';
 import type { ProfileId } from '../profiles';
 import type { UnitKind } from '../units';
 import {
@@ -130,45 +129,10 @@ export class AccountStore {
 
   // ── 유료(VX) ───────────────────────────────────────────────────
 
-  /**
-   * 결제 창 주소. 오프라인이거나 이 빌드에 결제가 없으면 `null`.
-   * **여는 것은 화면이 한다** — 사용자 제스처 안에서 열어야 팝업 차단에 안 걸린다.
-   */
-  async shopUrl(): Promise<string | null> {
-    if (!this.net) return null;
-    try {
-      return await this.net.shopUrl();
-    } catch (e) {
-      console.warn('[vx] 결제 창 주소를 못 받았습니다:', String((e as Error)?.message ?? e));
-      return null;
-    }
-  }
-
-  /**
-   * 보유 자산을 계속 지켜보다가, 아직 안 열린 유료 항목이 보이면 서버에 반영한다.
-   *
-   * **구독인 이유**: 결제가 다른 탭에서 끝나므로 언제 끝나는지 우리가 모른다.
-   * 돌아왔을 때 이미 열려 있어야 한다.
-   *
-   * 자산 id 표(`ASSET_IDS`)가 비어 있으면 아무 일도 안 한다 — 배포 전에는 그 상태다.
-   */
-  watchAssets(onChange: () => void): () => void {
-    if (!this.net) return () => {};
-    return this.net.onAssets((assets) => {
-      const want = entitlementsFromAssets(assets);
-      const missing = want.filter((k) => !this.account.entitlements.includes(k));
-      if (missing.length === 0) return;
-      void (async () => {
-        for (const item of missing) {
-          try {
-            this.setLocal(fromRemote(await this.net!.grantEntitlement(item)));
-          } catch (e) {
-            console.warn('[vx] 유료 항목 반영 실패:', String((e as Error)?.message ?? e));
-          }
-        }
-        onChange();
-      })();
-    });
+  /** Reload server-authoritative entitlements after the VXShop dialog closes. */
+  async refreshAccount(): Promise<void> {
+    if (!this.net) return;
+    this.setLocal(fromRemote(await this.net.getAccount()));
   }
 
   // ── 광고 보상 ──────────────────────────────────────────────────

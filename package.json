@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@agent8/gameserver": "^1.10.2",
-    "@verse8/ads": "^0.4.0"
+    "@verse8/ads": "^0.4.0",
+    "@verse8/platform": "^2.1.0"
   }
 }

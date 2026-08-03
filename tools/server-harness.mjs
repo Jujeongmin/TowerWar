@@ -32,6 +32,12 @@ function withUsers(id) {
 
 /** 글로벌 상태. 방 코드 표가 여기 산다. */
 let globalState = {};
+const collections = new Map();
+let nextCollectionId = 1;
+function collection(id) {
+  if (!collections.has(id)) collections.set(id, new Map());
+  return collections.get(id);
+}
 
 /** 분산 락. 하네스는 단일 스레드라 그냥 실행한다 — 락 안에서 도는지만 재현한다. */
 const lockCalls = [];
@@ -51,11 +57,49 @@ const $global = {
     userStates.set(sender.account, { ...state });
     return state;
   },
+  async getUserState(account) {
+    return userStates.get(account) ?? null;
+  },
+  async updateUserState(account, state) {
+    userStates.set(account, { ...state });
+    return state;
+  },
   async getGlobalState() {
     return globalState;
   },
   async updateGlobalState(patch) {
     globalState = { ...globalState, ...patch };
+  },
+  async getCollectionItems(id, options = {}) {
+    let rows = [...collection(id).values()].map((row) => ({ ...row }));
+    for (const filter of options.filters || []) {
+      if (filter.operator === '==') rows = rows.filter((row) => row[filter.field] === filter.value);
+      if (filter.operator === '>') rows = rows.filter((row) => row[filter.field] > filter.value);
+    }
+    for (const order of [...(options.orderBy || [])].reverse()) {
+      rows.sort((a, b) => order.direction === 'desc'
+        ? Number(b[order.field]) - Number(a[order.field])
+        : Number(a[order.field]) - Number(b[order.field]));
+    }
+    return options.limit ? rows.slice(0, options.limit) : rows;
+  },
+  async countCollectionItems(id, options = {}) {
+    return (await this.getCollectionItems(id, options)).length;
+  },
+  async addCollectionItem(id, item) {
+    const row = { ...item, __id: `item-${nextCollectionId++}` };
+    collection(id).set(row.__id, row);
+    return { ...row };
+  },
+  async updateCollectionItem(id, item) {
+    if (!item.__id || !collection(id).has(item.__id)) throw new Error('missing collection item');
+    const row = { ...collection(id).get(item.__id), ...item };
+    collection(id).set(item.__id, row);
+    return { ...row };
+  },
+  async deleteCollectionItem(id, itemId) {
+    collection(id).delete(itemId);
+    return { __id: itemId };
   },
   async joinRoom(roomId) {
     const id = roomId ?? `room-${nextRoomId++}`;
@@ -657,6 +701,7 @@ check('11초 기다린 방은 대역이 열린다', near.roomId === waitRoom.roo
 
 // 40) 순위표 — 판이 끝날 때마다 서버가 고친다
 globalState = { ...globalState, board: [] };
+collections.set('rankings', new Map());
 as(A); await server.leaveMatch().catch(() => {});
 as(B); await server.leaveMatch().catch(() => {});
 userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', rating: 1200 });
@@ -709,6 +754,7 @@ check('봇전 승리도 순위표에 오른다', boardSolo.some((e) => e.name ==
 check('순위표 점수도 봇전 결과를 반영한다', boardSolo.find((e) => e.name === '캐럴').rating === 1301, boardSolo);
 
 // 43) 표는 10명에서 잘린다
+collections.set('rankings', new Map());
 globalState = {
   ...globalState,
   board: Array.from({ length: 10 }, (_, i) => ({ account: `0xF${i}`, name: `봇${i}`, rating: 9000 + i })),
@@ -733,6 +779,7 @@ check('점수가 모자라면 표에 못 든다', board3.every((e) => e.name !==
 // 44) 짧게 끝난 판은 점수에 안 센다 (MIN_RATED_MS). 코인과 전적은 그대로 준다.
 //     막으려는 것: 부계정이 즉시 항복하고 본계정이 점수를 먹는 경로.
 globalState = { ...globalState, board: [] };
+collections.set('rankings', new Map());
 as(A); await server.leaveMatch().catch(() => {});
 as(B); await server.leaveMatch().catch(() => {});
 userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', rating: 1000 });
@@ -805,19 +852,24 @@ check('유료 종류는 코인으로 못 산다', perr === '코인으로 살 수
 perr = null;
 try { await server.selectUnitKind('beergang_rainbow'); } catch (e) { perr = e.message; }
 check('소유 없이 유료 종류를 못 입는다', perr === '가지고 있지 않습니다', perr);
-perr = null;
-try { await server.grantEntitlement('beergang_gold'); } catch (e) { perr = e.message; }
-check('유료 목록에 없는 항목은 못 연다', perr === '그런 항목이 없습니다', perr);
+const invalidVx = await server.$onItemPurchased({ account: '0xGGG', purchaseId: 'bad-1', productId: 'beergang_gold' });
+check('유료 목록에 없는 상품은 지급하지 않는다', invalidVx.success === false, invalidVx);
 
-// 49) 소유가 열리면 입을 수 있다. 코인은 안 깎인다 — 결제는 Verse8 쪽에서 끝났다
+// 49) Verse8가 검증한 구매 이벤트만 소유를 연다. 코인은 게임 계정에서 안 깎인다.
 const before49 = (await server.getAccount()).coins;
-const granted = await server.grantEntitlement('beergang_rainbow');
+const purchase49 = await server.$onItemPurchased({
+  account: '0xGGG', purchaseId: 'vx-purchase-1', productId: 'beergang_rainbow', quantity: 1,
+});
+check('Verse8 구매 이벤트를 처리한다', purchase49.success === true, purchase49);
+const granted = await server.getAccount();
 check('소유가 열린다', granted.entitlements.includes('beergang_rainbow'), granted.entitlements);
 check('코인은 안 깎인다', granted.coins === before49, { now: granted.coins, before49 });
 const wornVx = await server.selectUnitKind('beergang_rainbow');
 check('열린 뒤에는 입는다', wornVx.unitKind === 'beergang_rainbow', wornVx.unitKind);
-const twice49 = await server.grantEntitlement('beergang_rainbow');
+await server.$onItemPurchased({ account: '0xGGG', purchaseId: 'vx-purchase-1', productId: 'beergang_rainbow' });
+const twice49 = await server.getAccount();
 check('두 번 열어도 한 칸만', twice49.entitlements.length === 1, twice49.entitlements);
+check('같은 거래 ID를 한 번만 기록한다', twice49.vxPurchaseIds.length === 1, twice49.vxPurchaseIds);
 
 // 50) 저장본이 오염돼도 유료 소유를 자칭 못 한다
 userStates.set('0xGGG', {

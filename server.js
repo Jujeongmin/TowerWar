@@ -205,7 +205,7 @@ const MAX_TOWERS = 12;
 // ── 보상형 광고 ──────────────────────────────────────────────────
 //
 // **서버는 광고를 봤는지 확인할 수 없다.** 광고 SDK는 클라이언트에 있고, 이 샌드박스에서
-// 그쪽에 물어볼 방법이 없다 (`grantEntitlement` 와 같은 구멍이다).
+// 그쪽에 물어볼 방법이 없다. VX 구매는 별도의 서버 이벤트가 검증한다.
 //
 // 그래서 **막을 수 있는 것만 막는다**:
 //   1. 금액을 서버가 정한다. 클라이언트가 액수를 보내면 무한 코인이 된다
@@ -322,6 +322,8 @@ function ratingBandFor(waitedMs) {
  * 있더라도 계정 수에 비례해 느려진다. 판이 끝날 때마다 10칸짜리 표를 고치는 편이 싸다.
  */
 const BOARD_SIZE = 10;
+/** Verse8 Global Collection used for scalable sorting/filtering. */
+const BOARD_COLLECTION = 'rankings';
 
 /**
  * 이 시간(ms)보다 짧게 끝난 판은 **점수에 안 센다.** 코인과 전적은 그대로 준다.
@@ -410,6 +412,8 @@ function defaultAccount(account) {
     // 유료(VX)로 열린 것들. 코인으로 산 `ownedUnits` 와 갈라 둔다 — 획득 경로가 다르고,
     // 코인 목록에 섞으면 환불·초기화 때 무엇이 유료였는지 구분이 안 된다.
     entitlements: [],
+    // VXShop purchase IDs already applied. Prevents duplicate webhook delivery.
+    vxPurchaseIds: [],
     // 광고 보상 기록. 마지막으로 받은 시각과, 그날 몇 번 받았는지.
     adAt: 0,
     adCount: 0,
@@ -424,7 +428,8 @@ function normalizeAccount(raw, account) {
   const owned = Array.isArray(raw.ownedUnits)
     ? [...new Set(raw.ownedUnits.filter((k) => k in UNIT_PRICES))]
     : [];
-  const kind = raw.unitKind in UNIT_PRICES ? raw.unitKind : DEFAULT_UNIT_KIND;
+  const entitlements = cleanEntitlements(raw.entitlements);
+  const kind = isKnownUnit(raw.unitKind) ? raw.unitKind : DEFAULT_UNIT_KIND;
   return {
     account,
     name: cleanName(raw.name),
@@ -436,14 +441,19 @@ function normalizeAccount(raw, account) {
     speedLevel: clampSpeedLevel(raw.speedLevel),
     ownedUnits: owned,
     // 안 가진 것이 착용돼 있으면 기본으로 되돌린다.
-    unitKind: UNIT_PRICES[kind] === 0 || owned.includes(kind) ? kind : DEFAULT_UNIT_KIND,
+    unitKind: UNIT_PRICES[kind] === 0 || owned.includes(kind) || entitlements.includes(kind)
+      ? kind
+      : DEFAULT_UNIT_KIND,
     soloWins: num(raw.soloWins),
     soloLosses: num(raw.soloLosses),
     soloDraws: num(raw.soloDraws),
     // 없으면(마이그레이션 전 계정) 0이 아니라 기본 점수로 떨어진다 — `num()` 은
     // 여기 못 쓴다. 0은 "많이 져서 0점"과 "한 번도 안 쟀음"을 구분 못 한다.
     rating: numOr(raw.rating, DEFAULT_RATING),
-    entitlements: cleanEntitlements(raw.entitlements),
+    entitlements,
+    vxPurchaseIds: Array.isArray(raw.vxPurchaseIds)
+      ? [...new Set(raw.vxPurchaseIds.filter((id) => typeof id === 'string'))].slice(-50)
+      : [],
     adAt: num(raw.adAt),
     adCount: num(raw.adCount),
     adDay: num(raw.adDay),
@@ -490,8 +500,12 @@ class Server {
    * 계정 id는 안 내려준다. 순위 표시에 필요 없고, 내려주면 남의 계정 주소가 퍼진다.
    */
   async getLeaderboard() {
-    const g = (await $global.getGlobalState()) || {};
-    return (g.board || []).map((e) => ({
+    await this.#migrateLegacyBoard();
+    const rows = await $global.getCollectionItems(BOARD_COLLECTION, {
+      orderBy: [{ field: 'rating', direction: 'desc' }],
+      limit: BOARD_SIZE,
+    });
+    return rows.map((e) => ({
       name: cleanName(e.name),
       rating: numOr(e.rating, DEFAULT_RATING),
       me: e.account === $sender.account,
@@ -559,32 +573,25 @@ class Server {
     });
   }
 
-  /**
-   * 유료 항목을 계정에 연다.
-   *
-   * ══════════════════════════════════════════════════════════════════
-   * **이 함수는 클라이언트를 믿는다. 지금은 막을 방법이 없다.**
-   *
-   * 결제는 Verse8 CrossRamp 상점(외부 URL)에서 일어나고, 산 것은 Verse8의 자산
-   * 원장에 기록된다. 클라이언트는 `subscribeAsset()` 로 그 원장을 읽을 수 있는데,
-   * **`server.js` 샌드박스($global/$room/$sender/$lock)에는 자산을 읽는 API가
-   * 문서에도 SDK 타입에도 없다.** 그래서 "정말 샀는가"를 서버가 확인할 수 없다.
-   *
-   * 즉 콘솔에서 이 함수를 부르면 무지개 비어갱(전투력 4)을 공짜로 얻는다.
-   * `MIN_RATED_MS`(§-34)로 막은 것과 같은 종류의 구멍이고, **해결도 같다** —
-   * 서버가 자산을 직접 읽거나(그런 API가 있다면), 서버 권위로 옮기는 것이다.
-   *
-   * 배포 후 할 일: `getAssetOf($sender.account)` 같은 것이 실제로 있는지 확인하고,
-   * 있으면 **이 함수 안에서만** 검사를 추가하면 된다. 그래서 여기 한 곳에 몰아 뒀다.
-   * ══════════════════════════════════════════════════════════════════
-   */
-  async grantEntitlement(item) {
-    if (!PREMIUM_ITEMS.includes(item)) throw new Error('그런 항목이 없습니다');
-    return await $lock(`acct:${$sender.account}`, async () => {
-      const a = await this.#loadAccount();
-      if (a.entitlements.includes(item)) return a;
-      return await this.#saveAccount({ ...a, entitlements: [...a.entitlements, item] });
+  /** Verse8 calls this server-side after a verified VXShop purchase. */
+  async $onItemPurchased({ account, purchaseId, productId }) {
+    if (!account || !purchaseId || !PREMIUM_ITEMS.includes(productId)) {
+      return { success: false };
+    }
+    await $lock(`acct:${account}`, async () => {
+      const raw = await $global.getUserState(account);
+      const a = normalizeAccount(raw, account);
+      if (a.vxPurchaseIds.includes(purchaseId)) return;
+      const entitlements = a.entitlements.includes(productId)
+        ? a.entitlements
+        : [...a.entitlements, productId];
+      await $global.updateUserState(account, {
+        ...a,
+        entitlements,
+        vxPurchaseIds: [...a.vxPurchaseIds, purchaseId].slice(-50),
+      });
     });
+    return { success: true };
   }
 
   /**
@@ -1185,13 +1192,44 @@ class Server {
    * 최고 기록으로 두면 한 번 올라간 사람이 안 내려와 표가 굳는다.
    */
   async #recordOnBoard(a) {
-    await $lock('board', async () => {
+    await this.#migrateLegacyBoard();
+    await $lock(`board:${a.account}`, async () => {
+      const mine = await $global.getCollectionItems(BOARD_COLLECTION, {
+        filters: [{ field: 'account', operator: '==', value: a.account }],
+      });
+      // 이름 없는 계정은 표에 안 넣는다. 기존 기록이 있으면 함께 지운다.
+      if (!a.name) {
+        for (const row of mine) await $global.deleteCollectionItem(BOARD_COLLECTION, row.__id);
+        return;
+      }
+      const entry = { account: a.account, name: a.name, rating: a.rating, updatedAt: Date.now() };
+      if (mine[0]) {
+        await $global.updateCollectionItem(BOARD_COLLECTION, { ...entry, __id: mine[0].__id });
+        for (const duplicate of mine.slice(1)) {
+          await $global.deleteCollectionItem(BOARD_COLLECTION, duplicate.__id);
+        }
+      } else {
+        await $global.addCollectionItem(BOARD_COLLECTION, { ...entry, createdAt: Date.now() });
+      }
+    });
+  }
+
+  /** One-time migration for rankings written by builds before Global Collections. */
+  async #migrateLegacyBoard() {
+    if ((await $global.countCollectionItems(BOARD_COLLECTION)) > 0) return;
+    await $lock('board:migrate', async () => {
+      if ((await $global.countCollectionItems(BOARD_COLLECTION)) > 0) return;
       const g = (await $global.getGlobalState()) || {};
-      const board = (g.board || []).filter((e) => e && e.account !== a.account);
-      // 이름 없는 계정은 표에 안 넣는다. 빈 칸이 순위에 끼면 무엇인지 알 수가 없다.
-      if (a.name) board.push({ account: a.account, name: a.name, rating: a.rating });
-      board.sort((x, y) => y.rating - x.rating);
-      await $global.updateGlobalState({ board: board.slice(0, BOARD_SIZE) });
+      for (const row of Array.isArray(g.board) ? g.board : []) {
+        if (!row || !row.account || !cleanName(row.name)) continue;
+        await $global.addCollectionItem(BOARD_COLLECTION, {
+          account: row.account,
+          name: cleanName(row.name),
+          rating: numOr(row.rating, DEFAULT_RATING),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
     });
   }
 

@@ -1,119 +1,62 @@
-/**
- * Verse8 유료 결제(VX) 연결.
- *
- * ── 무엇이 확인된 것이고 무엇이 아닌가 ─────────────────────────
- *
- * **확인됨** (`node_modules/@agent8/gameserver` 의 타입 선언에서 직접 읽음):
- *
- *   getCrossRampShopUrl(lang?): Promise<string>     결제 창 URL
- *   getCrossRampForgeUrl(lang?): Promise<string>    DEX 거래 URL (안 쓴다)
- *   subscribeAsset(account, cb: (assets: Record<string, number>) => void)
- *
- * 즉 **결제는 우리 코드 밖에서 일어난다.** 우리가 하는 것은 두 가지뿐이다 —
- * 결제 창을 열어 주고, 그 결과로 늘어난 자산을 읽는 것.
- *
- * **확인 안 됨**: 자산 id. 어떤 문자열이 "무지개 비어갱"인지는 Verse8 쪽에 상품을
- * 등록해야 정해진다. `ASSET_IDS` 가 그 자리이고, 배포 전에는 채울 수가 없다.
- *
- * **확인 안 됨(중요)**: `server.js` 샌드박스에서 자산을 읽는 방법. $global/$room/
- * $sender/$lock 어디에도 없고 SDK 타입에도 없다. 그래서 지금은 **클라이언트가
- * "샀다"고 말하면 서버가 믿는다** (`server.js` 의 `grantEntitlement` 주석 참고).
- */
+/** Verse8 VXShop integration for the game's vanilla TypeScript client. */
+import { VXShop, type VXShopItem } from '@verse8/platform/vanilla';
 import type { UnitKind } from '../units';
 
-/**
- * 유료 항목 → Verse8 자산 id.
- *
- * **비어 있으면 그 항목은 영영 안 열린다.** 값을 지어내면 실제로 산 사람이 못 받거나,
- * 아무나 받게 된다 — 둘 다 배포 전에는 확인할 방법이 없어서 비워 뒀다.
- *
- * 배포 후 할 일:
- *   1. Verse8 대시보드에 상품을 등록하고 자산 id를 받는다
- *   2. 아래 표를 채운다
- *   3. `subscribeAsset` 이 그 id를 실제로 내려주는지 콘솔에서 확인한다
- */
-export const ASSET_IDS: Partial<Record<PremiumItem, string>> = {
-  beergang_rainbow: 'beergang_rainbow',
-  tempo_boost: 'tempo_boost',
-};
-
-/**
- * 살 수 있는 유료 항목. **유닛만 있는 게 아니다** — 배속(`tempo_boost`)은 종류가 아니라
- * 능력이다. `server.js` 의 `PREMIUM_ITEMS` 와 같은 값이어야 한다.
- */
 export type PremiumItem = UnitKind | 'tempo_boost';
-
-/** 배속을 여는 항목의 id. `account.ts` 의 `TEMPO_ITEM` 과 같아야 한다. */
 export const TEMPO_ITEM = 'tempo_boost';
 
-/** 이 항목을 살 수 있는가. 자산 id가 아직 없으면 상점에 "준비 중"으로 나간다. */
+/** Product IDs must exactly match the Verse8 VXShop dashboard. */
+export const VX_PRODUCTS: Readonly<Record<'beergang_rainbow' | 'tempo_boost', { price: number }>> = {
+  beergang_rainbow: { price: 500 },
+  tempo_boost: { price: 300 },
+};
+
+export function isPremiumItem(item: string): item is keyof typeof VX_PRODUCTS {
+  return Object.prototype.hasOwnProperty.call(VX_PRODUCTS, item);
+}
+
+export function initVxShop(): void {
+  VXShop.init();
+}
+
+export function vxShopItem(item: PremiumItem): VXShopItem | undefined {
+  return isPremiumItem(item) ? VXShop.getItem(item) : undefined;
+}
+
+/** Dashboard price is authoritative after loading; configured price is the loading fallback. */
+export function vxPrice(item: PremiumItem): number | null {
+  if (!isPremiumItem(item)) return null;
+  const live = VXShop.getItem(item)?.price;
+  return typeof live === 'number' && live >= 0 ? live : VX_PRODUCTS[item].price;
+}
+
 export function isPurchasable(item: PremiumItem): boolean {
-  return typeof ASSET_IDS[item] === 'string' && ASSET_IDS[item]!.length > 0;
+  if (!isPremiumItem(item)) return false;
+  const live = VXShop.getItem(item);
+  return live ? live.purchasable && !live.purchaseLimitReached : true;
 }
 
-/**
- * 지금 보유한 자산으로 열려 있어야 할 항목들.
- *
- * 수량이 1 이상이면 가진 것으로 본다. **소모품이 아니다** — 한 번 사면 계속 쓰는
- * 물건이라 수량을 세지 않는다.
- */
-export function entitlementsFromAssets(assets: Record<string, number>): PremiumItem[] {
-  const out: PremiumItem[] = [];
-  for (const [item, assetId] of Object.entries(ASSET_IDS) as [PremiumItem, string][]) {
-    if (assetId && (assets[assetId] ?? 0) > 0) out.push(item);
-  }
-  return out;
-}
-
-/**
- * 결제 창을 연다. **새 탭이다** — 같은 탭에서 이동하면 판이 통째로 날아간다.
- *
- * 팝업 차단에 걸릴 수 있어 `null` 이 올 수 있다. 그때는 화면이 "다시 눌러 주세요"를
- * 말해야 한다 — 조용히 실패하면 눌렀는데 아무 일도 안 일어난 것으로 보인다.
- */
-export interface ReservedShopWindow {
-  navigate(url: string): boolean;
-  close(): void;
-}
-
-/**
- * 클릭 이벤트가 살아 있는 동안 결제 탭을 먼저 확보한다.
- *
- * URL을 `await`한 뒤 `window.open`을 호출하면 모바일 Safari와 인앱 브라우저가 팝업으로
- * 판단해 차단한다. 따라서 동기적으로 빈 탭을 열고, SDK 응답이 오면 그 탭만 이동시킨다.
- */
-export function reserveShopWindow(): ReservedShopWindow | null {
-  const w = window.open('about:blank', '_blank');
-  if (!w) return null;
-
-  // 새 탭에서 원래 게임 창을 조작하지 못하게 한다. `noopener` 기능 문자열을 사용하면
-  // 정상적으로 열린 창도 반환값이 null일 수 있어 직접 끊는다.
-  w.opener = null;
-
+/** Opens the Verse8-hosted purchase dialog for one exact product. */
+export function buyVxItem(item: PremiumItem): boolean {
+  if (!isPremiumItem(item)) return false;
   try {
-    w.document.title = 'Verse8 Shop';
-    w.document.body.style.cssText = 'margin:0;background:#0b1017;color:#dbe6ef;font:600 14px system-ui;display:grid;place-items:center;min-height:100vh';
-    w.document.body.textContent = 'Opening Verse8 Shop…';
-  } catch {
-    // 일부 WebView는 about:blank 문서 접근을 막는다. 탭 확보에는 영향이 없다.
+    VXShop.buyItem(item);
+    return true;
+  } catch (error) {
+    console.warn('[vx] VXShop dialog could not be opened:', error);
+    return false;
   }
+}
 
-  return {
-    navigate(url: string): boolean {
-      try {
-        w.location.replace(url);
-        return true;
-      } catch {
-        w.close();
-        return false;
-      }
-    },
-    close(): void {
-      try {
-        w.close();
-      } catch {
-        // 이미 닫힌 탭이면 할 일이 없다.
-      }
-    },
+/** Re-render on catalog changes and refresh server state after dialog close. */
+export function watchVxShop(onChange: (purchased: boolean) => void): () => void {
+  initVxShop();
+  const offState = VXShop.subscribe(() => onChange(false));
+  const offClose = VXShop.onClose((payload) => {
+    void VXShop.refresh().finally(() => onChange(payload.purchased));
+  });
+  return () => {
+    offState();
+    offClose();
   };
 }

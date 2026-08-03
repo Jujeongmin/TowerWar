@@ -56,7 +56,7 @@ export class BoardScene implements Scene {
       for (const e of board) this.list.append(this.row(e));
     }
     // 붙었는데 표가 비어 있는 경우. 대전이 한 판도 안 끝난 상태다 —
-    // 봇전은 점수를 안 건드리므로 여기 안 올라온다.
+    // 사람전과 봇 대체전 모두 점수를 반영하므로, 아직 유효한 판이 끝나지 않은 상태다.
     const text = board && board.length === 0 ? t().boardEmpty : note;
     this.note.textContent = text;
     this.note.hidden = text.length === 0;

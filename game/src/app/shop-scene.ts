@@ -40,7 +40,7 @@ import {
   type UnitKind,
 } from '../units';
 import { isAdReady } from '../net/ads';
-import { isPurchasable, TEMPO_ITEM } from '../net/vx';
+import { isPurchasable, TEMPO_ITEM, vxPrice, type PremiumItem } from '../net/vx';
 import { t } from '../i18n';
 import type { Scene } from './scene';
 
@@ -83,7 +83,7 @@ export class ShopScene implements Scene {
      * 유료 항목을 사러 간다. **결제 창은 Verse8 쪽 페이지다** — 우리는 주소만 받아
      * 새 탭으로 연다 (`net/vx.ts`). 열 수 없으면 `false` 를 돌려준다.
      */
-    private readonly openVxShop: () => Promise<boolean>,
+    private readonly openVxShop: (item: PremiumItem) => Promise<boolean>,
     /** 광고를 보고 코인. `null` 이면 성공, 아니면 실패 이유. */
     private readonly watchAdForCoins: () => Promise<string | null>,
     back: () => void,
@@ -115,7 +115,7 @@ export class ShopScene implements Scene {
     `;
     tempo.addEventListener('click', () => {
       // 이미 가진 것이면 누를 이유가 없다 (`render` 가 비활성으로 둔다).
-      void this.openVxShop().then((ok) => {
+      void this.openVxShop(TEMPO_ITEM).then((ok) => {
         if (!ok) this.vxNote.textContent = t().vxOpenFailed;
       });
     });
@@ -186,7 +186,7 @@ export class ShopScene implements Scene {
           this.render();
           return;
         }
-        void this.openVxShop().then((ok) => {
+        void this.openVxShop(kind).then((ok) => {
           // 팝업 차단에 걸렸다. 조용히 지나가면 눌렀는데 아무 일도 안 일어난 것으로 보인다.
           if (!ok) this.vxNote.textContent = t().vxOpenFailed;
         });
@@ -305,7 +305,8 @@ export class ShopScene implements Scene {
       const sellable = isPurchasable(kind);
       anyPurchasable = anyPurchasable || sellable;
 
-      set(el, 'state', equipped ? t().equipped : owned ? t().equip : sellable ? t().buyWithVx : t().comingSoon);
+      const price = vxPrice(kind);
+      set(el, 'state', equipped ? t().equipped : owned ? t().equip : sellable && price !== null ? `${price.toLocaleString()} VX` : t().comingSoon);
       el.classList.toggle('is-equipped', equipped);
       el.classList.toggle('is-owned', owned);
       el.querySelector('[data-role="state"]')?.classList.toggle('locked', !owned && !sellable);
@@ -320,7 +321,8 @@ export class ShopScene implements Scene {
     set(this.tempoRow, 'name', t().tempoItem);
     set(this.tempoRow, 'blurb', t().tempoItemBlurb);
     set(this.tempoRow, 'desc', t().tempoItemDesc);
-    set(this.tempoRow, 'state', hasTempo ? t().owned : tempoSellable ? t().buyWithVx : t().comingSoon);
+    const tempoPrice = vxPrice(TEMPO_ITEM);
+    set(this.tempoRow, 'state', hasTempo ? t().owned : tempoSellable && tempoPrice !== null ? `${tempoPrice.toLocaleString()} VX` : t().comingSoon);
     this.tempoRow.classList.toggle('is-owned', hasTempo);
     this.tempoRow.disabled = hasTempo || !tempoSellable;
 

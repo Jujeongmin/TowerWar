@@ -19,7 +19,7 @@ import { ShopScene } from './app/shop-scene';
 import { Agent8Client } from './net/agent8';
 import { audio, installAudioUnlock } from './audio';
 import { devAdProvider, setAdProvider, verse8AdProvider } from './net/ads';
-import { reserveShopWindow } from './net/vx';
+import { buyVxItem, initVxShop, watchVxShop, type PremiumItem } from './net/vx';
 import { applyStaticText, getLang, setLang } from './i18n';
 import { Renderer } from './render/renderer';
 import type { UnitKind } from './units';
@@ -69,16 +69,8 @@ function buy(kind: UpgradeKind): void {
  * 실제로 창을 여는 시점이 갈라지기 때문이다. 못 열면 `false` 를 돌려주고, 화면이
  * "다시 눌러 주세요"를 말한다.
  */
-async function openVxShop(): Promise<boolean> {
-  // 반드시 첫 await 전에 열어야 모바일/인앱 브라우저가 사용자 클릭으로 인정한다.
-  const popup = reserveShopWindow();
-  if (!popup) return false;
-  const url = await store.shopUrl();
-  if (!url) {
-    popup.close();
-    return false;
-  }
-  return popup.navigate(url);
+async function openVxShop(item: PremiumItem): Promise<boolean> {
+  return buyVxItem(item);
 }
 
 /** 안 가진 생김새면 사고, 가진 것이면 착용한다. 둘 다 못 하면 아무 일도 안 일어난다. */
@@ -194,6 +186,8 @@ function showFirstScreen(): void {
   switchTo(store.current.name ? lobby : nameScene);
 }
 
+initVxShop();
+
 // 첫 입력에서 오디오를 깨운다. 모바일은 제스처 없이 소리를 못 낸다.
 installAudioUnlock();
 
@@ -237,8 +231,15 @@ async function bootAccount(): Promise<void> {
   if (await store.connect(net)) {
     afterConnect();
     // 결제가 다른 탭에서 끝나므로 언제 끝나는지 우리가 모른다. 구독해 두고
-    // 열리는 즉시 상점 화면을 새로 그린다 (`store.watchAssets`).
-    store.watchAssets(() => shop.refresh());
+    // 구매 결과는 서버의 `$onItemPurchased`가 지급한다. 결제창이 닫히면
+    // 서버 계정을 다시 읽어 상점과 인게임 버튼에 즉시 반영한다.
+    watchVxShop((purchased) => {
+      if (!purchased) {
+        shop.refresh();
+        return;
+      }
+      void store.refreshAccount().finally(() => shop.refresh());
+    });
     return;
   }
 

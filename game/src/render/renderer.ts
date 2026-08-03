@@ -223,11 +223,14 @@ export class Renderer {
   /** 플레이어별 프로필 아바타. 원본이 908px이라 필요한 것만 그때 불러온다. */
   private readonly profiles = new Profiles();
   private profileIds: Record<PlayerId, ProfileId> = { 1: DEFAULT_PROFILE, 2: DEFAULT_PROFILE };
+  /** Battlefield-only BeerGang art, drawn below every route, unit, and tower. */
+  private readonly battlefieldMascot = new Image();
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('2D 컨텍스트를 만들 수 없습니다');
     this.ctx = ctx;
+    this.battlefieldMascot.src = '/assets/profile/beergang.png';
     this.resize();
 
     // window resize 이벤트만으로는 부족하다. 캔버스가 0×0으로 시작하는 경우
@@ -445,6 +448,8 @@ export class Renderer {
     ctx.fillStyle = red;
     ctx.fillRect(w * 0.58, HUD_H, w * 0.42, h - HUD_H);
 
+    this.drawBattlefieldMascot(w, h);
+
     const vignette = ctx.createRadialGradient(w / 2, h * 0.52, Math.min(w, h) * 0.18, w / 2, h * 0.52, Math.max(w, h) * 0.72);
     vignette.addColorStop(0, 'rgba(0,0,0,0)');
     vignette.addColorStop(0.68, 'rgba(0,0,0,0.08)');
@@ -462,6 +467,65 @@ export class Renderer {
     ctx.moveTo(w - p - arm, h - p); ctx.lineTo(w - p, h - p); ctx.lineTo(w - p, h - p - arm);
     ctx.stroke();
     ctx.restore();
+  }
+
+  /**
+   * A translucent BeerGang crest turns the empty canvas into a branded arena.
+   * It deliberately lives in screen space and under the vignette, so the art
+   * stays visible on every aspect ratio without competing with game objects.
+   */
+  private drawBattlefieldMascot(w: number, h: number): void {
+    const img = this.battlefieldMascot;
+    if (!img.complete || img.naturalWidth === 0) return;
+
+    const ctx = this.ctx;
+    const fieldTop = this.safeTop + HUD_H;
+    const fieldH = Math.max(1, h - fieldTop - this.safeBottom);
+    const size = Math.min(w * 0.72, fieldH * 0.46, 360);
+    const cx = w / 2;
+    const cy = fieldTop + fieldH * 0.52;
+
+    ctx.save();
+
+    // Dim command-seal rings make the portrait feel embedded in the arena.
+    ctx.translate(cx, cy);
+    ctx.rotate(-0.08);
+    ctx.strokeStyle = 'rgba(125,211,252,0.105)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([9, 13]);
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.58, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(242,85,95,0.075)';
+    ctx.setLineDash([2, 11]);
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.68, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Main watermark. Luminosity blending keeps its colours moody and subtle.
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.115;
+    ctx.filter = 'grayscale(45%) saturate(70%) contrast(115%)';
+    ctx.drawImage(img, -size / 2, -size / 2, size, size);
+    ctx.restore();
+
+    // Faded faction echoes in the lower corners give wide screens more detail.
+    const echo = Math.min(w * 0.31, fieldH * 0.27, 150);
+    const echoY = h - this.safeBottom - echo * 0.54;
+    for (const [x, tint] of [
+      [echo * 0.28, 'rgba(63,189,241,0.055)'],
+      [w - echo * 1.28, 'rgba(242,85,95,0.045)'],
+    ] as const) {
+      ctx.save();
+      ctx.globalAlpha = 0.09;
+      ctx.filter = 'grayscale(70%) contrast(120%)';
+      ctx.drawImage(img, x, echoY, echo, echo);
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.fillStyle = tint;
+      ctx.fillRect(x, echoY, echo, echo);
+      ctx.restore();
+    }
   }
 
   private drawField(): void {

@@ -204,6 +204,31 @@ body {
   --hud-btn-line: #7dd3fc;
 }
 
+.tempo-status {
+  position: fixed;
+  top: calc(72px + env(safe-area-inset-top));
+  left: calc(var(--app-margin) + 14px + env(safe-area-inset-left));
+  z-index: 20;
+  min-height: 32px;
+  padding: 8px 12px 8px 27px;
+  border: 1px solid rgba(242, 85, 95, .55);
+  border-radius: 4px;
+  background: rgba(31, 13, 19, .92);
+  color: #ff9aa1;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  box-shadow: inset 3px 0 #f2555f, 0 6px 18px rgba(0, 0, 0, .28);
+  pointer-events: none;
+}
+
+.tempo-status::before {
+  content: '»';
+  position: absolute;
+  left: 10px;
+  color: #f2555f;
+}
+
 /* 언어 고르기. 각 언어를 그 언어로 적으므로(`ENDONYM`) 두 칸이 나란히 있으면 된다. */
 .lang-row {
   display: grid;

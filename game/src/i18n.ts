@@ -110,6 +110,7 @@ export interface Strings {
   volBgm: string;
   // 유료·광고
   tempoItem: string;
+  opponentTempo: (scale: number) => string;
   tempoItemBlurb: string;
   tempoItemDesc: string;
   adCard: string;
@@ -221,6 +222,7 @@ const en: Strings = {
   volSfx: 'Effects',
   volBgm: 'Music',
   tempoItem: 'Speed Boost',
+  opponentTempo: (scale) => `Opponent boost · ${scale}×`,
   tempoItemBlurb: 'Speed the whole match up',
   tempoItemDesc:
     'A button appears during a match. Turning it on runs the match at 1.5x for BOTH sides, not just you. If your opponent has it and turns it on too, it becomes 2x.',
@@ -333,6 +335,7 @@ const ko: Strings = {
   volSfx: '효과음',
   volBgm: '배경음',
   tempoItem: '배속',
+  opponentTempo: (scale) => `상대 배속 · ${scale}×`,
   tempoItemBlurb: '판 전체를 빠르게',
   tempoItemDesc:
     '판에 버튼이 생긴다. 켜면 판이 1.5배로 돈다 — 나만이 아니라 양쪽 다. 상대도 가지고 있고 같이 켜면 2배가 된다.',

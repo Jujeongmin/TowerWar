@@ -166,6 +166,7 @@ const match = new MatchScene(
   () => plan,
   need<HTMLButtonElement>('btn-resign'),
   need<HTMLButtonElement>('btn-tempo'),
+  need<HTMLElement>('tempo-status'),
   need<HTMLButtonElement>('btn-ad-double'),
   () => store.watchAdForDouble(),
 );

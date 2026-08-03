@@ -99,6 +99,8 @@ export class MatchScene implements Scene {
     private readonly resignBtn: HTMLButtonElement,
     /** 캔버스 위 배속 토글. **살 수 있는 사람에게만** 보인다. */
     private readonly tempoBtn: HTMLButtonElement,
+    /** 상대가 배속을 켰을 때 양쪽 모두에게 보이는 읽기 전용 상태. */
+    private readonly tempoStatus: HTMLElement,
     /** 결과 화면의 [광고 보고 두 배] 버튼. */
     private readonly adDoubleBtn: HTMLButtonElement,
     /** 광고를 보고 보상 두 배. `null` 이면 성공, 아니면 실패 이유. */
@@ -147,6 +149,7 @@ export class MatchScene implements Scene {
     // 매치 밖에서 남아 있으면 로비 위에 떠서 아무 데도 안 걸린다.
     this.resignBtn.hidden = true;
     this.tempoBtn.hidden = true;
+    this.tempoStatus.hidden = true;
     this.adDoubleBtn.hidden = true;
     this.hideResult();
   }
@@ -300,9 +303,14 @@ export class MatchScene implements Scene {
    * 상대가 켜면 내가 안 켰어도 1.5배로 뜬다. 그게 실제로 도는 속도다.
    */
   private paintTempo(): void {
-    if (this.tempoBtn.hidden) return;
     const local = this.input?.ui.local ?? 1;
+    const enemy: PlayerId = local === 1 ? 2 : 1;
     const scale = tempoScaleOf(this.state);
+    const opponentOn = this.state.tempo[enemy] === true;
+    this.tempoStatus.hidden = !opponentOn;
+    this.tempoStatus.textContent = opponentOn ? t().opponentTempo(scale) : '';
+
+    if (this.tempoBtn.hidden) return;
     this.tempoBtn.textContent = `${scale}×`;
     this.tempoBtn.classList.toggle('is-on', this.state.tempo[local] === true);
   }
@@ -355,6 +363,7 @@ export class MatchScene implements Scene {
     // 끝난 판에서 버튼이 남아 있으면 결과창 위에 떠서 [로비로]를 가린다.
     this.resignBtn.hidden = true;
     this.tempoBtn.hidden = true;
+    this.tempoStatus.hidden = true;
 
     const local = this.input?.ui.local ?? 1;
     const w = this.state.winner;

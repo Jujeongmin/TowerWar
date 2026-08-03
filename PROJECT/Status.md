@@ -1,6 +1,13 @@
 # Status — TowerWar
 
-## 마지막 작업 (모바일 효과음 수정)
+## 마지막 작업 (화면 스크롤 제거)
+
+- `:root` 에 `--ui-scale: clamp(0.78, calc(100dvh / 780px), 1)` 추가 — 짧은 화면(가로 모드·작은 세로)에서 폰트·간격·버튼을 비례 축소해 한 화면에 맞춤.
+- `.screen` 에 `overflow: hidden`, `.screen-scroll` 은 `overflow-y: hidden` 으로 — 어떤 화면도 스크롤바가 안 생김.
+- 상점/로비/PVP 요소들에 `--ui-scale` 반영 (유닛 카드, `.shop-row`, `.btn`, `.logo`, `.mascot`, PVP 코드 등).
+- 실측: 812px→1.0, 667px→0.855, 480px 이하→0.78.
+
+## 이전 작업 (모바일 효과음 수정)
 
 - **원인**: `sfx/` 효과음 10개가 전부 `.ogg` 였다. iOS Safari 는 `.ogg` 를 디코딩 못 해 효과음만 조용했다 (BGM은 `.mp3` 라 들림).
 - **고침**: `ffmpeg-static` 으로 전부 `.mp3` 변환 (모노 44.1kHz/128kbps). `.ogg` 삭제. 배포물에 mp3 10개 포함 확인.

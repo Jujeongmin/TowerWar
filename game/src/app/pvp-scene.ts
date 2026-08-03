@@ -13,14 +13,10 @@
  * | [방 만들기] | 화면에 오류. 친구를 부르려던 것이라 침묵하면 안 된다 |
  * | 코드로 [참가] | 화면에 오류. 그 사람은 *그 방*에 가려던 것이다 |
  *
- * ── 봇 대체를 화면에 드러내지 않는다 (사용자 결정) ─────────────
+ * ── 자동 매칭의 AI 대체 안내 ─────────────────────────────────
  *
- * 무작위 매칭에서 상대를 못 찾으면 서버가 12초 뒤 봇전으로 확정한다. 그때도 이 화면은
- * PVP와 **똑같이** "곧 시작합니다"만 띄운다. 그래서 무작위 경로에는 봇/사람을 가르는
- * 문구가 하나도 없다.
- *
- * 대가를 알고 있을 것: 대기·데싱크·서버 장애가 전부 "그냥 판이 시작됨"으로 보인다.
- * **판별은 콘솔 경고와 서버 방 상태의 `solo` 필드로만 된다.**
+ * 무작위 매칭에서 상대를 못 찾으면 서버가 12초 뒤 봇전으로 확정한다. 사용자가 대기
+ * 조건을 미리 알 수 있도록 검색 중에만 이 내용을 안내한다.
  *
  * 코드 방은 봇 폴백을 안 받는다. 친구를 기다리는 중에 판이 시작되면 코드를 준 의미가 없다.
  */
@@ -346,7 +342,7 @@ export class PvpScene implements Scene {
     // 안내문은 오류가 아니다. 크게 띄우면 뭔가 잘못된 것처럼 보인다.
     this.status.classList.toggle('is-hint', phase === 'idle');
     this.status.classList.toggle('is-error', phase === 'error');
-    this.detail.textContent = detail;
+    this.detail.textContent = detail || (counting ? t().matchingFallbackHint : '');
     // 판이 잡힌 뒤에 다른 방으로 뛰어들면 방 두 개에 걸친다.
     const busy = phase === 'starting';
     this.joinBtn.disabled = busy;

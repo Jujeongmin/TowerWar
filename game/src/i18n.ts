@@ -65,6 +65,7 @@ export interface Strings {
   pvpTitleAuto: string;
   pvpTitleFriend: string;
   searching: string;
+  matchingFallbackHint: string;
   creatingRoom: string;
   startingSoon: string;
   waitingFriend: string;
@@ -172,6 +173,7 @@ const en: Strings = {
   pvpTitleAuto: 'Match',
   pvpTitleFriend: 'Play a Friend',
   searching: 'Finding an opponent…',
+  matchingFallbackHint: 'If no opponent is found within 12 seconds, you will play against AI.',
   creatingRoom: 'Creating room code…',
   startingSoon: 'Starting soon',
   waitingFriend: 'Waiting for your friend…',
@@ -302,6 +304,7 @@ const ko: Strings = {
   pvpTitleAuto: '대전',
   pvpTitleFriend: '친구랑 하기',
   searching: '상대를 찾는 중…',
+  matchingFallbackHint: '12초 이상 매칭되지 않으면 AI와 대결합니다.',
   creatingRoom: '방 코드 생성 중…',
   startingSoon: '곧 시작합니다',
   waitingFriend: '친구를 기다리는 중…',

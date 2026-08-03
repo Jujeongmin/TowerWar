@@ -663,17 +663,17 @@ async function soloMatch(who, winner) {
 }
 userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1100 });
 const soloWin = await soloMatch(C, 1);
-// 1100 대 1000, K=8. 기대승률 0.6403 → round(8 × 0.3597) = +3
-check('봇전 승리 1100 → 1103', soloWin.rating === 1103, soloWin.rating);
+// 플레이어와 봇 모두 1100, K=8. 기대승률 0.5 → ±4
+check('봇전 승리 1100 → 1104', soloWin.rating === 1104, soloWin.rating);
 userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1100 });
 const soloLoss = await soloMatch(C, 2);
-// 지는 쪽이 이기는 쪽보다 크다 — 봇보다 점수가 높으니 이기는 게 당연한 판이다
-check('봇전 패배 1100 → 1095', soloLoss.rating === 1095, soloLoss.rating);
+// 패배도 동점 상대 기준으로 -4다.
+check('봇전 패배 1100 → 1096', soloLoss.rating === 1096, soloLoss.rating);
 
-// 37-b) 고점에서도 봇 승리는 최소 +1이다. Elo 반올림으로 승리 보상이 0이 되면 안 된다.
+// 37-b) 고점에서도 봇 점수는 플레이어와 같으므로 승리 변동은 +4다.
 userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1500 });
 const capped = await soloMatch(C, 1);
-check('1500점에서도 봇을 이기면 최소 1점 오른다', capped.rating === 1501, capped.rating);
+check('1500점에서도 동점 봇을 이기면 4점 오른다', capped.rating === 1504, capped.rating);
 
 // 38) 점수 필드가 없던 계정(v8 이하)은 0이 아니라 기본 점수에서 출발한다
 const F = { account: '0xFFF', roomId: null };
@@ -749,8 +749,8 @@ await soloMatch(C, 1);
 as(A);
 const boardSolo = await server.getLeaderboard();
 check('봇전 승리도 순위표에 오른다', boardSolo.some((e) => e.name === '캐럴'), boardSolo);
-// 1300 대 1000: 기대승률 0.8490 → round(8 × 0.1510) = +1
-check('순위표 점수도 봇전 결과를 반영한다', boardSolo.find((e) => e.name === '캐럴').rating === 1301, boardSolo);
+// 1300 대 1300: 기대승률 0.5 → +4
+check('순위표 점수도 봇전 결과를 반영한다', boardSolo.find((e) => e.name === '캐럴').rating === 1304, boardSolo);
 
 // 43) 표는 10명에서 잘린다
 collections.set('rankings', new Map());

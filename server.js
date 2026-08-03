@@ -252,28 +252,8 @@ const DEFAULT_RATING = 1000;
 const RATING_K = 32;
 
 /**
- * 봇의 가상 점수. **봇은 계정이 없어서 Elo를 매기려면 상대 숫자가 필요하다.**
- *
- * 봇전도 점수를 움직인다 (2026-08-01, 사용자 지시). 안 움직이면 두 가지가 깨진다:
- *   - 플레이어는 봇인 것을 모른다(§-7). 코인은 PVP와 같이 받는데 점수만 안 오르면
- *     "이겼는데 왜 안 올라"가 된다
- *   - 인구가 적으면 `SOLO_FALLBACK_MS`(12초) 때문에 거의 매 판이 봇전이다.
- *     그동안 아무의 점수도 안 움직여 **순위표가 통째로 빈다**
- *
- * 값을 1000(= `DEFAULT_RATING`)으로 둔 것은 **천장이 저절로 생기기 때문이다.**
- * 봇 승률은 66~68%로 고정돼 있고(`app/difficulty.ts` 의 `BOT_SPEED_LAG` 실측),
- * Elo는 실제 승률과 기대 승률이 같아지는 지점에서 멈춘다:
- *
- *   0.67 = 1 / (1 + 10^((1000 - R) / 400))   →   R ≈ 1123
- *
- * 즉 **봇만 잡아서는 1123점 언저리까지만 오른다.** 그 위로 가려면 사람을 이겨야 한다.
- * 점수 파밍을 따로 막을 장치가 필요 없는 것이 이 값을 고른 이유다.
- */
-const BOT_RATING = 1000;
-
-/**
- * 봇전의 변동폭. 사람전(32)보다 작게 잡았다 — 봇 승률이 고정이라 큰 폭으로 흔들면
- * 천장(1123)까지 몇 판 만에 붙어 버리고, 그 뒤로는 매 판 ±8씩 널뛰는 것만 보인다.
+ * 봇의 가상 점수는 매 경기 플레이어의 현재 점수와 같다.
+ * 봇전 변동폭은 K=8이므로 승리 +4, 무승부 0, 패배 -4로 일정하다.
  */
 const RATING_K_SOLO = 8;
 
@@ -407,7 +387,7 @@ function defaultAccount(account) {
     soloWins: 0,
     soloLosses: 0,
     soloDraws: 0,
-    // 점수(Elo). 봇전에서도 움직인다 (`BOT_RATING`) — 전적은 갈라 세지만 점수는 하나다.
+    // 점수(Elo). 봇전도 현재 플레이어와 동점인 상대로 계산한다.
     rating: DEFAULT_RATING,
     // 유료(VX)로 열린 것들. 코인으로 산 `ownedUnits` 와 갈라 둔다 — 획득 경로가 다르고,
     // 코인 목록에 섞으면 환불·초기화 때 무엇이 유료였는지 구분이 안 된다.
@@ -1175,7 +1155,7 @@ class Server {
       // 순위표 락을 기다리게 되고, 두 사람이 동시에 보고하면 서로를 막는다.
       //
       // 봇전도 올린다. 점수가 움직이는데 표에 안 오르면 어디서 밀렸는지 알 수가 없고,
-      // 인구가 적을 때 표가 통째로 비는 문제(`BOT_RATING` 주석)가 그대로 남는다.
+      // 인구가 적을 때도 봇전 결과를 반영해 순위표가 비지 않게 한다.
       //
       // **점수가 안 움직인 판은 표도 안 건드린다.** 짧은 판으로 순위만 갱신되면
       // `MIN_RATED_MS` 를 세운 의미가 없다.
@@ -1240,18 +1220,13 @@ class Server {
    * 각자 보고하는데 계정의 지금 값을 읽으면 먼저 보고한 쪽의 변동이 나중 쪽 계산에
    * 섞여 들어와 합이 0이 안 된다.
    *
-   * **봇전은 반대로 지금 값(`current`)을 쓴다.** 봇은 계정이 없어 상대가 `BOT_RATING`
-   * 이라는 상수이고, 보고하는 사람이 하나뿐이라 다른 사람의 변동이 섞일 자리가 없다.
-   * 스냅샷을 고집하면 봇전 방(`#soloStart`)에도 `ratings` 를 채워야 하는데 그건
-   * 상수 하나를 위해 룸 상태를 늘리는 것뿐이다.
+   * **봇전은 지금 값(`current`)을 양쪽 점수로 쓴다.** 플레이어 점수와 같은 가상 봇을
+   * 상대하므로 점수대와 관계없이 동점 Elo 기준의 동일한 변동폭을 적용한다.
    */
   #ratingAfter(state, slot, outcome, current) {
     const score = outcome === 'win' ? 1 : outcome === 'draw' ? 0.5 : 0;
     if (state.solo) {
-      const delta = eloDelta(current, BOT_RATING, score, RATING_K_SOLO);
-      // A bot victory must always feel like a victory. At high ratings the
-      // normal Elo result rounds to zero, so guarantee at least +1 on a win.
-      return Math.max(0, current + (outcome === 'win' ? Math.max(1, delta) : delta));
+      return Math.max(0, current + eloDelta(current, current, score, RATING_K_SOLO));
     }
     const ratings = state.ratings || {};
     const mine = numOr(ratings[slot], DEFAULT_RATING);

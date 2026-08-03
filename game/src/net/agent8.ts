@@ -364,7 +364,7 @@ export interface RemoteAccount {
   soloWins: number;
   soloLosses: number;
   soloDraws: number;
-  /** PVP 점수(Elo). 봇전에서도 움직인다 (`server.js` 의 `BOT_RATING`). */
+  /** PVP 점수(Elo). 봇전에서는 현재 플레이어와 같은 점수의 봇을 상대한다. */
   rating: number;
   /** 유료(VX)로 열린 항목들. 코인으로 산 `ownedUnits` 와 갈라져 있다. */
   entitlements: string[];

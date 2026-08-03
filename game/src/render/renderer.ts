@@ -367,6 +367,7 @@ export class Renderer {
     ctx.save();
     ctx.fillStyle = BG;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.drawCommandBackdrop();
     ctx.translate(this.ox, this.oy);
     ctx.scale(this.scale, this.scale);
 
@@ -384,6 +385,42 @@ export class Renderer {
   }
 
   // ── 배경 ────────────────────────────────────────────────────────
+
+  /** 로비 HUD와 같은 전술 콘솔 질감. 필드 입력 좌표에는 영향을 주지 않는다. */
+  private drawCommandBackdrop(): void {
+    const ctx = this.ctx;
+    const w = this.viewW;
+    const h = this.viewH;
+
+    ctx.save();
+    const glow = ctx.createRadialGradient(w / 2, h * 0.45, 0, w / 2, h * 0.45, Math.max(w, h) * 0.62);
+    glow.addColorStop(0, 'rgba(35,87,111,0.14)');
+    glow.addColorStop(0.55, 'rgba(10,25,37,0.05)');
+    glow.addColorStop(1, 'rgba(2,6,10,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(125,211,252,0.035)';
+    ctx.lineWidth = 1;
+    const grid = 40;
+    for (let x = grid; x < w; x += grid) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    for (let y = HUD_H; y < h; y += grid) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'rgba(125,211,252,0.18)';
+    const p = 10;
+    const arm = 24;
+    ctx.beginPath();
+    ctx.moveTo(p, HUD_H + arm); ctx.lineTo(p, HUD_H); ctx.lineTo(p + arm, HUD_H);
+    ctx.moveTo(w - p - arm, HUD_H); ctx.lineTo(w - p, HUD_H); ctx.lineTo(w - p, HUD_H + arm);
+    ctx.moveTo(p, h - p - arm); ctx.lineTo(p, h - p); ctx.lineTo(p + arm, h - p);
+    ctx.moveTo(w - p - arm, h - p); ctx.lineTo(w - p, h - p); ctx.lineTo(w - p, h - p - arm);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   private drawField(): void {
     const ctx = this.ctx;
@@ -960,6 +997,22 @@ export class Renderer {
     g.addColorStop(1, 'rgba(7,11,17,0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(125,211,252,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(8, top + HUD_H - 8);
+    ctx.lineTo(8, top + 8);
+    ctx.lineTo(28, top + 8);
+    ctx.moveTo(w - 28, top + 8);
+    ctx.lineTo(w - 8, top + 8);
+    ctx.lineTo(w - 8, top + HUD_H - 8);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(63,189,241,0.08)';
+    ctx.fillRect(w / 2 - 43, top + 5, 86, 28);
+    ctx.strokeStyle = 'rgba(125,211,252,0.2)';
+    ctx.strokeRect(w / 2 - 43.5, top + 4.5, 87, 29);
   }
 
   /**

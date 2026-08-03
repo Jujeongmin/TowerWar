@@ -934,6 +934,179 @@ body {
   margin-top: -10px;
 }
 
+/* Matchmaking command console ------------------------------------------- */
+#pvp {
+  isolation: isolate;
+  overflow: hidden;
+  gap: 16px;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(31, 86, 112, 0.28), transparent 32%),
+    linear-gradient(180deg, #0c141e, #080e16 72%, #060a10);
+}
+
+#pvp::before {
+  content: '';
+  position: absolute;
+  inset: 18px;
+  z-index: -1;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  clip-path: polygon(0 22px, 22px 0, calc(100% - 22px) 0, 100% 22px, 100% calc(100% - 22px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 22px));
+}
+
+.match-grid {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(125, 211, 252, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.12) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: radial-gradient(circle at center, #000 20%, transparent 72%);
+}
+
+.match-watermark {
+  position: absolute;
+  z-index: -2;
+  right: -86px;
+  bottom: -45px;
+  width: min(410px, 90vw);
+  opacity: 0.075;
+  filter: grayscale(1) contrast(1.3) drop-shadow(0 0 24px rgba(63, 189, 241, 0.35));
+  pointer-events: none;
+}
+
+.match-radar {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  margin-bottom: 2px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 50%;
+  background:
+    linear-gradient(90deg, transparent calc(50% - .5px), rgba(125, 211, 252, 0.18) 50%, transparent calc(50% + .5px)),
+    linear-gradient(transparent calc(50% - .5px), rgba(125, 211, 252, 0.18) 50%, transparent calc(50% + .5px)),
+    radial-gradient(circle, rgba(63, 189, 241, 0.18), rgba(14, 28, 39, 0.78) 60%, rgba(7, 13, 20, 0.94));
+  box-shadow: inset 0 0 28px rgba(63, 189, 241, 0.14), 0 0 35px rgba(63, 189, 241, 0.08);
+}
+
+.match-radar::before {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  border: 1px dashed rgba(125, 211, 252, 0.22);
+}
+
+.match-radar::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48%;
+  height: 1px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #7dd3fc, transparent);
+  box-shadow: 0 0 8px #3fbdf1;
+  animation: radar-sweep 2.8s linear infinite;
+}
+
+.match-radar i {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #7dd3fc;
+  box-shadow: 0 0 9px #3fbdf1;
+  animation: radar-ping 1.6s ease-in-out infinite alternate;
+}
+.match-radar i:nth-child(1) { left: 31px; top: 41px; }
+.match-radar i:nth-child(2) { right: 29px; top: 64px; animation-delay: -.5s; }
+.match-radar i:nth-child(3) { left: 60px; bottom: 23px; animation-delay: -1s; }
+
+@keyframes radar-sweep { to { transform: rotate(1turn); } }
+@keyframes radar-ping { to { opacity: .25; transform: scale(.65); } }
+
+.match-title-block {
+  width: min(360px, 100%);
+  text-align: center;
+}
+
+.match-kicker {
+  display: block;
+  margin-bottom: 7px;
+  color: #7dd3fc;
+  font: 700 9px/1 ui-monospace, monospace;
+  letter-spacing: .28em;
+  text-indent: .28em;
+}
+
+#pvp .pvp-title {
+  padding: 9px 12px;
+  border-top: 1px solid rgba(125, 211, 252, .3);
+  border-bottom: 1px solid rgba(125, 211, 252, .12);
+  color: #eef8ff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .2em;
+}
+
+.match-status-panel {
+  position: relative;
+  width: min(380px, 100%);
+  min-height: 112px;
+  padding: 22px 20px 18px;
+  border: 1px solid rgba(125, 211, 252, .2);
+  background: linear-gradient(135deg, rgba(20, 36, 48, .94), rgba(9, 16, 24, .94));
+  box-shadow: inset 3px 0 rgba(63, 189, 241, .7), 0 18px 45px rgba(0,0,0,.3);
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+}
+
+.match-status-light {
+  position: absolute;
+  left: 15px;
+  top: 14px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #5ee6a8;
+  box-shadow: 0 0 9px #5ee6a8;
+  animation: status-pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes status-pulse { to { opacity: .35; } }
+
+#pvp .pvp-status { font-size: clamp(19px, 5vw, 27px); }
+#pvp .pvp-timer { margin-top: 8px; color: #7dd3fc; font-family: ui-monospace, monospace; }
+#pvp .pvp-detail { margin: 7px auto 0; }
+
+#pvp .menu {
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(8, 14, 21, .82);
+}
+
+#pvp .btn,
+#pvp .code-input {
+  border-radius: 3px;
+  border-width: 1px;
+  background: rgba(18, 30, 41, .94);
+}
+
+#pvp #btn-pvp-cancel { color: rgba(219, 230, 239, .72); }
+
+@media (max-height: 690px) {
+  #pvp { gap: 10px; padding-top: 18px; padding-bottom: 18px; }
+  .match-radar { width: 92px; height: 92px; }
+  .match-status-panel { min-height: 88px; padding: 17px 16px 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-radar::after,
+  .match-radar i,
+  .match-status-light { animation: none; }
+}
+
 .pvp-status.is-error {
   color: #fbbf24;
   font-size: clamp(16px, 4vw, 22px);

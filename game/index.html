@@ -106,13 +106,22 @@
     <!-- 대기 화면. 자동 매칭과 친구랑 하기가 같은 판을 만드는 길이라 화면 하나를 나눠 쓴다.
          `pvp-friend` 만 켜고 끄면 되고, 방·시드·플레이어 번호는 어느 길이든 서버가 정한다. -->
     <div id="pvp" class="screen" hidden>
+      <div class="match-grid" aria-hidden="true"></div>
+      <img class="match-watermark" src="/assets/profile/beergang.png" alt="" aria-hidden="true" />
+      <div class="match-radar" aria-hidden="true"><i></i><i></i><i></i></div>
       <!-- 씬이 `titleText()` 로 덮는다. 여기 글자는 첫 프레임용 자리표다. -->
-      <p id="pvp-title" class="pvp-title" data-i18n="pvpTitleAuto">Match</p>
-      <p id="pvp-status" class="pvp-status"></p>
+      <div class="match-title-block">
+        <span class="match-kicker" aria-hidden="true">LINK ESTABLISHMENT</span>
+        <p id="pvp-title" class="pvp-title" data-i18n="pvpTitleAuto">Match</p>
+      </div>
+      <div class="match-status-panel">
+        <span class="match-status-light" aria-hidden="true"></span>
+        <p id="pvp-status" class="pvp-status"></p>
       <!-- 자동 매칭에서 상대를 찾는 동안만 흐른다. 오류 문구(#pvp-detail)와 자리를
            나눠 쓰면 실패했을 때 시간이 오류를 밀어낸다. -->
       <p id="pvp-timer" class="pvp-timer" hidden></p>
       <p id="pvp-detail" class="pvp-detail"></p>
+      </div>
 
       <!-- 발급받은 코드. 친구를 부를 때만 보인다. -->
       <p id="pvp-code" class="pvp-code-shown" hidden></p>

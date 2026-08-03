@@ -65,7 +65,26 @@
         <button id="btn-friend" class="btn" data-i18n="playFriend">Play a Friend</button>
         <button id="btn-shop" class="btn" data-i18n="shop">Shop</button>
         <button id="btn-board" class="btn" data-i18n="ranking">Ranking</button>
+        <button id="btn-tutorial" class="btn btn-tutorial" data-i18n="tutorial">How to Play</button>
         <button id="btn-settings" class="btn" data-i18n="settings">Settings</button>
+      </div>
+      <div id="tutorial-dialog" class="tutorial-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+        <button id="btn-tutorial-x" class="tutorial-x" type="button" aria-label="Close">×</button>
+        <div class="tutorial-panel">
+          <header class="tutorial-header">
+            <img src="/assets/profile/beergang.png" alt="" aria-hidden="true" />
+            <div><span class="tutorial-kicker">TACTICAL FIELD MANUAL</span><h2 id="tutorial-title" data-i18n="tutorialTitle">Field Manual</h2><p data-i18n="tutorialIntro"></p></div>
+          </header>
+          <div class="tutorial-cards">
+            <article class="tutorial-card" data-step="01"><div class="tutorial-diagram route-diagram" aria-hidden="true"><b>12</b><span></span><b>8</b></div><h3 data-i18n="tutorialRouteTitle"></h3><p data-i18n="tutorialRouteBody"></p></article>
+            <article class="tutorial-card" data-step="02"><div class="tutorial-diagram cut-diagram" aria-hidden="true"><b></b><span>╱</span></div><h3 data-i18n="tutorialCutTitle"></h3><p data-i18n="tutorialCutBody"></p></article>
+            <article class="tutorial-card" data-step="03"><div class="tutorial-diagram capture-diagram" aria-hidden="true"><b>24</b><span>›››</span><b>9</b></div><h3 data-i18n="tutorialCaptureTitle"></h3><p data-i18n="tutorialCaptureBody"></p></article>
+            <article class="tutorial-card" data-step="04"><div class="tutorial-diagram slot-diagram" aria-hidden="true"><b>1</b><b>10</b><b>20</b><span>1 · 2 · 3</span></div><h3 data-i18n="tutorialStockTitle"></h3><p data-i18n="tutorialStockBody"></p></article>
+            <article class="tutorial-card tutorial-card-relay" data-step="05"><div class="tutorial-diagram relay-diagram" aria-hidden="true"><span>›</span><b>60</b><span>›</span></div><h3 data-i18n="tutorialRelayTitle"></h3><p data-i18n="tutorialRelayBody"></p></article>
+            <article class="tutorial-card" data-step="06"><div class="tutorial-diagram win-diagram" aria-hidden="true">★</div><h3 data-i18n="tutorialWinTitle"></h3><p data-i18n="tutorialWinBody"></p></article>
+          </div>
+          <button id="btn-tutorial-close" class="btn btn-primary tutorial-close" type="button" data-i18n="gotIt">Got it</button>
+        </div>
       </div>
     </div>
 

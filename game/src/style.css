@@ -838,6 +838,47 @@ body {
   box-shadow: inset 3px 0 #7dd3fc, 0 0 24px rgba(63, 189, 241, 0.09);
 }
 
+#lobby .btn-tutorial { border-color: rgba(94, 230, 168, 0.42); box-shadow: inset 3px 0 rgba(94, 230, 168, 0.78); }
+
+.tutorial-dialog { position: absolute; inset: 0; z-index: 80; display: grid; place-items: center; padding: calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom)); background: rgba(3, 8, 13, 0.83); backdrop-filter: blur(9px); cursor: default; }
+.tutorial-panel { position: relative; width: min(550px, 100%); max-height: 100%; overflow: auto; padding: 20px; border: 1px solid rgba(125, 211, 252, 0.42); background: linear-gradient(145deg, rgba(17, 31, 43, 0.98), rgba(6, 13, 21, 0.99)); box-shadow: 0 28px 80px rgba(0, 0, 0, 0.62), inset 3px 0 rgba(63, 189, 241, 0.35); clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); scrollbar-width: thin; }
+.tutorial-x { position: absolute; z-index: 2; top: calc(27px + env(safe-area-inset-top)); right: 25px; width: 36px; height: 36px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(7, 15, 23, 0.92); color: #b9cad8; font: 300 24px/1 ui-sans-serif, sans-serif; cursor: pointer; }
+.tutorial-header { display: flex; align-items: center; gap: 14px; padding: 4px 46px 17px 0; border-bottom: 1px solid rgba(125, 211, 252, 0.18); }
+.tutorial-header img { width: 64px; height: 64px; object-fit: contain; opacity: 0.82; filter: drop-shadow(0 0 14px rgba(63, 189, 241, 0.24)); }
+.tutorial-kicker { color: #5ee6a8; font: 700 9px/1.2 ui-monospace, monospace; letter-spacing: 0.16em; }
+.tutorial-header h2 { margin-top: 4px; color: #f4f9fc; font-size: 25px; letter-spacing: -0.025em; }
+.tutorial-header p { margin-top: 5px; color: #8fa7b9; font-size: 12px; line-height: 1.45; }
+.tutorial-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 14px 0; }
+.tutorial-card { position: relative; min-height: 155px; padding: 13px 13px 14px; border: 1px solid rgba(255, 255, 255, 0.09); background: linear-gradient(135deg, rgba(24, 42, 55, 0.75), rgba(10, 20, 29, 0.7)); }
+.tutorial-card::before { content: attr(data-step); position: absolute; top: 9px; right: 10px; color: rgba(125, 211, 252, 0.32); font: 700 10px/1 ui-monospace, monospace; }
+.tutorial-card h3 { margin-top: 9px; color: #dff4ff; font-size: 14px; }
+.tutorial-card p { margin-top: 5px; color: #91a8b8; font-size: 11px; line-height: 1.48; word-break: keep-all; }
+.tutorial-card-relay { border-color: rgba(94, 230, 168, 0.27); background: linear-gradient(135deg, rgba(24, 60, 57, 0.6), rgba(10, 23, 28, 0.74)); }
+.tutorial-diagram { height: 45px; display: flex; align-items: center; justify-content: center; gap: 9px; color: #7dd3fc; }
+.tutorial-diagram b { display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid currentColor; border-radius: 50%; color: #dff6ff; font: 700 11px/1 ui-monospace, monospace; box-shadow: 0 0 12px rgba(63, 189, 241, 0.15); }
+.route-diagram span { width: 46px; border-top: 2px dashed #5ee6a8; }
+.cut-diagram b { width: 105px; border-top: 2px dashed #7dd3fc; }
+.cut-diagram span { margin-left: -64px; color: #ff8b8b; font-size: 42px; transform: rotate(15deg); }
+.capture-diagram span { color: #5ee6a8; letter-spacing: 2px; }
+.capture-diagram b:last-child { border-color: #ff8b8b; }
+.slot-diagram { gap: 6px; }
+.slot-diagram b { width: 28px; height: 28px; }
+.slot-diagram span { margin-left: 3px; color: #5ee6a8; font: 700 11px/1 ui-monospace, monospace; }
+.relay-diagram b { width: 42px; height: 42px; border: 3px double white; box-shadow: 0 0 16px rgba(255,255,255,.35); }
+.relay-diagram span { color: #5ee6a8; font-size: 24px; }
+.win-diagram { color: #fbbf24; font-size: 35px; text-shadow: 0 0 20px rgba(251, 191, 36, .35); }
+.tutorial-close { display: block; width: min(230px, 100%); margin: 0 auto; text-align: center !important; cursor: pointer; }
+.tutorial-close::after { display: none; }
+
+@media (max-width: 460px) {
+  .tutorial-panel { padding: 15px; }
+  .tutorial-cards { grid-template-columns: 1fr; }
+  .tutorial-card { min-height: 0; }
+  .tutorial-header img { width: 54px; height: 54px; }
+  .tutorial-header h2 { font-size: 22px; }
+  .tutorial-x { top: calc(23px + env(safe-area-inset-top)); right: 21px; }
+}
+
 @media (max-height: 720px) {
   #lobby { padding-top: calc(82px + env(safe-area-inset-top)); }
   #lobby .account-bar { min-height: 46px; }

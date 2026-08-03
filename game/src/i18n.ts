@@ -37,6 +37,22 @@ export interface Strings {
   playFriend: string;
   shop: string;
   ranking: string;
+  tutorial: string;
+  tutorialTitle: string;
+  tutorialIntro: string;
+  tutorialRouteTitle: string;
+  tutorialRouteBody: string;
+  tutorialCutTitle: string;
+  tutorialCutBody: string;
+  tutorialCaptureTitle: string;
+  tutorialCaptureBody: string;
+  tutorialStockTitle: string;
+  tutorialStockBody: string;
+  tutorialRelayTitle: string;
+  tutorialRelayBody: string;
+  tutorialWinTitle: string;
+  tutorialWinBody: string;
+  gotIt: string;
   settings: string;
   // 닉네임
   nameTitle: string;
@@ -130,6 +146,22 @@ const en: Strings = {
   playFriend: 'Play a Friend',
   shop: 'Shop',
   ranking: 'Ranking',
+  tutorial: 'How to Play',
+  tutorialTitle: 'Field Manual',
+  tutorialIntro: 'Build supply lines, take towers, and push the front.',
+  tutorialRouteTitle: 'Set a route',
+  tutorialRouteBody: 'Drag from one of your towers to another tower. The source sends troops continuously while the route is open.',
+  tutorialCutTitle: 'Cut your routes',
+  tutorialCutBody: 'Swipe across your own route from empty space to close it. Enemy routes cannot be cut directly.',
+  tutorialCaptureTitle: 'Capture towers',
+  tutorialCaptureBody: 'Send troops into a neutral or enemy tower. Reduce its defenders to zero to take control; friendly arrivals reinforce it.',
+  tutorialStockTitle: 'Stock and route slots',
+  tutorialStockBody: 'A tower with no outgoing route stores troops. Stock 1 / 10 / 20 unlocks 1 / 2 / 3 simultaneous routes.',
+  tutorialRelayTitle: 'Use a full tower',
+  tutorialRelayBody: 'At 60 troops, the base ring turns white and the tower becomes a relay. Friendly troops arriving there continue along its outgoing routes.',
+  tutorialWinTitle: 'Win the front',
+  tutorialWinBody: 'Eliminate the enemy, or own more towers when time expires. If tied, total remaining power decides.',
+  gotIt: 'Got it',
   settings: 'Settings',
   nameTitle: 'Name and Avatar',
   namePlaceholder: 'Enter your name',
@@ -238,6 +270,22 @@ const en: Strings = {
 };
 
 const ko: Strings = {
+  tutorial: '튜토리얼 보기',
+  tutorialTitle: '전장 교범',
+  tutorialIntro: '보급선을 만들고 타워를 점령해 전선을 밀어내세요.',
+  tutorialRouteTitle: '경로 설정',
+  tutorialRouteBody: '내 타워에서 다른 타워까지 드래그하세요. 경로가 열린 동안 출발 타워가 병력을 계속 보냅니다.',
+  tutorialCutTitle: '경로 끊기',
+  tutorialCutBody: '빈 공간에서 시작해 내 경로를 가로지르도록 스와이프하면 끊을 수 있습니다. 상대 경로는 직접 끊을 수 없습니다.',
+  tutorialCaptureTitle: '타워 점령',
+  tutorialCaptureBody: '중립 또는 적 타워에 병력을 보내 수비 병력을 모두 줄이면 점령합니다. 아군 타워에 도착한 병력은 재고를 보충합니다.',
+  tutorialStockTitle: '병력과 경로 수',
+  tutorialStockBody: '나가는 경로가 없는 타워는 병력을 저장합니다. 병력 1 / 10 / 20에서 동시에 연결할 수 있는 경로가 1 / 2 / 3개가 됩니다.',
+  tutorialRelayTitle: '병력 60 타워 활용',
+  tutorialRelayBody: '병력이 60에 도달하면 발판 링이 흰색이 되고 중계 타워가 됩니다. 도착한 아군 병력은 열린 다음 경로로 이어서 이동합니다.',
+  tutorialWinTitle: '승리 조건',
+  tutorialWinBody: '상대 세력을 모두 제거하거나 시간 종료 시 더 많은 타워를 점령하면 승리합니다. 타워 수가 같으면 남은 총 전투력으로 결정합니다.',
+  gotIt: '확인',
   tagline: '보급선을 긋고 전선을 밀어라',
   autoMatch: '자동 매칭',
   playFriend: '친구랑 하기',

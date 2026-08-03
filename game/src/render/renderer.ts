@@ -400,6 +400,39 @@ export class Renderer {
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, w, h);
 
+    // The battlefield should feel like a physical command table, not an empty
+    // canvas. These broad washes stay deliberately darker than routes/towers.
+    const theatre = ctx.createLinearGradient(0, HUD_H, 0, h);
+    theatre.addColorStop(0, 'rgba(117,28,38,0.16)');
+    theatre.addColorStop(0.32, 'rgba(34,39,48,0.03)');
+    theatre.addColorStop(0.53, 'rgba(4,10,15,0)');
+    theatre.addColorStop(0.72, 'rgba(23,54,68,0.04)');
+    theatre.addColorStop(1, 'rgba(18,95,124,0.15)');
+    ctx.fillStyle = theatre;
+    ctx.fillRect(0, HUD_H, w, h - HUD_H);
+
+    // A slow radar-like pool of light gives the otherwise static map a little
+    // life without introducing moving geometry that could be mistaken for units.
+    const sweepX = w * (0.5 + Math.sin(this.time * 0.13) * 0.16);
+    const sweep = ctx.createRadialGradient(sweepX, h * 0.53, 0, sweepX, h * 0.53, w * 0.62);
+    sweep.addColorStop(0, 'rgba(75,183,203,0.045)');
+    sweep.addColorStop(0.5, 'rgba(42,104,126,0.018)');
+    sweep.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sweep;
+    ctx.fillRect(0, HUD_H, w, h - HUD_H);
+
+    // Deterministic dust/motes: no random flicker from frame to frame.
+    ctx.fillStyle = 'rgba(177,220,229,0.12)';
+    for (let i = 0; i < 28; i++) {
+      const x = ((i * 83 + 37) % 619) / 619 * w;
+      const baseY = HUD_H + (((i * 137 + 61) % 887) / 887) * (h - HUD_H);
+      const y = baseY + Math.sin(this.time * 0.22 + i * 1.7) * 3;
+      const r = i % 5 === 0 ? 1.1 : 0.55;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // 모눈 격자 대신 양 진영에서 번지는 넓은 빛만 남긴다. 전장이 지도처럼 보여야 한다.
     const blue = ctx.createLinearGradient(0, 0, w * 0.42, 0);
     blue.addColorStop(0, 'rgba(63,189,241,0.07)');
@@ -411,6 +444,13 @@ export class Renderer {
     red.addColorStop(1, 'rgba(242,85,95,0)');
     ctx.fillStyle = red;
     ctx.fillRect(w * 0.58, HUD_H, w * 0.42, h - HUD_H);
+
+    const vignette = ctx.createRadialGradient(w / 2, h * 0.52, Math.min(w, h) * 0.18, w / 2, h * 0.52, Math.max(w, h) * 0.72);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(0.68, 'rgba(0,0,0,0.08)');
+    vignette.addColorStop(1, 'rgba(0,3,7,0.48)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, HUD_H, w, h - HUD_H);
 
     ctx.strokeStyle = 'rgba(125,211,252,0.18)';
     const p = 10;
@@ -426,6 +466,52 @@ export class Renderer {
 
   private drawField(): void {
     const ctx = this.ctx;
+    ctx.save();
+
+    // Irregular terrain plates and contour lines suggest an actual campaign
+    // map while keeping the old grid removed. They are intentionally faint so
+    // route colours remain the strongest lines on screen.
+    const land = ctx.createRadialGradient(FIELD_W * 0.28, FIELD_H * 0.3, 10, FIELD_W * 0.28, FIELD_H * 0.3, FIELD_W * 0.55);
+    land.addColorStop(0, 'rgba(48,72,74,0.13)');
+    land.addColorStop(0.55, 'rgba(28,51,57,0.055)');
+    land.addColorStop(1, 'rgba(8,18,24,0)');
+    ctx.fillStyle = land;
+    ctx.fillRect(0, 0, FIELD_W, FIELD_H);
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(115,157,157,0.075)';
+    const contours = [
+      [0.04, 0.18, 0.20, 0.09, 0.39, 0.23, 0.48, 0.13],
+      [0.00, 0.27, 0.17, 0.17, 0.34, 0.34, 0.53, 0.22],
+      [0.52, 0.77, 0.68, 0.65, 0.84, 0.82, 1.03, 0.68],
+      [0.47, 0.88, 0.65, 0.73, 0.83, 0.94, 1.02, 0.79],
+      [0.60, 0.08, 0.76, 0.16, 0.88, 0.02, 1.04, 0.15],
+    ];
+    for (const c of contours) {
+      ctx.beginPath();
+      ctx.moveTo(c[0] * FIELD_W, c[1] * FIELD_H);
+      ctx.bezierCurveTo(c[2] * FIELD_W, c[3] * FIELD_H, c[4] * FIELD_W, c[5] * FIELD_H, c[6] * FIELD_W, c[7] * FIELD_H);
+      ctx.stroke();
+    }
+
+    // Scuffed, segmented marks read as old battle plans rather than a regular grid.
+    ctx.strokeStyle = 'rgba(148,177,178,0.055)';
+    ctx.setLineDash([2, 16]);
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(FIELD_W * (i % 2 ? 0.78 : 0.22), FIELD_H * (i < 2 ? 0.26 : 0.74), 82 + i * 21, 0.2, Math.PI * 1.72);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // No-man's-land. The broken double line gives the centre tactical weight
+    // without looking like the removed square grid.
+    const midGlow = ctx.createLinearGradient(0, FIELD_H * 0.44, 0, FIELD_H * 0.56);
+    midGlow.addColorStop(0, 'rgba(242,85,95,0)');
+    midGlow.addColorStop(0.5, 'rgba(175,143,101,0.035)');
+    midGlow.addColorStop(1, 'rgba(63,189,241,0)');
+    ctx.fillStyle = midGlow;
+    ctx.fillRect(0, FIELD_H * 0.42, FIELD_W, FIELD_H * 0.16);
     // **격자를 안 그린다** (2026-08-03 사용자 지시). 전에는 50논리px 간격의 옅은 선을
     // 깔았는데, 건물 스프라이트가 들어온 뒤로는 판이 지도가 아니라 모눈종이로 읽혔다.
     // 중앙선. **세로형이라 가로로 긋는다** (2026-07-31) — 진영이 위아래로 마주본다.
@@ -437,6 +523,16 @@ export class Renderer {
     ctx.lineTo(FIELD_W, FIELD_H / 2);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(206,177,126,0.05)';
+    ctx.setLineDash([2, 18]);
+    ctx.beginPath();
+    ctx.moveTo(FIELD_W * 0.08, FIELD_H / 2 - 7);
+    ctx.lineTo(FIELD_W * 0.92, FIELD_H / 2 - 7);
+    ctx.moveTo(FIELD_W * 0.08, FIELD_H / 2 + 7);
+    ctx.lineTo(FIELD_W * 0.92, FIELD_H / 2 + 7);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 
   // ── 경로 ────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ export class LobbyScene implements Scene {
   private readonly coins: HTMLElement;
   private readonly rating: HTMLElement;
   private readonly record: HTMLElement;
+  private readonly tutorial: HTMLElement;
 
   constructor(
     private readonly root: HTMLElement,
@@ -45,25 +46,45 @@ export class LobbyScene implements Scene {
     const friend = root.querySelector<HTMLButtonElement>('#btn-friend');
     const shop = root.querySelector<HTMLButtonElement>('#btn-shop');
     const board = root.querySelector<HTMLButtonElement>('#btn-board');
+    const tutorialButton = root.querySelector<HTMLButtonElement>('#btn-tutorial');
     const settings = root.querySelector<HTMLButtonElement>('#btn-settings');
+    const tutorial = root.querySelector<HTMLElement>('#tutorial-dialog');
+    const tutorialClose = root.querySelector<HTMLButtonElement>('#btn-tutorial-close');
+    const tutorialX = root.querySelector<HTMLButtonElement>('#btn-tutorial-x');
     const coins = root.querySelector<HTMLElement>('#acc-coins');
     const rating = root.querySelector<HTMLElement>('#acc-rating');
     const record = root.querySelector<HTMLElement>('#acc-record');
-    if (!auto || !friend || !shop || !board || !settings || !coins || !rating || !record) {
+    if (!auto || !friend || !shop || !board || !tutorialButton || !settings || !tutorial ||
+        !tutorialClose || !tutorialX || !coins || !rating || !record) {
       throw new Error('로비 DOM이 예상과 다릅니다');
     }
     this.coins = coins;
     this.rating = rating;
     this.record = record;
+    this.tutorial = tutorial;
     auto.addEventListener('click', startAuto);
     friend.addEventListener('click', startFriend);
     shop.addEventListener('click', openShop);
     board.addEventListener('click', openBoard);
+    const closeTutorial = () => { this.tutorial.hidden = true; };
+    tutorialButton.addEventListener('click', () => {
+      this.tutorial.hidden = false;
+      tutorialX.focus();
+    });
+    tutorialClose.addEventListener('click', closeTutorial);
+    tutorialX.addEventListener('click', closeTutorial);
+    tutorial.addEventListener('click', (event) => {
+      if (event.target === tutorial) closeTutorial();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !this.tutorial.hidden) closeTutorial();
+    });
     settings.addEventListener('click', openSettings);
     name.addEventListener('click', editAccount);
   }
 
   enter(): void {
+    this.tutorial.hidden = true;
     // 매치나 상점에서 돌아올 때마다 새로 읽는다 — 보상과 지출이 반영된 값을 보여줘야 한다.
     const a = this.getAccount();
     this.name.textContent = a.name;
@@ -82,6 +103,7 @@ export class LobbyScene implements Scene {
   }
 
   exit(): void {
+    this.tutorial.hidden = true;
     this.root.hidden = true;
   }
 

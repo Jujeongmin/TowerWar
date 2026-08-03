@@ -1,6 +1,11 @@
 # Status — TowerWar
 
-## 마지막 작업 (세로형 반응형)
+## 마지막 작업 (모바일 효과음 수정)
+
+- **원인**: `sfx/` 효과음 10개가 전부 `.ogg` 였다. iOS Safari 는 `.ogg` 를 디코딩 못 해 효과음만 조용했다 (BGM은 `.mp3` 라 들림).
+- **고침**: `ffmpeg-static` 으로 전부 `.mp3` 변환 (모노 44.1kHz/128kbps). `.ogg` 삭제. 배포물에 mp3 10개 포함 확인.
+
+## 이전 작업 (세로형 반응형)
 
 - **게임 컬럼 폭 제한**: `style.css` 에 `--app-w: min(100vw, 620px)` 추가. 캔버스·DOM 화면(`.screen`)·HUD 버튼(항복·배속)이 넓은 화면에서도 컬럼 안에 붙는다 (이전에는 필드만 좁고 HUD/DOM이 뷰포트 전체 폭을 차지해 따로 놀았다).
 - **렌더러**: `resize()` 가 `window.innerWidth` 대신 캔버스 실제 배치 폭(`getBoundingClientRect`)을 읽고 `viewW/viewH` 로 저장. `drawHud`/`drawResult` 가 이 값을 씀.

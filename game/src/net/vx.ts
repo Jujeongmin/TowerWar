@@ -33,8 +33,8 @@ import type { UnitKind } from '../units';
  *   3. `subscribeAsset` 이 그 id를 실제로 내려주는지 콘솔에서 확인한다
  */
 export const ASSET_IDS: Partial<Record<PremiumItem, string>> = {
-  // beergang_rainbow: '<Verse8 자산 id>',
-  // tempo_boost: '<Verse8 자산 id>',
+  beergang_rainbow: 'beergang_rainbow',
+  tempo_boost: 'tempo_boost',
 };
 
 /**

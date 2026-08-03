@@ -38,7 +38,7 @@ import type { Scene } from './scene';
  */
 export type PvpMode = 'auto' | 'friend';
 
-type Phase = 'idle' | 'searching' | 'hosting' | 'joining' | 'starting' | 'error';
+type Phase = 'idle' | 'searching' | 'creating' | 'hosting' | 'joining' | 'starting' | 'error';
 
 /**
  * **함수여야 한다.** 전에는 모듈 최상단 상수였는데, 그러면 `t()` 가 **앱이 처음
@@ -53,6 +53,7 @@ function statusText(phase: Phase): string {
   return {
     idle: s.makeRoomOrCode,
     searching: s.searching,
+    creating: s.creatingRoom,
     hosting: s.waitingFriend,
     joining: s.joiningRoom,
     starting: s.startingSoon,
@@ -212,10 +213,11 @@ export class PvpScene implements Scene {
   private async host(): Promise<void> {
     this.codeShown.hidden = true;
     const mine = this.attempt + 1;
-    await this.enterRoom('hosting', false, async (c) => {
+    await this.enterRoom('creating', false, async (c) => {
       const { code } = await c.createRoom();
       if (this.attempt !== mine) return;
       this.showRoomCode(code);
+      this.show('hosting');
     });
   }
 

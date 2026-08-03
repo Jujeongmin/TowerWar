@@ -1188,9 +1188,31 @@ body {
 #pvp #btn-pvp-cancel { color: rgba(219, 230, 239, .72); }
 
 @media (max-height: 690px) {
-  #pvp { gap: 10px; padding-top: 18px; padding-bottom: 18px; }
+  #pvp {
+    justify-content: flex-start;
+    gap: 10px;
+    padding-top: calc(14px + env(safe-area-inset-top));
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
   .match-radar { width: 92px; height: 92px; }
   .match-status-panel { min-height: 88px; padding: 17px 16px 13px; }
+}
+
+/* Short laptop windows and browser chrome can leave less vertical room than
+   phones. Let menu screens scroll instead of clipping their bottom actions. */
+@media (max-height: 760px) {
+  .screen:not(.screen-overlay) {
+    justify-content: flex-start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-top: calc(16px + env(safe-area-inset-top));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  #lobby { gap: 13px; }
+  #pvp { overflow-y: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

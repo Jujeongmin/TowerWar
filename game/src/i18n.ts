@@ -65,6 +65,7 @@ export interface Strings {
   pvpTitleAuto: string;
   pvpTitleFriend: string;
   searching: string;
+  creatingRoom: string;
   startingSoon: string;
   waitingFriend: string;
   joiningRoom: string;
@@ -171,6 +172,7 @@ const en: Strings = {
   pvpTitleAuto: 'Match',
   pvpTitleFriend: 'Play a Friend',
   searching: 'Finding an opponent…',
+  creatingRoom: 'Creating room code…',
   startingSoon: 'Starting soon',
   waitingFriend: 'Waiting for your friend…',
   joiningRoom: 'Joining the room…',
@@ -300,6 +302,7 @@ const ko: Strings = {
   pvpTitleAuto: '대전',
   pvpTitleFriend: '친구랑 하기',
   searching: '상대를 찾는 중…',
+  creatingRoom: '방 코드 생성 중…',
   startingSoon: '곧 시작합니다',
   waitingFriend: '친구를 기다리는 중…',
   joiningRoom: '방에 들어가는 중…',

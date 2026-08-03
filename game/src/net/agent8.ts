@@ -106,6 +106,7 @@ function withTimeout<T>(p: Promise<T>, what: string, timeoutMs = CALL_TIMEOUT_MS
 /** `Agent8Client` 가 실제로 쓰는 서버 표면. 개발용 로컬 백엔드를 끼우려고 뽑아 뒀다. */
 export interface ServerBackend {
   account: string;
+  connected?: boolean;
   connect(): Promise<boolean>;
   remoteFunction(fn: string, args?: unknown[], opts?: unknown): Promise<any>;
   subscribeRoomState(roomId: string, cb: (state: any) => void): () => void;
@@ -127,6 +128,10 @@ export class Agent8Client {
   }
 
   async connect(): Promise<boolean> {
+    // Verse8 keeps one live GameServer connection. Calling connect() again
+    // closes that socket before opening another one, so reuse the connection
+    // established during account boot instead of racing a reconnect here.
+    if (this.server.connected) return true;
     return await withTimeout(this.server.connect(), '서버 연결');
   }
 

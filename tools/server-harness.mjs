@@ -298,9 +298,11 @@ await server.setReady(true);
 check('12초 전 AI 전환 요청은 거절', (await server.requestSoloFallback()) === false);
 check('기다린 지 얼마 안 됐으면 그대로 대기', (await $global.getRoomState(r6.roomId)).phase === 'waiting');
 rooms.get(r6.roomId).state.players['0xAAA'].joinedAt = Date.now() - 20000;
-check('12초 뒤 AI 전환 요청을 승인', (await server.requestSoloFallback()) === true);
+const requestedSoloSeed = await server.requestSoloFallback();
+check('12초 뒤 AI 전환 요청을 승인', Number.isInteger(requestedSoloSeed));
 const solo = await $global.getRoomState(r6.roomId);
 check('오래 기다리면 봇전 확정', solo.phase === 'playing' && solo.solo === true, solo);
+check('AI 전환 요청이 시작 시드를 직접 돌려준다', requestedSoloSeed === solo.seed, { requestedSoloSeed, seed: solo.seed });
 check('봇전도 시드를 서버가 준다', Number.isInteger(solo.seed) && solo.seed >= 0 && solo.seed < 0x10000, solo.seed);
 check('봇전은 슬롯 1번', solo.slots['0xAAA'] === 1, solo.slots);
 

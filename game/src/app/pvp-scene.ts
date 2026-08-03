@@ -110,6 +110,8 @@ export class PvpScene implements Scene {
   private timerShown = '';
   /** AI 전환 요청을 프레임마다 보내지 않도록 다음 재시도 가능 시각을 둔다. */
   private nextFallbackAttemptAt = 0;
+  /** 느린 요청 위에 다음 요청이 겹치지 않게 한다. */
+  private fallbackRequestInFlight = false;
 
   constructor(
     private readonly root: HTMLElement,
@@ -203,11 +205,24 @@ export class PvpScene implements Scene {
 
     // `$roomTick`이 플랫폼 사정으로 늦어져도 12초 뒤 서버 권위 판정을 직접 깨운다.
     // 서버 시간이 아직 12초 전이면 false가 오므로 1초 간격으로 안전하게 재시도한다.
-    if (elapsed >= 12 && this.client.inRoom && now >= this.nextFallbackAttemptAt) {
+    if (elapsed >= 12 && this.client.inRoom && !this.fallbackRequestInFlight && now >= this.nextFallbackAttemptAt) {
       this.nextFallbackAttemptAt = now + 1000;
-      void this.client.requestSoloFallback().catch((e) => {
-        console.warn('[net] AI 상대 전환 요청 실패:', e);
-      });
+      void this.requestSoloFallback();
+    }
+  }
+
+  /** 서버가 승인한 시드를 받으면 방 상태 구독을 기다리지 않고 즉시 AI전을 시작한다. */
+  private async requestSoloFallback(): Promise<void> {
+    this.fallbackRequestInFlight = true;
+    try {
+      const seed = await this.client.requestSoloFallback();
+      if (seed !== null && this.active && this.searchStart !== null && !this.handedOff) {
+        this.handOff(() => this.startBot(seed));
+      }
+    } catch (e) {
+      console.warn('[net] AI 상대 전환 요청 실패:', e);
+    } finally {
+      this.fallbackRequestInFlight = false;
     }
   }
 
@@ -349,6 +364,7 @@ export class PvpScene implements Scene {
     const counting = this.mode === 'auto' && phase === 'searching';
     this.searchStart = counting ? Date.now() : null;
     this.nextFallbackAttemptAt = counting ? Date.now() + 12000 : 0;
+    this.fallbackRequestInFlight = false;
     this.timer.hidden = !counting;
     this.timerShown = counting ? formatElapsed(0) : '';
     this.timer.textContent = this.timerShown;

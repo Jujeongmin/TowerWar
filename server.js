@@ -814,13 +814,11 @@ class Server {
     if (!roomId) return false;
 
     const state = (await $room.getRoomState()) || {};
-    const users = state.$users || [];
     const player = (state.players || {})[$sender.account];
     if (
       state.phase !== PHASE_WAITING ||
       state.private ||
-      users.length !== 1 ||
-      users[0] !== $sender.account ||
+      (await $global.countRoomUsers(roomId)) !== 1 ||
       !player ||
       !player.ready
     ) return false;
@@ -829,8 +827,7 @@ class Server {
       return false;
     }
 
-    await this.#startSolo(roomId, $sender.account);
-    return true;
+    return await this.#startSolo(roomId, $sender.account);
   }
 
   // ── 판 진행 ────────────────────────────────────────────────────
@@ -1112,10 +1109,11 @@ class Server {
   async #startSolo(roomId, account) {
     const state = (await $global.getRoomState(roomId)) || {};
     const mine = cleanName(((state.players || {})[account] || {}).name);
+    const seed = Math.floor(Math.random() * 0x10000);
     await $global.updateRoomState(roomId, {
       phase: PHASE_PLAYING,
       solo: true,
-      seed: Math.floor(Math.random() * 0x10000),
+      seed,
       slots: { [account]: 1 },
       // 사람 이름만 내려준다. 상대(봇) 이름은 클라이언트가 만든다 —
       // 봇이라는 것을 화면에 안 알리기로 했으므로(§-7) 서버가 'BOT' 같은 값을
@@ -1127,6 +1125,7 @@ class Server {
       winner: null,
       winnerSlot: 0,
     });
+    return seed;
   }
 
   async #loadAccount() {

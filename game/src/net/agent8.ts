@@ -189,11 +189,12 @@ export class Agent8Client {
   }
 
   /** 12초 대기 뒤 서버에 AI 전환을 요청한다. 서버가 실제 대기시간과 방 인원을 재검증한다. */
-  async requestSoloFallback(): Promise<boolean> {
-    return (await withTimeout(
+  async requestSoloFallback(): Promise<number | null> {
+    const seed = await withTimeout(
       this.server.remoteFunction('requestSoloFallback', []),
       'AI 상대 연결',
-    )) === true;
+    );
+    return Number.isInteger(seed) && seed >= 0 && seed < 0x10000 ? seed : null;
   }
 
   async leaveMatch(): Promise<void> {

@@ -400,15 +400,17 @@ export class Renderer {
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = 'rgba(125,211,252,0.035)';
-    ctx.lineWidth = 1;
-    const grid = 40;
-    for (let x = grid; x < w; x += grid) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-    }
-    for (let y = HUD_H; y < h; y += grid) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-    }
+    // 모눈 격자 대신 양 진영에서 번지는 넓은 빛만 남긴다. 전장이 지도처럼 보여야 한다.
+    const blue = ctx.createLinearGradient(0, 0, w * 0.42, 0);
+    blue.addColorStop(0, 'rgba(63,189,241,0.07)');
+    blue.addColorStop(1, 'rgba(63,189,241,0)');
+    ctx.fillStyle = blue;
+    ctx.fillRect(0, HUD_H, w * 0.42, h - HUD_H);
+    const red = ctx.createLinearGradient(w, 0, w * 0.58, 0);
+    red.addColorStop(0, 'rgba(242,85,95,0.055)');
+    red.addColorStop(1, 'rgba(242,85,95,0)');
+    ctx.fillStyle = red;
+    ctx.fillRect(w * 0.58, HUD_H, w * 0.42, h - HUD_H);
 
     ctx.strokeStyle = 'rgba(125,211,252,0.18)';
     const p = 10;
@@ -911,7 +913,7 @@ export class Renderer {
     // 노치 밑으로 들어가면 이름과 아바타가 통째로 안 보인다.
     const top = this.safeTop;
 
-    this.drawHudPlate(top, w);
+    this.drawHudPlate(top, w, ui.local);
 
     // **타워 수로 잰다.** 전에는 `totalPower`(타워 재고 + 이동 중인 유닛)였는데,
     // 그 값은 "누가 이기고 있나"가 아니라 **"누가 안 쓰고 쌓아뒀나"** 를 보여줬다:
@@ -988,8 +990,9 @@ export class Renderer {
    * HUD가 얹히는 판때기. 아래로 갈수록 옅어져 필드와 이어진다 — 단색 띠로 자르면
    * 화면이 두 동강 난 것처럼 보인다.
    */
-  private drawHudPlate(top: number, w: number): void {
+  private drawHudPlate(top: number, w: number, local: PlayerId): void {
     const ctx = this.ctx;
+    const enemy: PlayerId = local === 1 ? 2 : 1;
     const h = top + HUD_H;
     const g = ctx.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, 'rgba(7,11,17,0.92)');
@@ -997,6 +1000,24 @@ export class Renderer {
     g.addColorStop(1, 'rgba(7,11,17,0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
+
+    // 양쪽 플레이어를 별도 지휘 모듈로 묶는다. 실제 이름/점수는 이 위에 그려진다.
+    const sideW = Math.max(92, w / 2 - 53);
+    const leftPanel = ctx.createLinearGradient(5, 0, sideW, 0);
+    leftPanel.addColorStop(0, withAlpha(OWNER_COLOR[local].main, 0.18));
+    leftPanel.addColorStop(1, withAlpha(OWNER_COLOR[local].main, 0.025));
+    ctx.fillStyle = leftPanel;
+    ctx.fillRect(5, top + 4, sideW, 36);
+    const rightPanel = ctx.createLinearGradient(w - 5, 0, w - sideW, 0);
+    rightPanel.addColorStop(0, withAlpha(OWNER_COLOR[enemy].main, 0.16));
+    rightPanel.addColorStop(1, withAlpha(OWNER_COLOR[enemy].main, 0.025));
+    ctx.fillStyle = rightPanel;
+    ctx.fillRect(w - sideW - 5, top + 4, sideW, 36);
+
+    ctx.fillStyle = OWNER_COLOR[local].main;
+    ctx.fillRect(5, top + 4, 3, 36);
+    ctx.fillStyle = OWNER_COLOR[enemy].main;
+    ctx.fillRect(w - 8, top + 4, 3, 36);
 
     ctx.strokeStyle = 'rgba(125,211,252,0.18)';
     ctx.lineWidth = 1;
@@ -1009,10 +1030,28 @@ export class Renderer {
     ctx.lineTo(w - 8, top + HUD_H - 8);
     ctx.stroke();
 
-    ctx.fillStyle = 'rgba(63,189,241,0.08)';
-    ctx.fillRect(w / 2 - 43, top + 5, 86, 28);
-    ctx.strokeStyle = 'rgba(125,211,252,0.2)';
-    ctx.strokeRect(w / 2 - 43.5, top + 4.5, 87, 29);
+    // 중앙 시계는 팔각형 커맨드 모듈로 분리한다.
+    const cx = w / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 36, top + 4);
+    ctx.lineTo(cx + 36, top + 4);
+    ctx.lineTo(cx + 43, top + 11);
+    ctx.lineTo(cx + 43, top + 32);
+    ctx.lineTo(cx + 36, top + 39);
+    ctx.lineTo(cx - 36, top + 39);
+    ctx.lineTo(cx - 43, top + 32);
+    ctx.lineTo(cx - 43, top + 11);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(9,22,31,0.96)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(125,211,252,0.38)';
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(125,211,252,0.65)';
+    ctx.font = '700 7px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('BATTLE CLOCK', cx, top + 35);
   }
 
   /**
@@ -1072,6 +1111,13 @@ export class Renderer {
     if (Math.abs(fx - mid) > 1) {
       ctx.fillStyle = mine > 0.5 ? OWNER_COLOR[local].main : OWNER_COLOR[enemy].main;
       ctx.fillRect(Math.min(mid, fx), y - 5, Math.abs(fx - mid), 1.5);
+    }
+
+    // 막대 아래의 짧은 눈금이 전선 계기판의 단위를 만든다.
+    ctx.fillStyle = 'rgba(219,230,239,0.2)';
+    for (let i = 0; i <= 10; i++) {
+      const tx = x + (bw * i) / 10;
+      ctx.fillRect(tx, y + HUD_BAR_H + 3, 1, i === 5 ? 4 : 2);
     }
   }
 

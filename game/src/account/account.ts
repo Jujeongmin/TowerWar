@@ -325,10 +325,13 @@ export function rewardFor(state: MatchState, local: PlayerId): Reward {
 /** 보상을 계정에 반영한 새 계정. 원본을 바꾸지 않는다. */
 export function applyReward(account: Account, reward: Reward): Account {
   // 오프라인 경로에서만 쓴다. 서버가 붙어 있으면 서버가 계산해 계정을 돌려준다.
-  // 오프라인은 언제나 봇전이므로 solo 전적으로 센다.
+  // 오프라인은 언제나 봇전이다. 일반 전적에도 합산하되 밸런스 분석용 solo 통계도 남긴다.
   return {
     ...account,
     coins: account.coins + reward.total,
+    wins: account.wins + (reward.outcome === 'win' ? 1 : 0),
+    losses: account.losses + (reward.outcome === 'loss' ? 1 : 0),
+    draws: account.draws + (reward.outcome === 'draw' ? 1 : 0),
     soloWins: account.soloWins + (reward.outcome === 'win' ? 1 : 0),
     soloLosses: account.soloLosses + (reward.outcome === 'loss' ? 1 : 0),
     soloDraws: account.soloDraws + (reward.outcome === 'draw' ? 1 : 0),

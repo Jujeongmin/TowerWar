@@ -1151,9 +1151,10 @@ class Server {
       return await this.#saveAccount({
         ...a,
         coins: a.coins + total,
-        wins: a.wins + (!solo && outcome === 'win' ? 1 : 0),
-        losses: a.losses + (!solo && outcome === 'loss' ? 1 : 0),
-        draws: a.draws + (!solo && outcome === 'draw' ? 1 : 0),
+        // 봇 대체전도 로비의 일반 전적에 합산한다. solo 필드는 밸런스 분석용으로 함께 유지한다.
+        wins: a.wins + (outcome === 'win' ? 1 : 0),
+        losses: a.losses + (outcome === 'loss' ? 1 : 0),
+        draws: a.draws + (outcome === 'draw' ? 1 : 0),
         soloWins: a.soloWins + (solo && outcome === 'win' ? 1 : 0),
         soloLosses: a.soloLosses + (solo && outcome === 'loss' ? 1 : 0),
         soloDraws: a.soloDraws + (solo && outcome === 'draw' ? 1 : 0),

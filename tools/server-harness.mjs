@@ -529,7 +529,7 @@ const ss = await $global.getRoomState(soloRoom.roomId);
 check('혼자면 봇전으로 확정', ss.solo === true, ss);
 const paidC = await server.reportResult(1, 9999);
 check('타워 수는 12로 잘린다 = 100 + 96', paidC.coins === 196, paidC.coins);
-check('봇전은 solo 전적으로 간다', paidC.soloWins === 1 && paidC.wins === 0, paidC);
+check('봇전은 일반 전적과 solo 통계에 모두 쌓인다', paidC.soloWins === 1 && paidC.wins === 1, paidC);
 
 // 33) 닉네임 — 정리 규칙과 거부
 const E = { account: '0xEEE', roomId: null };

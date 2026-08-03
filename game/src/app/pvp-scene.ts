@@ -203,12 +203,22 @@ export class PvpScene implements Scene {
       this.timer.textContent = text;
     }
 
-    // `$roomTick`이 플랫폼 사정으로 늦어져도 12초 뒤 서버 권위 판정을 직접 깨운다.
-    // 서버 시간이 아직 12초 전이면 false가 오므로 1초 간격으로 안전하게 재시도한다.
-    if (elapsed >= 12 && this.client.inRoom && !this.fallbackRequestInFlight && now >= this.nextFallbackAttemptAt) {
+    // 4초에 미리 호출하면 서버가 구버전이라 RPC 자체가 응답하지 않는 경우에도
+    // 8초 타임아웃이 정확히 12초 무렵 끝난다. 정상 서버는 아직 이르므로 null을 즉시
+    // 돌려주고, 아래 메서드가 12초 시점으로 다음 요청을 예약한다.
+    if (elapsed >= 4 && this.client.inRoom && !this.fallbackRequestInFlight && now >= this.nextFallbackAttemptAt) {
       this.nextFallbackAttemptAt = now + 1000;
       void this.requestSoloFallback();
     }
+
+    // 12초 요청 자체가 멈추는 경우에도 추가 8초를 기다리지 않는다.
+    if (elapsed >= 12.5 && !this.handedOff) this.startLocalFallback();
+  }
+
+  private startLocalFallback(): void {
+    if (!this.active || this.searchStart === null || this.handedOff) return;
+    void this.client.leaveMatch().catch(() => {});
+    this.handOff(() => this.startBot());
   }
 
   /** 서버가 승인한 시드를 받으면 방 상태 구독을 기다리지 않고 즉시 AI전을 시작한다. */
@@ -218,9 +228,22 @@ export class PvpScene implements Scene {
       const seed = await this.client.requestSoloFallback();
       if (seed !== null && this.active && this.searchStart !== null && !this.handedOff) {
         this.handOff(() => this.startBot(seed));
+      } else if (this.searchStart !== null) {
+        // 정상 서버의 조기 거절(null)이면 정확히 12초에 다시 요청한다.
+        this.nextFallbackAttemptAt = this.searchStart + 12000;
       }
     } catch (e) {
       console.warn('[net] AI 상대 전환 요청 실패:', e);
+      // 서버 코드가 아직 배포되지 않았거나 장애가 있어도 사용자를 매칭 화면에 가두지 않는다.
+      // 서버 방은 비우기를 시도하고, 보상 위조를 피하기 위해 이 판은 로컬 AI전으로 연다.
+      if (
+        this.active &&
+        this.searchStart !== null &&
+        Date.now() - this.searchStart >= 12000 &&
+        !this.handedOff
+      ) {
+        this.startLocalFallback();
+      }
     } finally {
       this.fallbackRequestInFlight = false;
     }
@@ -363,7 +386,7 @@ export class PvpScene implements Scene {
     // 화면 전환이 전부 이 함수를 거치므로 시작·정지를 여기 한 곳에 둔다.
     const counting = this.mode === 'auto' && phase === 'searching';
     this.searchStart = counting ? Date.now() : null;
-    this.nextFallbackAttemptAt = counting ? Date.now() + 12000 : 0;
+    this.nextFallbackAttemptAt = counting ? Date.now() + 4000 : 0;
     this.fallbackRequestInFlight = false;
     this.timer.hidden = !counting;
     this.timerShown = counting ? formatElapsed(0) : '';

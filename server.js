@@ -804,6 +804,35 @@ class Server {
     return true;
   }
 
+  /**
+   * 자동 매칭 클라이언트가 12초 대기 뒤 요청하는 AI 전환 보조 경로.
+   * 클라이언트 시계는 신뢰하지 않고 서버에 기록된 joinedAt과 현재 방 상태를 다시 검사한다.
+   * `$roomTick`이 지연되거나 누락돼도 이 요청으로 같은 서버 권위 판정을 실행할 수 있다.
+   */
+  async requestSoloFallback() {
+    const roomId = $sender.roomId;
+    if (!roomId) return false;
+
+    const state = (await $room.getRoomState()) || {};
+    const users = state.$users || [];
+    const player = (state.players || {})[$sender.account];
+    if (
+      state.phase !== PHASE_WAITING ||
+      state.private ||
+      users.length !== 1 ||
+      users[0] !== $sender.account ||
+      !player ||
+      !player.ready
+    ) return false;
+
+    if (Date.now() - (player.joinedAt || state.createdAt || Date.now()) < SOLO_FALLBACK_MS) {
+      return false;
+    }
+
+    await this.#startSolo(roomId, $sender.account);
+    return true;
+  }
+
   // ── 판 진행 ────────────────────────────────────────────────────
 
   /**

@@ -188,6 +188,14 @@ export class Agent8Client {
     await withTimeout(this.server.remoteFunction('setReady', [ready]), '준비');
   }
 
+  /** 12초 대기 뒤 서버에 AI 전환을 요청한다. 서버가 실제 대기시간과 방 인원을 재검증한다. */
+  async requestSoloFallback(): Promise<boolean> {
+    return (await withTimeout(
+      this.server.remoteFunction('requestSoloFallback', []),
+      'AI 상대 연결',
+    )) === true;
+  }
+
   async leaveMatch(): Promise<void> {
     // 여기에도 타임아웃이 필요하다. 서버가 없으면 이 호출이 안 끝나서,
     // 방을 옮기려고 이걸 먼저 기다리는 화면이 통째로 멈춘다.

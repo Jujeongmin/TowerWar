@@ -102,11 +102,14 @@ export class PvpScene implements Scene {
    * (실측: 숨긴 탭에서 1.8초 동안 0프레임) 서버의 대기 시간은 계속 흐른다. dt 를 쌓으면
    * 돌아왔을 때 화면의 숫자가 서버가 센 시간보다 한참 적어 거짓말이 된다.
    *
-   * 이 값은 **표시 전용이고 어떤 판단에도 안 쓴다** — 매칭 성사도 봇 대체도 서버가 정한다.
+   * 12초가 되면 서버에 AI 전환을 요청하는 기준으로도 쓴다. 실제 전환 여부는 서버가
+   * 방 인원과 서버 시각을 다시 검사해 결정하므로 클라이언트가 판정을 소유하지 않는다.
    */
   private searchStart: number | null = null;
   /** 마지막으로 화면에 쓴 문자열. 같은 값을 매 프레임 다시 쓰지 않으려고 들고 있다. */
   private timerShown = '';
+  /** AI 전환 요청을 프레임마다 보내지 않도록 다음 재시도 가능 시각을 둔다. */
+  private nextFallbackAttemptAt = 0;
 
   constructor(
     private readonly root: HTMLElement,
@@ -189,12 +192,23 @@ export class PvpScene implements Scene {
   }
 
   frame(): void {
-    // 나머지는 DOM이 알아서 그려진다. 흐르는 것은 매칭 시간뿐이다.
     if (this.searchStart === null) return;
-    const text = formatElapsed((Date.now() - this.searchStart) / 1000);
-    if (text === this.timerShown) return;
-    this.timerShown = text;
-    this.timer.textContent = text;
+    const now = Date.now();
+    const elapsed = (now - this.searchStart) / 1000;
+    const text = formatElapsed(elapsed);
+    if (text !== this.timerShown) {
+      this.timerShown = text;
+      this.timer.textContent = text;
+    }
+
+    // `$roomTick`이 플랫폼 사정으로 늦어져도 12초 뒤 서버 권위 판정을 직접 깨운다.
+    // 서버 시간이 아직 12초 전이면 false가 오므로 1초 간격으로 안전하게 재시도한다.
+    if (elapsed >= 12 && this.client.inRoom && now >= this.nextFallbackAttemptAt) {
+      this.nextFallbackAttemptAt = now + 1000;
+      void this.client.requestSoloFallback().catch((e) => {
+        console.warn('[net] AI 상대 전환 요청 실패:', e);
+      });
+    }
   }
 
   // ── 길 셋 ──────────────────────────────────────────────────────
@@ -334,6 +348,7 @@ export class PvpScene implements Scene {
     // 화면 전환이 전부 이 함수를 거치므로 시작·정지를 여기 한 곳에 둔다.
     const counting = this.mode === 'auto' && phase === 'searching';
     this.searchStart = counting ? Date.now() : null;
+    this.nextFallbackAttemptAt = counting ? Date.now() + 12000 : 0;
     this.timer.hidden = !counting;
     this.timerShown = counting ? formatElapsed(0) : '';
     this.timer.textContent = this.timerShown;

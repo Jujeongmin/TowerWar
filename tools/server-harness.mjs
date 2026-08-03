@@ -295,10 +295,10 @@ check('무응답이면 남은 쪽 승', to.phase === 'finished' && to.winner ===
 as(A);
 const r6 = await server.findMatch();
 await server.setReady(true);
-await server.$roomTick(300, r6.roomId);
+check('12초 전 AI 전환 요청은 거절', (await server.requestSoloFallback()) === false);
 check('기다린 지 얼마 안 됐으면 그대로 대기', (await $global.getRoomState(r6.roomId)).phase === 'waiting');
 rooms.get(r6.roomId).state.players['0xAAA'].joinedAt = Date.now() - 20000;
-await server.$roomTick(300, r6.roomId);
+check('12초 뒤 AI 전환 요청을 승인', (await server.requestSoloFallback()) === true);
 const solo = await $global.getRoomState(r6.roomId);
 check('오래 기다리면 봇전 확정', solo.phase === 'playing' && solo.solo === true, solo);
 check('봇전도 시드를 서버가 준다', Number.isInteger(solo.seed) && solo.seed >= 0 && solo.seed < 0x10000, solo.seed);
@@ -344,6 +344,7 @@ as(C); await server.leaveMatch();
 as(A);
 await server.setReady(true);
 rooms.get(host2.roomId).state.players['0xAAA'].joinedAt = Date.now() - 60000;
+check('코드 방은 AI 전환 요청도 거절한다', (await server.requestSoloFallback()) === false);
 await server.$roomTick(300, host2.roomId);
 check('코드 방은 혼자 오래 있어도 봇전이 안 된다', (await $global.getRoomState(host2.roomId)).phase === 'waiting');
 

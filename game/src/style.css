@@ -552,6 +552,252 @@ body {
   border-color: #7fd6ff;
 }
 
+/* Lobby command HUD ------------------------------------------------------- */
+#lobby {
+  isolation: isolate;
+  justify-content: flex-start;
+  gap: 0;
+  overflow: hidden;
+  padding-top: calc(104px + env(safe-area-inset-top));
+  background:
+    radial-gradient(circle at 50% 30%, rgba(34, 78, 104, 0.32), transparent 38%),
+    linear-gradient(180deg, #0c141e 0%, #091019 58%, #070c12 100%);
+}
+
+#lobby::before,
+#lobby::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+#lobby::before {
+  inset: 72px 12px 16px;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  clip-path: polygon(0 24px, 24px 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 24px), calc(100% - 24px) 100%, 24px 100%, 0 calc(100% - 24px));
+}
+
+#lobby::after {
+  left: 50%;
+  bottom: -150px;
+  width: 520px;
+  height: 320px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  border: 1px solid rgba(63, 189, 241, 0.14);
+  box-shadow: 0 0 80px rgba(63, 189, 241, 0.08);
+}
+
+.lobby-grid {
+  position: absolute;
+  inset: 72px 0 0;
+  z-index: -3;
+  opacity: 0.16;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(125, 211, 252, 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.13) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, transparent, #000 24%, #000 72%, transparent);
+}
+
+.lobby-watermark {
+  position: absolute;
+  z-index: -2;
+  right: -74px;
+  bottom: -28px;
+  width: min(440px, 88vw);
+  opacity: 0.095;
+  filter: grayscale(1) contrast(1.25) drop-shadow(0 0 30px rgba(63, 189, 241, 0.45));
+  pointer-events: none;
+  user-select: none;
+}
+
+.lobby-edge {
+  position: absolute;
+  top: 118px;
+  width: 2px;
+  height: 116px;
+  background: linear-gradient(transparent, #3fbdf1 30%, #3fbdf1 70%, transparent);
+  opacity: 0.55;
+}
+
+.lobby-edge::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 22px;
+  height: 1px;
+  background: #3fbdf1;
+}
+
+.lobby-edge-left { left: 20px; }
+.lobby-edge-right { right: 20px; }
+.lobby-edge-left::after { left: 0; }
+.lobby-edge-right::after { right: 0; }
+
+#lobby .account-bar {
+  top: calc(14px + env(safe-area-inset-top));
+  left: 14px;
+  right: 14px;
+  min-height: 52px;
+  padding: 8px 14px;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-start;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(18, 35, 48, 0.96), rgba(10, 18, 27, 0.82));
+  box-shadow: inset 3px 0 #3fbdf1, 0 10px 32px rgba(0, 0, 0, 0.28);
+}
+
+#lobby .account-bar::after {
+  content: 'ONLINE';
+  margin-left: auto;
+  color: #5ee6a8;
+  font: 700 9px/1 ui-monospace, monospace;
+  letter-spacing: 0.14em;
+}
+
+#lobby .acc-avatar {
+  width: 34px;
+  height: 34px;
+  border-color: rgba(125, 211, 252, 0.55);
+  box-shadow: 0 0 0 3px rgba(63, 189, 241, 0.08);
+}
+
+#lobby .record { margin-left: auto; }
+#lobby .account-bar::after { margin-left: 0; }
+
+#lobby .acc-name,
+#lobby .coins,
+#lobby .rating,
+#lobby .record {
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  #lobby .account-bar { gap: 8px; padding-right: 10px; padding-left: 10px; }
+  #lobby .acc-name { max-width: 88px; overflow: hidden; text-overflow: ellipsis; }
+  #lobby .coins { font-size: 15px; }
+  #lobby .rating { font-size: 12px; }
+  #lobby .record { font-size: 11px; }
+  #lobby .account-bar::after { font-size: 8px; letter-spacing: 0.08em; }
+}
+
+#lobby .mascot {
+  width: 108px;
+  height: 108px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.5);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(31, 52, 66, 0.96), rgba(10, 17, 25, 0.96));
+  box-shadow: 0 0 0 5px rgba(63, 189, 241, 0.05), 0 18px 45px rgba(0, 0, 0, 0.36);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+
+.lobby-title-block {
+  position: relative;
+  width: min(390px, 100%);
+  padding: 12px 18px 18px;
+  text-align: center;
+  border-top: 1px solid rgba(125, 211, 252, 0.28);
+}
+
+.lobby-title-block::before,
+.lobby-title-block::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  width: 6px;
+  height: 5px;
+  background: #3fbdf1;
+}
+.lobby-title-block::before { left: 0; }
+.lobby-title-block::after { right: 0; }
+
+.lobby-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: #7dd3fc;
+  font: 700 10px/1.2 ui-monospace, monospace;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+  opacity: 0.82;
+}
+
+#lobby .logo {
+  font-size: clamp(42px, 11vw, 66px);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  text-shadow: 0 3px 0 #152b3a, 0 0 28px rgba(63, 189, 241, 0.18);
+}
+
+#lobby .tagline {
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#lobby .menu {
+  position: relative;
+  gap: 8px;
+  width: min(350px, 100%);
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, rgba(17, 27, 38, 0.91), rgba(9, 15, 23, 0.94));
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.35);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+
+#lobby .btn {
+  position: relative;
+  min-height: 48px;
+  padding: 12px 48px 12px 18px;
+  border-width: 1px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(25, 39, 52, 0.96), rgba(14, 23, 33, 0.96));
+  text-align: left;
+  letter-spacing: 0.03em;
+  overflow: hidden;
+}
+
+#lobby .btn::after {
+  content: '›';
+  position: absolute;
+  right: 17px;
+  top: 50%;
+  transform: translateY(-52%);
+  color: rgba(125, 211, 252, 0.65);
+  font-size: 24px;
+  font-weight: 400;
+}
+
+#lobby .btn:hover {
+  padding-left: 23px;
+  border-color: rgba(125, 211, 252, 0.72);
+  background: linear-gradient(90deg, rgba(29, 62, 79, 0.98), rgba(15, 29, 41, 0.98));
+}
+
+#lobby .btn-primary {
+  border-color: #3fbdf1;
+  background: linear-gradient(90deg, rgba(24, 91, 116, 0.96), rgba(16, 45, 61, 0.96));
+  box-shadow: inset 3px 0 #7dd3fc, 0 0 24px rgba(63, 189, 241, 0.09);
+}
+
+@media (max-height: 720px) {
+  #lobby { padding-top: calc(82px + env(safe-area-inset-top)); }
+  #lobby .account-bar { min-height: 46px; }
+  #lobby .mascot { width: 76px; height: 76px; margin-bottom: 6px; }
+  .lobby-title-block { padding-top: 8px; padding-bottom: 10px; }
+  #lobby .logo { font-size: 40px; }
+  #lobby .tagline { margin-top: 5px; }
+  #lobby .menu { gap: 6px; padding: 9px; }
+  #lobby .btn { min-height: 42px; padding-top: 9px; padding-bottom: 9px; }
+}
+
 /* ── 로비 상점 ─────────────────────────────────────────────────── */
 
 .shop {

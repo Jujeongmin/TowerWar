@@ -40,6 +40,10 @@
     </div>
 
     <div id="lobby" class="screen" hidden>
+      <div class="lobby-grid" aria-hidden="true"></div>
+      <img class="lobby-watermark" src="/assets/profile/beergang.png" alt="" aria-hidden="true" />
+      <div class="lobby-edge lobby-edge-left" aria-hidden="true"></div>
+      <div class="lobby-edge lobby-edge-right" aria-hidden="true"></div>
       <div class="account-bar">
         <img id="acc-avatar" class="acc-avatar" alt="" hidden />
         <span id="acc-name" class="acc-name"></span>
@@ -51,8 +55,11 @@
            게임인지 그림으로 안 읽혔다. `alt` 가 비어 있는 것은 장식이라서다
            (스크린리더가 읽을 내용이 없다). 클릭을 막지 않게 `pointer-events: none`. -->
       <img class="mascot" src="/assets/profile/beergang.png" alt="" aria-hidden="true" />
-      <h1 class="logo">TowerWar</h1>
-      <p class="tagline" data-i18n="tagline">Draw supply lines. Push the front.</p>
+      <div class="lobby-title-block">
+        <span class="lobby-kicker" aria-hidden="true">TACTICAL COMMAND</span>
+        <h1 class="logo">TowerWar</h1>
+        <p class="tagline" data-i18n="tagline">Draw supply lines. Push the front.</p>
+      </div>
       <div class="menu">
         <button id="btn-auto" class="btn btn-primary" data-i18n="autoMatch">Quick Match</button>
         <button id="btn-friend" class="btn" data-i18n="playFriend">Play a Friend</button>

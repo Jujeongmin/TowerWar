@@ -1202,35 +1202,27 @@ body {
     gap: 10px;
     padding-top: calc(14px + env(safe-area-inset-top));
     padding-bottom: calc(14px + env(safe-area-inset-bottom));
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
   }
   .match-radar { width: 92px; height: 92px; }
   .match-status-panel { min-height: 88px; padding: 17px 16px 13px; }
 }
 
-/* Short laptop windows and browser chrome can leave less vertical room than
-   phones. Let menu screens scroll instead of clipping their bottom actions. */
+/* Fit ordinary menu screens into short laptop windows. Long catalog screens
+   keep their own scrolling via .screen-scroll. */
 @media (max-height: 760px) {
-  .screen:not(.screen-overlay) {
+  .screen:not(.screen-overlay):not(.screen-scroll) {
     justify-content: flex-start;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
     padding-top: calc(16px + env(safe-area-inset-top));
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
 
-  /* The id selector above normally keeps the lobby at overflow:hidden, so it
-     needs an explicit override. Without this, laptop browser chrome or 125%
-     display scaling clips the last menu buttons with no way to reach them. */
   #lobby {
     gap: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
     padding-top: calc(74px + env(safe-area-inset-top));
     padding-bottom: calc(18px + env(safe-area-inset-bottom));
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
   }
 
   #lobby .account-bar {
@@ -1249,7 +1241,7 @@ body {
   #lobby .tagline { margin-top: 3px; font-size: 11px; }
   #lobby .menu { gap: 5px; padding: 8px; }
   #lobby .btn { min-height: 38px; padding-top: 7px; padding-bottom: 7px; }
-  #pvp { overflow-y: auto; }
+  #pvp { overflow: hidden; }
 }
 
 @media (max-height: 560px) {

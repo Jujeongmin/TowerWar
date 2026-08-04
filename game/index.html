@@ -40,10 +40,15 @@
     </div>
 
     <div id="lobby" class="screen" hidden>
-      <div class="lobby-grid" aria-hidden="true"></div>
-      <img class="lobby-watermark" src="/assets/profile/beergang.png" alt="" aria-hidden="true" />
-      <div class="lobby-edge lobby-edge-left" aria-hidden="true"></div>
-      <div class="lobby-edge lobby-edge-right" aria-hidden="true"></div>
+      <!-- 장식 전용 층. **일부러 화면 밖으로 흘러넘치는 것들**(워터마크의 `bottom: -28px`)을
+           여기 모아 잘라 낸다. 화면 자체는 세로 스크롤을 허용하므로(짧은 창에서 버튼이
+           잘리는 것을 막으려고) 장식을 밖에 두면 없던 스크롤이 생긴다. -->
+      <div class="lobby-decor" aria-hidden="true">
+        <div class="lobby-grid"></div>
+        <img class="lobby-watermark" src="/assets/profile/beergang.png" alt="" />
+        <div class="lobby-edge lobby-edge-left"></div>
+        <div class="lobby-edge lobby-edge-right"></div>
+      </div>
       <div class="account-bar">
         <img id="acc-avatar" class="acc-avatar" alt="" hidden />
         <button id="acc-name" class="acc-name acc-name-edit" type="button" aria-label="Edit name"></button>
@@ -231,7 +236,9 @@
       <!-- 판이 끝난 뒤 광고로 보상 2배. 서버가 지불한 값을 한 번 더 준다. -->
       <button id="btn-ad-double" class="btn btn-ad" hidden>Watch an ad — double it</button>
       <div class="menu menu-row">
-        <button id="btn-again" class="btn btn-primary" data-i18n="playAgain">Play Again</button>
+        <!-- 같은 판을 다시 하는 것이 아니라 **매칭을 다시 잡는다** (2026-08-04 사용자 지시).
+             봇전에서만 보이던 [다시 하기]가 없어져 PVP·봇전이 같은 버튼을 쓴다. -->
+        <button id="btn-again" class="btn btn-primary" data-i18n="playAgain">Find Match</button>
         <button id="btn-lobby" class="btn" data-i18n="toLobby">Lobby</button>
       </div>
     </div>

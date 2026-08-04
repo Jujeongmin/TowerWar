@@ -8,7 +8,7 @@
  * `sim/`은 이 모듈을 몰라야 한다. 계정 상태가 시뮬레이션에 흘러들면 서버 권위 PVP에서
  * 클라이언트마다 결과가 갈라진다.
  */
-import { SPEED_LEVEL_MAX, speedMulFor } from '../sim/config';
+import { speedMulFor } from '../sim/config';
 import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
 import { DEFAULT_UNIT_KIND, UNIT_KIND_META, isPremiumKind, isUnitKind, unitPowerOf, type UnitKind } from '../units';
@@ -166,7 +166,7 @@ export function fromRemote(r: {
     wins: num(r.wins),
     losses: num(r.losses),
     draws: num(r.draws),
-    speedLevel: Math.min(num(r.speedLevel), upgradeMaxOf('speed')),
+    speedLevel: num(r.speedLevel),
     ownedUnits: [...new Set(owned)],
     unitKind: kind,
     soloWins: num(r.soloWins),
@@ -190,7 +190,8 @@ export function fromRemote(r: {
 export type UpgradeKind = 'speed';
 
 /**
- * 단계별 코인 가격. 배열 길이가 곧 상한이다 — `[0]`이 0단계에서 1단계로 갈 때의 값.
+ * 앞쪽 단계의 코인 가격. **이 표가 끝나도 강화는 계속 살 수 있다** —
+ * 그 뒤로는 `SPEED_COST_GROWTH` 로 이어 붙인다 (`speedCostAt`).
  *
  * **잠정치다.** 승리 보상이 100 + 타워×8 이라 판당 대략 150~180이 들어온다.
  */
@@ -198,24 +199,46 @@ export const UPGRADE_COSTS: Record<UpgradeKind, readonly number[]> = {
   speed: [300, 700, 1300, 2200, 3500],
 };
 
+/**
+ * 표를 넘어선 단계의 가격 증가율. 표의 증가폭(400→600→900→1300, 약 1.5배)을 그대로 잇는다.
+ *
+ * **상한을 없앤 뒤로 이것이 유일한 제동장치다** (2026-08-04 사용자 지시로 단계 제한 제거).
+ * 값을 낮추면 후반 강화가 싸져서 판이 빨리 기운다.
+ */
+const SPEED_COST_GROWTH = 1.5;
+
+/**
+ * `level` 단계에서 다음 단계로 갈 때의 가격. **`server.js` 의 같은 이름과 반드시 같아야 한다** —
+ * 서버가 진짜 가격이고 여기는 화면 표시용이다 (§-10). 어긋나면 "보이는 값과 깎이는 값이 다름"이 된다.
+ *
+ * 100원 단위로 반올림해 값이 지저분해지지 않게 한다.
+ */
+export function speedCostAt(level: number): number {
+  const table = UPGRADE_COSTS.speed;
+  if (level < table.length) return table[level];
+  let cost = table[table.length - 1];
+  for (let i = table.length; i <= level; i++) {
+    cost = Math.round((cost * SPEED_COST_GROWTH) / 100) * 100;
+  }
+  return cost;
+}
+
 export const UPGRADE_LABEL: Record<UpgradeKind, string> = {
   speed: '생산 속도',
 };
 
-/** 저장값이 오염돼 있어도 0~상한으로 잘라서 돌려준다. 읽는 쪽마다 다시 검사하지 않게. */
+/** 저장값이 오염돼 있어도 0 이상으로 잘라서 돌려준다. **상한은 없다.** */
 export function upgradeLevelOf(a: Account, _kind: UpgradeKind): number {
-  return clampLevel(a.speedLevel, upgradeMaxOf('speed'));
+  return Math.max(0, Math.floor(num(a.speedLevel)));
 }
 
-/** 이 축을 몇 번까지 살 수 있는가. 가격표와 시뮬레이션 상한 중 빡빡한 쪽. */
-export function upgradeMaxOf(kind: UpgradeKind): number {
-  return Math.min(SPEED_LEVEL_MAX, UPGRADE_COSTS[kind].length);
-}
-
-/** 다음 단계 가격. 만렙이면 null. */
+/**
+ * 다음 단계 가격. **`null` 을 돌려주는 일이 없다 — 상한이 없어졌다** (2026-08-04).
+ * 부르는 쪽이 아직 `null` 을 만렙으로 다루고 있어도 그 분기가 안 밟힐 뿐이라 안전하다.
+ */
 export function upgradeCostOf(a: Account, kind: UpgradeKind): number | null {
-  const lv = upgradeLevelOf(a, kind);
-  return lv >= upgradeMaxOf(kind) ? null : UPGRADE_COSTS[kind][lv];
+  if (kind !== 'speed') return null;
+  return speedCostAt(upgradeLevelOf(a, kind));
 }
 
 /**
@@ -292,9 +315,6 @@ export function unitKindOf(a: Account): UnitKind {
   return ownsUnitKind(a, a.unitKind) ? a.unitKind : DEFAULT_UNIT_KIND;
 }
 
-function clampLevel(v: number, max: number): number {
-  return Math.min(max, Math.max(0, Math.floor(v)));
-}
 
 /** 매치 하나가 끝났을 때 무엇을 얼마나 주는가. 순수 함수 — 저장소를 모른다. */
 export interface Reward {
@@ -375,7 +395,7 @@ export function loadAccount(): Account {
       wins: num(parsed.wins),
       losses: num(parsed.losses),
       draws: num(parsed.draws),
-      speedLevel: Math.min(num(parsed.speedLevel), upgradeMaxOf('speed')),
+      speedLevel: num(parsed.speedLevel),
       // 중복이 쌓이면 소유 목록이 무한히 길어진다. 저장할 때가 아니라 읽을 때 정리한다.
       ownedUnits: [...new Set(owned)],
       unitKind: migrateUnitKind(parsed.unitKind),

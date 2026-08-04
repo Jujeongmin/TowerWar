@@ -76,13 +76,22 @@ export const UNIT_SPEED = 105;
  * 조절 가능한 축이 아니라 계단이다. 되살리지 말 것.
  */
 
-/** 공속 강화 한 단계가 gen/emit에 더하는 비율. 5단계면 최대 +20%. */
+/** 공속 강화 한 단계가 gen/emit에 더하는 비율. 한 단계당 +4%. */
 export const SPEED_STEP = 0.04;
-export const SPEED_LEVEL_MAX = 5;
 
-/** 공속 강화 단계 → gen/emit에 곱할 배수. */
+/**
+ * 공속 강화 단계 → gen/emit에 곱할 배수.
+ *
+ * **상한이 없다** (2026-08-04 사용자 지시로 5단계 제한 제거). 무한히 오르지만
+ * 실제 효과는 저절로 포화된다 — `emitUnits` 가 **틱당 경로당 1기**만 내보내므로
+ * 배출은 30기/초에서 멈춘다. 그 뒤로 오르는 것은 재고 생산(`gen`)뿐이다.
+ * 그래서 무한 루프나 발산 없이 안전하다.
+ *
+ * 음수·NaN 만 막는다. 가격이 단계마다 1.5배씩 뛰므로(`account.ts` 의
+ * `SPEED_COST_GROWTH`) 실질적인 제동은 경제 쪽에 있다.
+ */
 export function speedMulFor(level: number): number {
-  const n = Math.min(SPEED_LEVEL_MAX, Math.max(0, Math.floor(level)));
+  const n = Math.max(0, Math.floor(Number(level) || 0));
   return 1 + SPEED_STEP * n;
 }
 

@@ -43,8 +43,6 @@ export class MatchScene implements Scene {
    * 다음 판이 끝나면 앞 판의 점수가 새 결과 화면에 얹힌다 — 번호가 다르면 버린다.
    */
   private resultRound = 0;
-  /** 이 판이 PVP인가. 결과 화면의 [다시 하기]를 가리는 데 쓴다. */
-  private pvp = false;
   /**
    * 내가 항복했는가. **보상을 막는 데만 쓴다** (사용자 결정: 항복은 0코인).
    *
@@ -76,6 +74,8 @@ export class MatchScene implements Scene {
       winnerSlot: number,
     ) => Promise<RatingChange | null>,
     private readonly toLobby: () => void,
+    /** 결과 화면의 [다시 매칭]. 자동 매칭 화면으로 돌아가 상대를 다시 찾는다. */
+    private readonly toMatchmaking: () => void,
     /**
      * 양쪽 플레이어의 보정. 매 판 시작할 때 새로 읽는다 — 로비에서 사고 바로 시작할 수 있다.
      * 봇 몫도 여기 들어 있다 (app/difficulty.ts).
@@ -109,9 +109,13 @@ export class MatchScene implements Scene {
     const again = resultRoot.querySelector<HTMLButtonElement>('#btn-again');
     const lobby = resultRoot.querySelector<HTMLButtonElement>('#btn-lobby');
     if (!again || !lobby) throw new Error('결과 화면에 버튼이 없습니다');
-    // 봇전은 서버가 준 시드로 시작하지만, [다시 하기]까지 그 시드를 쓰면
-    // 같은 맵만 반복된다. 다시 할 때는 새로 뽑는다.
-    again.addEventListener('click', () => this.restart(true));
+    // **같은 판을 다시 돌리지 않는다 — 매칭을 다시 잡는다** (2026-08-04 사용자 지시).
+    //
+    // 전에는 `restart(true)` 로 시드만 새로 뽑아 그 자리에서 봇전을 다시 열었고,
+    // PVP에서는 같은 상대와 같은 시드를 쓸 수 없어 버튼을 아예 숨겼다. 그래서
+    // 봇전과 PVP의 결과 화면이 서로 달랐다. 이제 둘 다 매칭 화면으로 돌아간다 —
+    // 봇전이었다면 상대를 다시 찾다가 없으면 또 봇으로 떨어진다(§-7).
+    again.addEventListener('click', () => this.toMatchmaking());
     lobby.addEventListener('click', () => this.toLobby());
 
     // **재확인도 설정 창도 없다.** 한 번 누르면 바로 항복이다 (§-23 사용자 지시).
@@ -178,7 +182,6 @@ export class MatchScene implements Scene {
   restart(reroll = false): void {
     this.teardown();
     const plan = this.getPlan();
-    this.pvp = plan.mode === 'pvp';
 
     const planSeed = plan.mode === 'pvp' ? plan.setup.seed : reroll ? undefined : plan.seed;
     const seed = (planSeed ?? Date.now()) & 0xffff;
@@ -404,9 +407,9 @@ export class MatchScene implements Scene {
         t().rewardLine(reward.total, reward.base, reward.towers, reward.towerBonus);
     }
 
-    // PVP는 같은 상대와 같은 시드로 다시 시작할 수 없다. 로비로만 나간다.
-    const again = this.resultRoot.querySelector<HTMLButtonElement>('#btn-again');
-    if (again) again.hidden = this.pvp;
+    // **PVP에서도 보인다.** 전에는 "같은 상대와 같은 시드로 다시 시작할 수 없다"는
+    // 이유로 숨겼는데, 이 버튼이 이제 판을 다시 도는 게 아니라 **매칭을 다시 잡는다** —
+    // 그 이유가 사라졌다 (2026-08-04). 봇전·PVP가 같은 결과 화면을 쓴다.
 
     this.resultRoot.hidden = false;
     this.resultShown = true;

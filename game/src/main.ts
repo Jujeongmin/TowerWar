@@ -150,6 +150,12 @@ const match = new MatchScene(
   need('result-rating'),
   grantReward,
   () => switchTo(lobby),
+  // [다시 매칭] — 로비를 거치지 않고 곧바로 자동 매칭으로 돌아간다.
+  // 봇전이었어도 상대를 다시 찾는다 (없으면 §-7대로 조용히 또 봇으로 떨어진다).
+  () => {
+    pvp.setMode('auto');
+    switchTo(pvp);
+  },
   () => matchModsFor(store.current),
   () => unitKindOf(store.current),
   () => store.current.name,

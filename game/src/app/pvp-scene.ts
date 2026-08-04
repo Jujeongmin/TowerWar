@@ -61,6 +61,15 @@ function titleText(mode: PvpMode): string {
   return mode === 'auto' ? t().pvpTitleAuto : t().pvpTitleFriend;
 }
 
+/**
+ * 매칭을 다시 훑는 간격(ms).
+ *
+ * 대역이 넓어지는 시점(`ratingBandFor`: 4초·8초·10초)을 놓치지 않을 만큼 촘촘하되,
+ * 서버 호출이 초당 10회로 제한된 것을 감안해 넉넉히 잡았다. 봇 폴백이 12초라
+ * 실제로는 대여섯 번쯤 돈다.
+ */
+const REMATCH_INTERVAL_MS = 2000;
+
 /** 경과 시간을 `0:07` 로. 분이 넘어가도 자리가 안 흔들리게 초를 두 자리로 채운다. */
 function formatElapsed(sec: number): string {
   const t = Math.max(0, Math.floor(sec));
@@ -110,6 +119,9 @@ export class PvpScene implements Scene {
   private timerShown = '';
   /** AI 전환 요청을 프레임마다 보내지 않도록 다음 재시도 가능 시각을 둔다. */
   private nextFallbackAttemptAt = 0;
+  /** 다음 매칭 재훑기 시각. `frame` 이 이 시각을 넘으면 한 번 돈다. */
+  private nextRematchAt = 0;
+  private rematchInFlight = false;
   /** 느린 요청 위에 다음 요청이 겹치지 않게 한다. */
   private fallbackRequestInFlight = false;
 
@@ -203,6 +215,21 @@ export class PvpScene implements Scene {
       this.timer.textContent = text;
     }
 
+    // **매칭을 주기적으로 다시 훑는다.** 대역이 기다린 시간에 따라 넓어지는데
+    // (`ratingBandFor`) 첫 호출 한 번으로는 그 확장을 못 받는다 — 두 사람이 동시에
+    // 대기 중인데도 서로를 지나쳐 둘 다 봇으로 떨어지는 일이 있었다.
+    // 자동 매칭에서만, 아직 넘기기 전에만 돈다.
+    if (
+      this.mode === 'auto' &&
+      !this.handedOff &&
+      this.client.inRoom &&
+      !this.rematchInFlight &&
+      now >= this.nextRematchAt
+    ) {
+      this.nextRematchAt = now + REMATCH_INTERVAL_MS;
+      void this.retryFindMatch(now - this.searchStart);
+    }
+
     // 4초에 미리 호출하면 서버가 구버전이라 RPC 자체가 응답하지 않는 경우에도
     // 8초 타임아웃이 정확히 12초 무렵 끝난다. 정상 서버는 아직 이르므로 null을 즉시
     // 돌려주고, 아래 메서드가 12초 시점으로 다음 요청을 예약한다.
@@ -213,6 +240,39 @@ export class PvpScene implements Scene {
 
     // 12초 요청 자체가 멈추는 경우에도 추가 8초를 기다리지 않는다.
     if (elapsed >= 12.5 && !this.handedOff) this.startLocalFallback();
+  }
+
+  /**
+   * 대기 중에 더 나은 후보를 다시 훑는다. 못 찾으면 아무 일도 안 일어난다.
+   *
+   * 찾았으면 **다른 방으로 옮겨진 것**이라 구독을 다시 건다 — 안 그러면 옛 방의
+   * 상태만 듣고 있어 판이 시작돼도 모른다. `attempt` 번호를 올려 이전 구독이
+   * 늦게 뱉는 이벤트도 걸러 낸다 (`enterRoom` 과 같은 규칙).
+   */
+  private async retryFindMatch(waitedMs: number): Promise<void> {
+    this.rematchInFlight = true;
+    try {
+      const before = this.client.currentRoomId;
+      const found = await this.client.retryFindMatch(waitedMs);
+      // 그 사이 취소했거나 판이 잡혔으면 버린다.
+      if (!this.active || this.searchStart === null || this.handedOff) return;
+      if (!found || found === before) return;
+
+      const mine = ++this.attempt;
+      this.roomAttempt = mine;
+      this.unsubscribe?.();
+      this.unsubscribe = null;
+      await this.client.setReady(true);
+      if (!this.active || this.attempt !== mine) return;
+      this.unsubscribe = this.client.onRoom((state) => {
+        if (this.roomAttempt === mine) this.onRoom(state, true);
+      });
+    } catch (e) {
+      // 재시도는 부가 기능이다. 실패해도 원래 대기와 봇 폴백은 그대로 굴러간다.
+      console.warn('[net] 매칭 재시도 실패:', e);
+    } finally {
+      this.rematchInFlight = false;
+    }
   }
 
   private startLocalFallback(): void {
@@ -387,6 +447,9 @@ export class PvpScene implements Scene {
     const counting = this.mode === 'auto' && phase === 'searching';
     this.searchStart = counting ? Date.now() : null;
     this.nextFallbackAttemptAt = counting ? Date.now() + 4000 : 0;
+    // 첫 재훑기는 한 주기 뒤부터. 방금 `findMatch` 를 돌린 직후라 곧바로 또 부를 이유가 없다.
+    this.nextRematchAt = counting ? Date.now() + REMATCH_INTERVAL_MS : 0;
+    this.rematchInFlight = false;
     this.fallbackRequestInFlight = false;
     this.timer.hidden = !counting;
     this.timerShown = counting ? formatElapsed(0) : '';

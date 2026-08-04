@@ -151,9 +151,34 @@ export class Agent8Client {
     return this.roomId !== null;
   }
 
+  /** 지금 들어가 있는 방. 매칭 재훑기가 "옮겨졌는지"를 이걸로 판단한다. */
+  get currentRoomId(): string | null {
+    return this.roomId;
+  }
+
   /** 무작위 매칭. 빈 방을 찾거나 새로 판다. 서버가 `roomId` 를 정한다. */
   async findMatch(): Promise<string> {
-    const res = await withTimeout(this.server.remoteFunction('findMatch', []), '매칭');
+    const res = await withTimeout(this.server.remoteFunction('findMatch', [0, false]), '매칭');
+    this.roomId = res.roomId;
+    return res.roomId;
+  }
+
+  /**
+   * 이미 대기 중인 상태에서 **더 나은 후보를 다시 훑는다.**
+   *
+   * 매칭 대역은 기다린 시간에 따라 넓어지는데(`ratingBandFor`) 첫 호출 한 번으로는
+   * 그 확장을 못 받는다 — 두 사람이 동시에 대기 중인데도 서로를 지나쳐 둘 다 봇으로
+   * 떨어지는 일이 있었다. 이 호출이 그 구멍을 메운다.
+   *
+   * **못 찾으면 `null` 이고 내 방은 그대로다** (서버가 `retry: true` 를 보고 새 방을
+   * 안 판다). 찾으면 그 방으로 옮겨졌으므로 부르는 쪽이 구독을 다시 걸어야 한다.
+   */
+  async retryFindMatch(waitedMs: number): Promise<string | null> {
+    const res = await withTimeout(
+      this.server.remoteFunction('findMatch', [Math.floor(waitedMs), true]),
+      '매칭 재시도',
+    );
+    if (!res || typeof res.roomId !== 'string') return null;
     this.roomId = res.roomId;
     return res.roomId;
   }

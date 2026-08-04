@@ -101,17 +101,16 @@ const ROOM_CODE_LEN = 4;
 const CODE_LOCK = 'towerwar:roomcode';
 
 /**
- * 상점 공속 강화의 최대 단계. `sim/config.ts` 의 `SPEED_LEVEL_MAX` 와 같아야 한다.
+ * 공속 강화 단계 정리. **상한이 없다** (2026-08-04 사용자 지시로 5단계 제한 제거).
+ * 음수·NaN 만 막는다.
  *
- * **배수 공식은 서버에 두지 않는다.** 서버는 정수 단계만 자르고, 배수로 바꾸는 것은
+ * **배수 공식은 서버에 두지 않는다.** 서버는 정수 단계만 정리하고, 배수로 바꾸는 것은
  * 클라이언트의 `speedMulFor` 가 한다 — 공식을 양쪽에 복사하면 언젠가 어긋나고,
  * 어긋나는 순간 두 클라이언트가 다른 판을 돌게 된다.
  */
-const SPEED_LEVEL_MAX = 5;
-
 function clampSpeedLevel(v) {
   const n = Math.floor(Number(v));
-  return Number.isFinite(n) ? Math.min(SPEED_LEVEL_MAX, Math.max(0, n)) : 0;
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
 // ── 계정 ──────────────────────────────────────────────────────────
@@ -124,6 +123,25 @@ function clampSpeedLevel(v) {
 
 /** 가격표. **클라이언트에도 같은 표가 있다** (화면 표시용). 여기가 진짜다. */
 const UPGRADE_COSTS = { speed: [300, 700, 1300, 2200, 3500] };
+/**
+ * 표를 넘어선 단계의 가격 증가율. **`game/src/account/account.ts` 의 같은 이름과
+ * 반드시 같아야 한다** — 어긋나면 "보이는 값과 깎이는 값이 다름"이 된다 (§-10).
+ */
+const SPEED_COST_GROWTH = 1.5;
+
+/**
+ * `level` 단계에서 다음 단계로 갈 때의 가격. 상한이 없어서(2026-08-04) 표가 끝나면
+ * 증가율로 이어 만든다. 클라이언트의 `speedCostAt` 과 같은 계산이어야 한다.
+ */
+function speedCostAt(level) {
+  const table = UPGRADE_COSTS.speed;
+  if (level < table.length) return table[level];
+  let cost = table[table.length - 1];
+  for (let i = table.length; i <= level; i++) {
+    cost = Math.round((cost * SPEED_COST_GROWTH) / 100) * 100;
+  }
+  return cost;
+}
 /**
  * 유닛 생김새 가격. **`game/src/units.ts` 의 `UNIT_KIND_META` 와 같아야 한다.**
  * 어긋나면 "상점에는 보이는데 못 입는" 또는 그 반대가 된다.
@@ -588,11 +606,11 @@ class Server {
   async buyUpgrade(kind) {
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();
-      const costs = UPGRADE_COSTS[kind];
-      if (!costs) throw new Error('그런 강화가 없습니다');
-      const level = kind === 'speed' ? a.speedLevel : 0;
-      if (level >= Math.min(SPEED_LEVEL_MAX, costs.length)) throw new Error('이미 최대입니다');
-      const cost = costs[level];
+      if (kind !== 'speed') throw new Error('그런 강화가 없습니다');
+      const level = a.speedLevel;
+      // **만렙이 없다** (2026-08-04). 표를 넘어선 단계는 `speedCostAt` 이 값을 이어 만든다 —
+      // 가격이 단계마다 1.5배씩 뛰므로 제동은 경제 쪽에서 걸린다.
+      const cost = speedCostAt(level);
       if (a.coins < cost) throw new Error('코인이 모자랍니다');
       return await this.#saveAccount({ ...a, coins: a.coins - cost, speedLevel: level + 1 });
     });
@@ -771,10 +789,23 @@ class Server {
    * 대역 밖이면 이 방은 건너뛰고 계속 찾는다. 끝까지 못 찾으면 전과 같이 내가
    * 새 대기방을 판다 — 그 방은 나중에 다른 사람의 findMatch 후보가 된다.
    */
-  async findMatch() {
+  /**
+   * 빈 방을 찾아 들어간다. 없으면 새로 판다.
+   *
+   * @param waitedMs  내가 지금까지 매칭을 기다린 시간. **클라이언트가 보낸 값이라
+   *   `SOLO_FALLBACK_MS` 로 자른다** — 부풀려도 12초 뒤에 저절로 되는 것보다 더 얻을 게 없다.
+   *   대역 판정에 **상대의 대기와 내 대기 중 큰 쪽**을 쓴다. 전에는 상대 것만 봐서,
+   *   늦게 들어온 사람은 아무리 오래 기다려도 대역이 안 넓어졌다 — 두 사람이 동시에
+   *   대기 중인데도 서로를 지나치는 원인이었다.
+   * @param retry  주기 재시도인가. **참이면 후보가 없을 때 새 방을 안 판다** —
+   *   이미 내 방에서 기다리는 중이라, 새로 파면 그때까지 쌓인 대기가 통째로 날아간다.
+   *   그때는 `null` 을 돌려주고 클라이언트는 그냥 하던 대기를 이어 간다.
+   */
+  async findMatch(waitedMs, retry) {
     const ids = (await $global.getAllRoomIds()) || [];
     const me = await this.#loadAccount();
     const now = Date.now();
+    const myWaited = Math.min(num(waitedMs), SOLO_FALLBACK_MS);
     for (const id of ids) {
       const state = await $global.getRoomState(id);
       if (state && state.private) continue;
@@ -782,14 +813,20 @@ class Server {
       if ((await $global.countRoomUsers(id)) >= ROOM_MAX_USER) continue;
 
       const players = (state && state.players) || {};
+      // **내가 이미 있는 방은 건너뛴다.** 재시도에서 자기 방을 다시 집으면
+      // `#enterRoom` 이 `joinedAt` 을 지금으로 덮어써 대기 시간이 초기화되고,
+      // 봇 폴백 타이머와 대역 확장이 함께 리셋된다.
+      if (players[$sender.account]) continue;
+
       const creator = Object.keys(players)[0];
       if (creator) {
-        const waited = now - (players[creator].joinedAt || 0);
+        const waited = Math.max(now - (players[creator].joinedAt || 0), myWaited);
         const creatorRating = numOr(players[creator].rating, DEFAULT_RATING);
         if (Math.abs(me.rating - creatorRating) > ratingBandFor(waited)) continue;
       }
       return await this.#enterRoom(id);
     }
+    if (retry) return null;
     return await this.#enterRoom(undefined);
   }
 

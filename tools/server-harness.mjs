@@ -118,7 +118,13 @@ const $global = {
     return room(id).users.size;
   },
   async getAllRoomIds() {
-    return [...rooms.keys()];
+    // **`null` 키를 거른다.** `$room.getRoomState()` 를 방에 없는 상태로 부르면
+    // `room(sender.roomId)` 가 `room(null)` 을 만들어 표에 등록해 버린다 — 하네스만의
+    // 결함이고 실제 Verse8 은 id 가 null 인 방을 돌려주지 않는다.
+    //
+    // 안 거르면 그 유령 방이 `phase` 도 `players` 도 없어서 매칭 필터를 전부 통과하고,
+    // `findMatch` 가 늘 그걸 집어 버린다 (실제로 매칭 테스트가 그렇게 깨졌다).
+    return [...rooms.keys()].filter((id) => id !== null && id !== undefined);
   },
   async getRoomState(id) {
     return rooms.has(id) ? withUsers(id) : null;
@@ -375,6 +381,46 @@ as(B);
 const joined = await server.joinRoomByCode(host.code.toLowerCase() + ' ');
 check('소문자·공백을 넣어도 정규화되어 들어간다', joined.roomId === host.roomId, joined);
 
+// 16.5) 점수 대역 매칭 — "될 때가 있고 안 될 때가 있다"의 원인 (2026-08-04)
+//
+// 대역은 기다린 시간에 따라 넓어진다 (0초 ±100 / 4초 ±250 / 8초 ±600 / 10초 무제한).
+// 세 가지를 고정한다:
+//   ① 점수가 멀면 갓 생긴 방을 안 집는다
+//   ② **내 대기 시간도 대역을 넓힌다** — 전에는 상대 것만 봐서, 늦게 온 사람은
+//      아무리 오래 기다려도 대역이 그대로였다. 두 사람이 동시에 대기 중인데도
+//      서로를 지나쳐 둘 다 봇으로 떨어지던 바로 그 구멍이다
+//   ③ **재시도가 자기 방을 다시 집지 않는다** — 집으면 `joinedAt` 이 초기화돼
+//      대기 시간과 봇 폴백 타이머가 함께 리셋된다
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+as(C); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), rating: 1000 });
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), rating: 1400 }); // 400 차이
+
+as(A);
+const bandRoom = await server.findMatch();
+as(B);
+// ① 갓 생긴 방 + 400 차이 → 대역 100 밖이라 안 붙고 자기 방을 판다
+const bandMiss = await server.findMatch();
+check('점수가 멀면 갓 생긴 방을 안 집는다', bandMiss.roomId !== bandRoom.roomId, {
+  a: bandRoom.roomId, b: bandMiss.roomId,
+});
+
+// ③ B가 재시도해도 **자기 방**은 다시 안 집는다 (대기 0초로 불러 A 방은 여전히 대역 밖)
+const selfRetry = await server.findMatch(0, true);
+check('재시도가 자기 방을 다시 집지 않는다', selfRetry === null, selfRetry);
+const bJoinedAt = rooms.get(bandMiss.roomId).state.players['0xBBB'].joinedAt;
+check('그래서 joinedAt 이 초기화되지 않는다', typeof bJoinedAt === 'number' && bJoinedAt > 0, bJoinedAt);
+
+// ② 내가 9초 기다렸다고 하면 대역이 600으로 넓어져 A 방에 붙는다.
+//    A 방의 대기 시간은 그대로다 — 넓힌 것은 내 쪽이다.
+const bandHit = await server.findMatch(9000, true);
+check('내 대기가 대역을 넓혀 매칭된다', bandHit && bandHit.roomId === bandRoom.roomId, bandHit);
+check('두 사람이 한 방에 모였다', (await $global.countRoomUsers(bandRoom.roomId)) === 2);
+
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+
 // 17) 코드 방은 무작위 매칭 후보가 아니다
 as(A); await server.leaveMatch();
 as(B); await server.leaveMatch();
@@ -445,7 +491,9 @@ await server.$roomTick(300, lv.roomId);
 const lvState = await $global.getRoomState(lv.roomId);
 check('시작 시 levels 가 내려온다', lvState.levels != null, lvState);
 check('A는 슬롯1/3단계', lvState.slots['0xAAA'] === 1 && lvState.levels[1] === 3, lvState.levels);
-check('B의 99단계는 5로 잘린다', lvState.slots['0xBBB'] === 2 && lvState.levels[2] === 5, lvState.levels);
+// 상한이 없어졌다(2026-08-04). 높은 단계도 그대로 내려간다 — 양쪽이 같은 값을 봐야
+// 같은 판을 돈다는 것이 이 검사의 핵심이고, 자르는 것은 그 목적이 아니었다.
+check('B의 99단계가 그대로 내려온다', lvState.slots['0xBBB'] === 2 && lvState.levels[2] === 99, lvState.levels);
 
 // 24) 음수·문자열도 0으로 떨어진다
 as(A); await server.leaveMatch();
@@ -525,6 +573,23 @@ e2 = null;
 try { await server.buyUpgrade('speed'); } catch (e) { e2 = e.message; }
 check('잔액 0이면 거부', e2 === '코인이 모자랍니다', e2);
 
+// 27.5) 강화에 상한이 없다 (2026-08-04 사용자 지시)
+//
+// 표(5칸)를 넘어서도 계속 살 수 있어야 하고, 가격은 1.5배씩 이어져야 한다.
+// 클라이언트의 `speedCostAt` 과 같은 계산이어야 "보이는 값과 깎이는 값"이 안 갈린다.
+userStates.set('0xDDD', { ...defaultsFor('0xDDD'), speedLevel: 5, coins: 100000 });
+const past1 = await server.buyUpgrade('speed');
+check('5단계에서 또 산다 (만렙 없음)', past1.speedLevel === 6, past1.speedLevel);
+check('표 다음 가격은 3500*1.5 = 5300', past1.coins === 100000 - 5300, past1.coins);
+const past2 = await server.buyUpgrade('speed');
+check('그 다음은 5300*1.5 = 8000', past2.coins === 100000 - 5300 - 8000, past2.coins);
+check('단계가 계속 오른다', past2.speedLevel === 7, past2.speedLevel);
+// 아주 높은 단계에서도 던지지 않는다 (무한 루프·NaN 없음)
+userStates.set('0xDDD', { ...defaultsFor('0xDDD'), speedLevel: 40, coins: 10 });
+let farErr = null;
+try { await server.buyUpgrade('speed'); } catch (e) { farErr = e.message; }
+check('40단계에서도 가격 계산이 되고 잔액으로만 막힌다', farErr === '코인이 모자랍니다', farErr);
+
 // 28) 유닛 구매/착용
 //
 // 2026-07-31에 BeerGang 색 변형 4종이 들어와 **구매 경로가 다시 살아났다**
@@ -571,7 +636,8 @@ userStates.set('0xDDD', {
 });
 acct = await server.getAccount();
 check('음수 코인은 0', acct.coins === 0, acct);
-check('과한 강화 단계는 상한으로', acct.speedLevel === 5, acct);
+// 상한이 없어져 99도 그대로 산다. 음수·NaN 만 막는다.
+check('높은 강화 단계도 그대로 산다', acct.speedLevel === 99, acct);
 check('모르는 유닛 착용은 기본으로', acct.unitKind === DEFAULT_UNIT_KIND, acct);
 check(
   '소유 목록에서 중복·카탈로그에 없는 값 제거',

@@ -14,7 +14,7 @@ import {
   ownsUnitKind,
   upgradeCostOf,
   upgradeLevelOf,
-  upgradeMaxOf,
+
   unitKindOf,
   type Account,
   type UpgradeKind,
@@ -44,10 +44,21 @@ import { isPurchasable, TEMPO_ITEM, vxPrice, type PremiumItem } from '../net/vx'
 import { t } from '../i18n';
 import type { Scene } from './scene';
 
-/** 다음 단계를 사면 무엇이 어떻게 변하는가. 만렙이면 현재 값만 보여준다. */
-function effectText(kind: UpgradeKind, level: number): string {
+/**
+ * 다음 단계를 사면 무엇이 어떻게 변하는가.
+ * **만렙이 없어져(2026-08-04) 항상 "지금 → 다음"으로 보여준다.**
+ */
+function effectText(_kind: UpgradeKind, level: number): string {
   const val = (lv: number) => `×${speedMulFor(lv).toFixed(2)}`;
-  return level >= upgradeMaxOf(kind) ? val(level) : `${val(level)} → ${val(level + 1)}`;
+  return `${val(level)} → ${val(level + 1)}`;
+}
+
+/**
+ * 단계 표시. 상한이 없어서 눈금(`●○○○○`)을 못 쓴다 — 대신 숫자로 적는다.
+ * 눈금은 "몇 칸 남았나"를 보여주는 것이라 끝이 없는 축에는 의미가 없다.
+ */
+function levelText(level: number): string {
+  return `Lv.${level}`;
 }
 
 /**
@@ -254,11 +265,11 @@ export class ShopScene implements Scene {
 
     for (const { kind, el } of this.upgradeRows) {
       const level = upgradeLevelOf(a, kind);
-      const max = upgradeMaxOf(kind);
       const cost = upgradeCostOf(a, kind);
       const affordable = cost !== null && a.coins >= cost;
 
-      set(el, 'pips', '●'.repeat(level) + '○'.repeat(Math.max(0, max - level)));
+      // 상한이 없어져 눈금 대신 숫자다. `cost` 는 이제 항상 값이 있다.
+      set(el, 'pips', levelText(level));
       set(el, 'effect', effectText(kind, level));
       set(el, 'price', cost === null ? t().maxed : `◈ ${cost.toLocaleString()}`);
       el.querySelector('[data-role="price"]')?.classList.toggle('locked', !affordable);

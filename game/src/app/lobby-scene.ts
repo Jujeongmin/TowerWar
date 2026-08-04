@@ -50,12 +50,11 @@ export class LobbyScene implements Scene {
     const settings = root.querySelector<HTMLButtonElement>('#btn-settings');
     const tutorial = root.querySelector<HTMLElement>('#tutorial-dialog');
     const tutorialClose = root.querySelector<HTMLButtonElement>('#btn-tutorial-close');
-    const tutorialX = root.querySelector<HTMLButtonElement>('#btn-tutorial-x');
     const coins = root.querySelector<HTMLElement>('#acc-coins');
     const rating = root.querySelector<HTMLElement>('#acc-rating');
     const record = root.querySelector<HTMLElement>('#acc-record');
     if (!auto || !friend || !shop || !board || !tutorialButton || !settings || !tutorial ||
-        !tutorialClose || !tutorialX || !coins || !rating || !record) {
+        !tutorialClose || !coins || !rating || !record) {
       throw new Error('로비 DOM이 예상과 다릅니다');
     }
     this.coins = coins;
@@ -69,10 +68,11 @@ export class LobbyScene implements Scene {
     const closeTutorial = () => { this.tutorial.hidden = true; };
     tutorialButton.addEventListener('click', () => {
       this.tutorial.hidden = false;
-      tutorialX.focus();
+      // 우상단 `×` 를 없앴다 (2026-08-04 사용자 지시). 닫는 길은 [알겠어요] ·
+      // 바깥 클릭 · Esc 셋이고, 그중 버튼에 포커스를 준다.
+      tutorialClose.focus();
     });
     tutorialClose.addEventListener('click', closeTutorial);
-    tutorialX.addEventListener('click', closeTutorial);
     tutorial.addEventListener('click', (event) => {
       if (event.target === tutorial) closeTutorial();
     });

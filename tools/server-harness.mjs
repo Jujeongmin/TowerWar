@@ -140,6 +140,46 @@ const $room = {
   },
 };
 
+// ── 광고 검증 스텁 ────────────────────────────────────────────────
+//
+// server.js 의 verifyAdRequest 가 진짜 fetch 로 ads-verifier.verse8.io 를 부른다.
+// 여기서는 네트워크를 안 타고 시나리오가 미리 정한 응답을 돌려준다 — 결정론적이고
+// 빠르다. `setAdFetch` 로 시나리오마다 갈아 끼운다.
+let adFetchImpl = async () => {
+  throw new Error('이 테스트는 setAdFetch로 응답을 정하지 않았습니다');
+};
+const adFetchCalls = [];
+function setAdFetch(fn) {
+  adFetchImpl = fn;
+}
+/** 항상 verified. 대부분의 테스트가 이거면 된다. */
+function adFetchVerified() {
+  return async (url) => {
+    adFetchCalls.push(String(url));
+    return { ok: true, status: 200, json: async () => ({ status: 'verified' }) };
+  };
+}
+function adFetchStatus(status, httpStatus = 200) {
+  return async (url) => {
+    adFetchCalls.push(String(url));
+    return { ok: httpStatus < 300 || httpStatus === 202, status: httpStatus, json: async () => ({ status }) };
+  };
+}
+/** `pendingCount` 번은 pending(202), 그 뒤엔 verified. 즉시 재시도 경로를 본다. */
+function adFetchPendingThenVerified(pendingCount) {
+  let i = 0;
+  return async (url) => {
+    adFetchCalls.push(String(url));
+    if (i++ < pendingCount) return { ok: false, status: 202, json: async () => ({ status: 'pending' }) };
+    return { ok: true, status: 200, json: async () => ({ status: 'verified' }) };
+  };
+}
+function adFetchThrows() {
+  return async () => {
+    throw new Error('network down');
+  };
+}
+
 const ctx = vm.createContext({
   // **디버그 해금을 끄고 잰다.** 켜 둔 채로 재면 "안 산 것을 못 입는다" 계열 검사가
   // 통째로 통과해 버려서 아무것도 증명하지 못한다 (`server.js` 의 DEBUG_UNLOCK_ALL).
@@ -150,6 +190,9 @@ const ctx = vm.createContext({
   get $sender() {
     return sender;
   },
+  // server.js 는 setTimeout 을 안 쓴다 (금지 규약, §-54 광고 검증 주석 참고) — 그래서
+  // 여기 없어도 된다. `fetch` 만 광고 검증(`verifyAdRequest`)이 쓴다.
+  fetch: (...args) => adFetchImpl(...args),
   console, Date, Math, Number, Object, Array, Set, JSON, String, Error,
 });
 vm.runInContext(src + '\nglobalThis.__Server = Server;', ctx);
@@ -882,34 +925,82 @@ userStates.set('0xGGG', {
 const vxClean = await server.getAccount();
 check('중복·모르는 항목이 걸러진다', JSON.stringify(vxClean.entitlements) === JSON.stringify(['beergang_rainbow']), vxClean.entitlements);
 
-// 51) 광고 코인 — 금액은 서버가 정하고, 간격·하루 상한이 걸린다
+// 51) 광고 코인 — requestId를 ads-verifier로 검증한 뒤에만 준다. 그 위에 금액은
+// 서버가 정하고, 간격·하루 상한·재사용 방지가 걸린다 (docs.verse8.io/ko/docs/ads/intro).
 const H = { account: '0xHHH', roomId: null };
 as(H);
 userStates.set('0xHHH', { ...defaultsFor('0xHHH'), coins: 0 });
-const ad1 = await server.claimAdCoins();
-check('광고 코인 +60', ad1.coins === 60, ad1.coins);
-let aerr = null;
-try { await server.claimAdCoins(); } catch (e) { aerr = e.message; }
-check('연달아 부르면 거절', aerr === 'ad_cooldown', aerr);
 
-// 간격을 넘긴 것으로 만들고 하루 상한까지 밀어붙인다
+let aerr = null;
+try { await server.claimAdCoins(''); } catch (e) { aerr = e.message; }
+check('빈 requestId는 거절', aerr === 'ad_invalid', aerr);
+aerr = null;
+try { await server.claimAdCoins(42); } catch (e) { aerr = e.message; }
+check('문자열이 아닌 requestId는 거절', aerr === 'ad_invalid', aerr);
+aerr = null;
+try { await server.claimAdCoins('x'.repeat(201)); } catch (e) { aerr = e.message; }
+check('너무 긴 requestId는 거절', aerr === 'ad_invalid', aerr);
+
+setAdFetch(adFetchStatus('dismissed'));
+aerr = null;
+try { await server.claimAdCoins('req-dismissed'); } catch (e) { aerr = e.message; }
+check('검증에서 dismissed면 거절', aerr === 'ad_not_verified', aerr);
+check('거절되면 코인이 그대로 0', (await server.getAccount()).coins === 0, (await server.getAccount()).coins);
+
+setAdFetch(adFetchThrows());
+aerr = null;
+try { await server.claimAdCoins('req-neterr'); } catch (e) { aerr = e.message; }
+check('검증 네트워크 오류는 통과가 아니라 미검증으로 접는다', aerr === 'ad_not_verified', aerr);
+
+adFetchCalls.length = 0;
+setAdFetch(adFetchPendingThenVerified(2));
+const ad1 = await server.claimAdCoins('req-1');
+check('pending 두 번 뒤 verified면 통과, +60', ad1.coins === 60, ad1.coins);
+check('즉시 재시도 — 딜레이 없이 fetch 3번 안에서 끝남', adFetchCalls.length === 3, adFetchCalls.length);
+check('요청 URL에 requestId가 실린다', adFetchCalls[0].includes('requestId=req-1'), adFetchCalls[0]);
+
+// 같은 requestId 재사용 거절 — 검증 자체는 통과해도 서버 쪽 자물쇠(adRequestIds)가 막는다
+userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 }); // 쿨다운을 비켜서 검증 단계까지 가 본다
+setAdFetch(adFetchVerified());
+aerr = null;
+try { await server.claimAdCoins('req-1'); } catch (e) { aerr = e.message; }
+check('같은 requestId 재사용 거절', aerr === 'ad_already_claimed', aerr);
+check('재사용 시도로 코인이 안 늚', (await server.getAccount()).coins === 60, (await server.getAccount()).coins);
+
+// 재시도를 다 써도 계속 pending이면 ad_pending — "거절"이 아니라 "아직 모름"이다
+userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 });
+setAdFetch(adFetchStatus('pending', 202));
+aerr = null;
+try { await server.claimAdCoins('req-stuck'); } catch (e) { aerr = e.message; }
+check('재시도 다 써도 pending이면 ad_pending', aerr === 'ad_pending', aerr);
+check('pending이면 코인이 안 늚', (await server.getAccount()).coins === 60, (await server.getAccount()).coins);
+
+// 쿨다운 — 검증이 생겨도 그대로 산다. "너무 자주"와 "진짜였나"는 다른 문제다.
+// 방금 받은 것처럼 adAt 을 지금으로 되돌린다 (위 pending 검사가 0으로 밀어 놨다).
+userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: Date.now() });
+setAdFetch(adFetchVerified());
+aerr = null;
+try { await server.claimAdCoins('req-2'); } catch (e) { aerr = e.message; }
+check('연달아 부르면 거절 (쿨다운)', aerr === 'ad_cooldown', aerr);
+
+// 간격을 넘긴 것으로 만들고 하루 상한까지 밀어붙인다 (req-1 이 이미 1회 = 나머지 9번)
 for (let i = 1; i < 10; i++) {
   const cur = userStates.get('0xHHH');
   userStates.set('0xHHH', { ...cur, adAt: 0 });
-  await server.claimAdCoins();
+  await server.claimAdCoins(`req-fill-${i}`);
 }
 check('하루 10번까지 = 600코인', (await server.getAccount()).coins === 600, (await server.getAccount()).coins);
 userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 });
 aerr = null;
-try { await server.claimAdCoins(); } catch (e) { aerr = e.message; }
+try { await server.claimAdCoins('req-over'); } catch (e) { aerr = e.message; }
 check('하루 상한을 넘으면 거절', aerr === 'ad_limit', aerr);
 
 // 날이 바뀌면 다시 받는다
 userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0, adDay: 0 });
-const ad2 = await server.claimAdCoins();
+const ad2 = await server.claimAdCoins('req-newday');
 check('날이 바뀌면 다시 받는다', ad2.coins === 660, ad2.coins);
 
-// 52) 광고 2배 — 서버가 지불한 금액을 그대로 한 번 더, 판당 한 번
+// 52) 광고 2배 — requestId 검증 + 서버가 지불한 금액을 그대로 한 번 더, 판당 한 번
 as(A); await server.leaveMatch().catch(() => {});
 as(B); await server.leaveMatch().catch(() => {});
 userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', coins: 0 });
@@ -925,17 +1016,38 @@ const ds2 = await $global.getRoomState(droom2.roomId);
 as(A);
 const won = await server.reportResult(ds2.slots['0xAAA'], 5);
 check('승리 보상 = 100 + 5*8', won.coins === 140, won.coins);
-const dbl = await server.claimDoubleReward();
-check('광고 2배 = 140 + 140', dbl.coins === 280, dbl.coins);
+
 let derr = null;
-try { await server.claimDoubleReward(); } catch (e) { derr = e.message; }
-check('판당 한 번만', derr === 'already_claimed', derr);
+try { await server.claimDoubleReward(''); } catch (e) { derr = e.message; }
+check('빈 requestId는 거절', derr === 'ad_invalid', derr);
+
+setAdFetch(adFetchStatus('failed'));
+derr = null;
+try { await server.claimDoubleReward('req-a-failed'); } catch (e) { derr = e.message; }
+check('검증에서 failed면 거절', derr === 'ad_not_verified', derr);
+check('거절되면 코인이 그대로', (await server.getAccount()).coins === 140, (await server.getAccount()).coins);
+
+// **다른 청구(claimAdCoins)에 쓴 requestId를 2배 청구에서 재사용할 수 없다.**
+// 광고 시청 하나는 보상 하나다 — adRequestIds를 두 메서드가 공유하기 때문에 막힌다.
+setAdFetch(adFetchVerified());
+const adA = await server.claimAdCoins('req-shared');
+check('별도 광고 코인 청구는 정상 동작', adA.coins === 200, adA.coins);
+derr = null;
+try { await server.claimDoubleReward('req-shared'); } catch (e) { derr = e.message; }
+check('claimAdCoins에 쓴 requestId는 2배 청구에서 재사용 못 함', derr === 'ad_already_claimed', derr);
+check('재사용 시도로 코인이 안 늚', (await server.getAccount()).coins === 200, (await server.getAccount()).coins);
+
+const dbl = await server.claimDoubleReward('req-double');
+check('광고 2배 = 200 + 140', dbl.coins === 340, dbl.coins);
+derr = null;
+try { await server.claimDoubleReward('req-double-2'); } catch (e) { derr = e.message; }
+check('판당 한 번만 (다른 requestId로도 안 됨)', derr === 'already_claimed', derr);
 
 // 53) 보상을 안 받은 사람은 2배도 못 받는다
 as(C); await server.leaveMatch().catch(() => {});
 const eroom2 = await server.createRoom();
 let cerr = null;
-try { await server.claimDoubleReward(); } catch (e) { cerr = e.message; }
+try { await server.claimDoubleReward('req-c'); } catch (e) { cerr = e.message; }
 check('안 끝난 판에서는 거절', cerr === 'not_finished_match', cerr);
 
 // ── 보고 ────────────────────────────────────────────────────────

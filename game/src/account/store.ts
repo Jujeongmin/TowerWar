@@ -148,12 +148,16 @@ export class AccountStore {
    */
   async watchAdForCoins(): Promise<string | null> {
     if (!this.net) return 'offline';
-    if (!(await watchRewardedAd())) return 'notFinished';
+    const { watched, requestId } = await watchRewardedAd();
+    if (!watched) return 'notFinished';
     try {
-      this.setLocal(fromRemote(await this.net.claimAdCoins()));
+      // requestId 를 서버에 그대로 실어 보낸다 — 서버가 ads-verifier 로 진짜인지 본다
+      // (net/ads.ts). 개발용 가짜 제공자는 빈 문자열을 주므로 여기서 `ad_invalid` 로
+      // 거절되는 것이 정상이다.
+      this.setLocal(fromRemote(await this.net.claimAdCoins(requestId)));
       return null;
     } catch (e) {
-      // 서버가 거절했다 (하루 상한·간격). 문구는 화면이 고른다.
+      // 서버가 거절했다 (검증 실패·하루 상한·간격). 문구는 화면이 고른다.
       return String((e as Error)?.message ?? 'failed');
     }
   }
@@ -161,9 +165,10 @@ export class AccountStore {
   /** 판이 끝난 뒤 광고를 보고 보상을 한 번 더. 금액은 서버가 정한다. */
   async watchAdForDouble(): Promise<string | null> {
     if (!this.net) return 'offline';
-    if (!(await watchRewardedAd())) return 'notFinished';
+    const { watched, requestId } = await watchRewardedAd();
+    if (!watched) return 'notFinished';
     try {
-      this.setLocal(fromRemote(await this.net.claimDoubleReward()));
+      this.setLocal(fromRemote(await this.net.claimDoubleReward(requestId)));
       return null;
     } catch (e) {
       return String((e as Error)?.message ?? 'failed');

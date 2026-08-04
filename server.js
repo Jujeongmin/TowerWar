@@ -204,15 +204,16 @@ const MAX_TOWERS = 12;
 
 // ── 보상형 광고 ──────────────────────────────────────────────────
 //
-// **서버는 광고를 봤는지 확인할 수 없다.** 광고 SDK는 클라이언트에 있고, 이 샌드박스에서
-// 그쪽에 물어볼 방법이 없다. VX 구매는 별도의 서버 이벤트가 검증한다.
+// **2026-08-04까지는 "서버는 광고를 봤는지 확인할 수 없다"고 적혀 있었다. 틀린 전제였다.**
+// docs.verse8.io/ko/docs/ads/intro 가 정확히 이 문제를 푸는 공개 검증 엔드포인트를 준다
+// (`verifyAdRequest`, 아래). 이제 막는 것이 셋이다:
+//   1. **광고를 실제로 봤는지 서버가 확인한다** (`ads-verifier.verse8.io`)
+//   2. 금액을 서버가 정한다. 클라이언트가 액수를 보내면 무한 코인이 된다
+//   3. 같은 `requestId` 를 두 번 못 쓴다 (`adRequestIds`, 재생 방지)
 //
-// 그래서 **막을 수 있는 것만 막는다**:
-//   1. 금액을 서버가 정한다. 클라이언트가 액수를 보내면 무한 코인이 된다
-//   2. 횟수를 제한한다. 확인은 못 해도 **얼마나 자주** 는 서버가 안다
-//
-// 이걸로 "광고를 안 보고 부르는" 것은 못 막지만, 그래도 **하루에 받을 수 있는 총액이
-// 정해진다.** 완전히 막으려면 광고 제공자가 서버로 보내 주는 검증 콜백이 필요하다.
+// 횟수 제한(쿨다운·하루 상한)은 검증이 생긴 뒤에도 그대로 둔다 — 검증은 "이 요청이
+// 진짜 광고였는가"만 보고, "너무 자주"는 안 본다. 광고를 정말로 90초마다 연달아
+// 볼 수 있다면(광고 재고가 있다면) 검증만으로는 막을 이유가 없다.
 
 /** 광고 한 번에 주는 코인. 승리 보상(100)보다 낮게 잡았다 — 판을 이기는 편이 낫다. */
 const AD_COINS = 60;
@@ -222,6 +223,23 @@ const AD_COOLDOWN_MS = 90000;
 const AD_DAILY_MAX = 10;
 /** 하루의 길이(ms). UTC 기준으로 자른다 — 서버가 시간대를 모른다. */
 const DAY_MS = 86400000;
+
+/** docs.verse8.io/ko/docs/ads/intro 의 검증 엔드포인트. 인증 없음, 읽기 전용. */
+const AD_VERIFY_URL = 'https://ads-verifier.verse8.io/ads/status';
+/**
+ * `pending` 을 받았을 때 다시 물어볼 횟수. **딜레이 없이 곧바로 다시 묻는다.**
+ *
+ * 문서 예시는 `setTimeout` 으로 1.5초씩 쉬고 재시도하지만, **이 파일은 그걸 쓸 수 없다**
+ * (파일 맨 위 규약: "`setTimeout`/`setInterval` 금지"). 이유가 스타일이 아니라
+ * "클래스 변수가 요청마다 초기화된다"는 이 플랫폼의 실행 모델이라, 이 규칙을
+ * "한 호출 안에서 끝나니 괜찮다"는 식으로 우회하지 않는다 — 다음에 이 파일을 만질
+ * 사람이 같은 판단을 다시 하지 않도록 아예 안 쓴다.
+ *
+ * 대신 **딜레이 없는 즉시 재시도 2번**만 하고, 그래도 `pending` 이면 `ad_pending` 을
+ * 던진다. 광고 버튼은 결과가 오면 다시 눌릴 수 있게 풀리므로(`shop-scene.ts`),
+ * 사람이 몇 초 뒤 다시 누르는 것이 서버가 잠드는 것보다 안전하다.
+ */
+const AD_VERIFY_ATTEMPTS = 3;
 
 function num(v) {
   const n = typeof v === 'number' ? v : Number(v);
@@ -238,6 +256,47 @@ function cleanEntitlements(v) {
 function numOr(v, fallback) {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
+}
+
+/** 형태가 그럴듯한 문자열인지만 본다. 진짜인지는 `verifyAdRequest` 가 본다. */
+function assertAdRequestId(requestId) {
+  if (typeof requestId !== 'string' || requestId.length === 0 || requestId.length > 200) {
+    throw new Error('ad_invalid');
+  }
+}
+
+/**
+ * 광고를 실제로 끝까지 봤는지 Verse8 서버에 물어본다.
+ * (docs.verse8.io/ko/docs/ads/intro 의 서버 검증 패턴)
+ *
+ * **애매하면 전부 미검증으로 접는다.** 네트워크 오류·엔드포인트 오류·모르는 상태값
+ * 전부 `false` 다 — 검증 실패를 통과로 접으면 검증이 없는 것과 같아진다.
+ *
+ * `pending`(HTTP 202)은 **딜레이 없이 바로 재시도**한다. 진짜 지연 재시도가 필요하면
+ * `AD_VERIFY_ATTEMPTS` 위 주석을 볼 것 — `setTimeout` 을 이 파일에서 못 쓰는 이유가 있다.
+ */
+async function verifyAdRequest(requestId) {
+  for (let i = 0; i < AD_VERIFY_ATTEMPTS; i++) {
+    let res;
+    try {
+      res = await fetch(`${AD_VERIFY_URL}?requestId=${encodeURIComponent(requestId)}`);
+    } catch {
+      return false;
+    }
+    if (!res.ok && res.status !== 202) return false;
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+      return false;
+    }
+    if (body && body.status === 'verified') return true;
+    if (body && body.status === 'pending') continue; // 즉시 재시도
+    return false; // dismissed | failed | 그 외 모르는 값
+  }
+  // 마지막까지 pending. "미검증"이 아니라 "아직 모름"이지만, 지금 판정이 이분법이라
+  // 안전한 쪽(거절)으로 접는다. 클라이언트는 `ad_pending` 을 따로 구분해 보여준다.
+  throw new Error('ad_pending');
 }
 
 // ── PVP 점수 (Elo) ───────────────────────────────────────────────
@@ -398,6 +457,9 @@ function defaultAccount(account) {
     adAt: 0,
     adCount: 0,
     adDay: 0,
+    // 이미 보상으로 쓴 광고 requestId. 같은 광고 시청 하나로 두 번(또는
+    // claimAdCoins·claimDoubleReward 양쪽) 받는 것을 막는다. vxPurchaseIds와 같은 자물쇠.
+    adRequestIds: [],
   };
 }
 
@@ -437,6 +499,9 @@ function normalizeAccount(raw, account) {
     adAt: num(raw.adAt),
     adCount: num(raw.adCount),
     adDay: num(raw.adDay),
+    adRequestIds: Array.isArray(raw.adRequestIds)
+      ? [...new Set(raw.adRequestIds.filter((id) => typeof id === 'string'))].slice(-50)
+      : [],
   };
 }
 
@@ -577,15 +642,37 @@ class Server {
   /**
    * 광고를 보고 코인을 받는다.
    *
-   * **광고를 봤는지 서버가 확인할 수 없다** (위 주석). 막는 것은 두 가지뿐이다 —
-   * 금액을 서버가 정하고, 간격과 하루 상한을 건다.
+   * **`requestId` 로 실제로 봤는지 검증한다** (`verifyAdRequest`). 그 위에 막는 것이
+   * 둘 더 있다 — 금액을 서버가 정하고, 간격·하루 상한을 건다. 검증이 생겼다고
+   * 상한을 없애지 않는다 — 상한은 "너무 자주"를 막는 것이고 검증은 "진짜였나"를
+   * 막는 것이라 서로 다른 문제다.
    *
    * 거절할 때 던지는 이유: 화면이 "왜 안 되는지"를 말해야 한다. 조용히 실패하면
    * 광고를 다 보고도 아무 일이 없는 것으로 보인다.
    */
-  async claimAdCoins() {
-    return await $lock(`acct:${$sender.account}`, async () => {
+  async claimAdCoins(requestId) {
+    assertAdRequestId(requestId);
+    const account = $sender.account;
+
+    // 빠른 사전 검사 — 명백히 막힌 요청이면 검증 네트워크 호출(왕복 몇 번)을 아낀다.
+    // 최종 판정은 아래 락 안에서 다시 하므로 여기서 통과해도 보장은 아니다 — 동시에
+    // 두 요청이 들어오면 이 사전 검사만으로는 둘 다 통과할 수 있다.
+    const pre = await this.#loadAccount();
+    if (pre.adRequestIds.includes(requestId)) throw new Error('ad_already_claimed');
+    {
+      const now0 = Date.now();
+      const day0 = Math.floor(now0 / DAY_MS);
+      const count0 = pre.adDay === day0 ? pre.adCount : 0;
+      if (count0 >= AD_DAILY_MAX) throw new Error('ad_limit');
+      if (now0 - pre.adAt < AD_COOLDOWN_MS) throw new Error('ad_cooldown');
+    }
+
+    if (!(await verifyAdRequest(requestId))) throw new Error('ad_not_verified');
+
+    return await $lock(`acct:${account}`, async () => {
       const a = await this.#loadAccount();
+      // 검증하는 동안 다른 요청이 먼저 이 requestId를 썼을 수 있다 — 락 안에서 다시 본다.
+      if (a.adRequestIds.includes(requestId)) throw new Error('ad_already_claimed');
       const now = Date.now();
       // UTC 기준 날짜. 서버가 사용자 시간대를 모르므로 한 기준으로 잘라야
       // 사람마다 상한이 달라지지 않는다.
@@ -604,6 +691,7 @@ class Server {
         adAt: now,
         adDay: day,
         adCount: count + 1,
+        adRequestIds: [...a.adRequestIds, requestId].slice(-50),
       });
     });
   }
@@ -615,9 +703,13 @@ class Server {
    * 클라이언트가 액수를 보내면 무한 코인이 되고, 다시 계산하면 그때의 타워 수를
    * 또 믿어야 한다 — 이미 서버가 잘라서 지불한 값을 그대로 한 번 더 주는 것이 가장 좁다.
    *
-   * **판당 한 번.** `doubled` 가 그 자물쇠다 (`rewarded` 와 같은 방식).
+   * **판당 한 번.** `doubled` 가 그 자물쇠다 (`rewarded` 와 같은 방식). 그 위에
+   * `requestId` 검증과 재사용 방지를 더한다 — `claimAdCoins` 에 쓴 것과 같은
+   * requestId 를 여기서 또 쓸 수 없다. **`adRequestIds` 를 두 메서드가 공유한다**:
+   * 광고 시청 하나는 보상 하나다.
    */
-  async claimDoubleReward() {
+  async claimDoubleReward(requestId) {
+    assertAdRequestId(requestId);
     const state = await $room.getRoomState();
     if (!state || state.phase !== PHASE_FINISHED) throw new Error('not_finished_match');
 
@@ -627,12 +719,22 @@ class Server {
 
     const doubled = { ...(state.doubled || {}) };
     if (doubled[account]) throw new Error('already_claimed');
+
+    const pre = await this.#loadAccount();
+    if (pre.adRequestIds.includes(requestId)) throw new Error('ad_already_claimed');
+    if (!(await verifyAdRequest(requestId))) throw new Error('ad_not_verified');
+
     doubled[account] = true;
     await $room.updateRoomState({ doubled });
 
     return await $lock(`acct:${account}`, async () => {
       const a = await this.#loadAccount();
-      return await this.#saveAccount({ ...a, coins: a.coins + paid });
+      if (a.adRequestIds.includes(requestId)) throw new Error('ad_already_claimed');
+      return await this.#saveAccount({
+        ...a,
+        coins: a.coins + paid,
+        adRequestIds: [...a.adRequestIds, requestId].slice(-50),
+      });
     });
   }
 

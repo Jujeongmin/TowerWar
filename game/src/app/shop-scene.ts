@@ -345,12 +345,18 @@ export class ShopScene implements Scene {
  * **서버가 코드로 던진다** (`ad_limit` 등). 전에는 한국어 문장을 던지고 여기서
  * 문자열을 맞춰 봤는데, 간격 제한이 "광고를 안 봤다"로 표시되는 버그가 났고
  * 영어 화면에서는 애초에 안 맞았다.
+ *
+ * `ad_pending` 은 검증이 아직 안 끝난 것뿐이지 실패가 아니다 — `adCooldown`
+ * ("조금 뒤에 다시 시도하세요")이 그대로 맞는다. `ad_invalid`·`ad_not_verified`·
+ * `ad_already_claimed` 는 전부 "이 청구는 유효하지 않다"로 묶여 `adFailed` 로 간다 —
+ * 화면에서 굳이 셋을 갈라 보여줄 이유가 없다 (사람이 직접 만들 수 있는 상황이 아니다).
  */
 function adMessage(err: string): string {
   if (err === 'notFinished') return t().adFailed;
   if (err === 'offline') return t().adUnavailable;
   if (err.includes('ad_limit')) return t().adLimit;
   if (err.includes('ad_cooldown')) return t().adCooldown;
+  if (err.includes('ad_pending')) return t().adCooldown;
   return t().adFailed;
 }
 

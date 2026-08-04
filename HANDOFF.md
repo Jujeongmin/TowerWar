@@ -1,6 +1,99 @@
 # TowerWar — 인수인계
 
-최종 갱신: 2026-08-01
+최종 갱신: 2026-08-04
+
+---
+
+## -55. 광고 서버 검증 — "확인할 수 없다"는 틀린 전제였다 (2026-08-04, 사용자 지시)
+
+사용자가 `docs.verse8.io/ko/docs/ads/intro` 를 가져와 **"이 문서대로 광고가 구현돼있는지
+봐줘"** 라고 했다. 확인해 보니 **SDK 사용은 문서대로였지만 문서의 절반(서버 검증)이
+통째로 빠져 있었다.**
+
+### 틀렸던 전제
+
+§-46 이 이렇게 적어 뒀었다:
+
+> **광고를 봤는지 서버가 확인할 수 없다.** SDK가 클라이언트에 있고 샌드박스에서 그쪽에
+> 물어볼 방법이 없다.
+
+**아니다.** 문서가 인증 없는 공개 읽기 전용 엔드포인트를 준다:
+
+```
+GET https://ads-verifier.verse8.io/ads/status?requestId=<requestId>
+  → { status: 'verified' | 'dismissed' | 'failed' | 'pending' }   (pending 은 HTTP 202)
+```
+
+설치돼 있던 `@verse8/ads@0.4.0` 의 타입 선언도 확인했다 — `showRewarded()` 결과에
+`requestId` 가 **이미 들어 있었다.** SDK 버전 문제가 아니라 그냥 안 쓰고 있었다.
+
+### 뚫려 있던 구멍
+
+`claimAdCoins()` 가 **인자를 하나도 안 받았다.** 광고를 아예 안 틀고 브라우저 콘솔에서
+RPC를 직접 불러도, 쿨다운(90초)만 지키면 매일 600코인이 그냥 나왔다.
+`claimDoubleReward()` 도 같았다 — 판이 끝나기만 하면 광고 없이 보상이 두 배가 됐다.
+
+문서 자체가 기준을 준다: *"Skip for cosmetic / low-stakes rewards. Implement for
+currency, premium items, rare drops."* — 코인은 화폐다.
+
+### 막은 것 셋
+
+```
+1. verifyAdRequest(requestId)   진짜 봤는지 Verse8에 물어본다
+2. 금액을 서버가 정한다          (전부터 있던 것)
+3. adRequestIds                 같은 requestId 재사용 금지
+```
+
+**쿨다운·하루 상한은 그대로 뒀다.** 검증은 "이 요청이 진짜 광고였나"만 보고
+"너무 자주"는 안 본다 — 서로 다른 문제라 둘 다 필요하다.
+
+**`adRequestIds` 를 두 메서드가 공유한다.** `claimAdCoins` 에 쓴 requestId 를
+`claimDoubleReward` 에서 다시 쓸 수 없다 — 광고 시청 하나는 보상 하나다.
+
+### `setTimeout` 을 쓰지 않았다 (문서 예시와 다른 점)
+
+문서 예시는 `pending` 일 때 `setTimeout` 으로 1.5초 쉬고 재시도한다. **이 파일은 그걸
+못 쓴다** — 파일 맨 위 규약이 `setTimeout`/`setInterval` 을 금지한다. 이유가 스타일이
+아니라 "클래스 변수가 요청마다 초기화된다"는 실행 모델이라, "한 호출 안에서 끝나니
+괜찮다"는 식으로 우회하지 않았다.
+
+대신 **딜레이 없는 즉시 재시도 3번**을 하고, 그래도 `pending` 이면 `ad_pending` 을
+던진다. 사람이 몇 초 뒤 버튼을 다시 누르는 편이 서버가 잠드는 것보다 안전하다.
+
+### 애매하면 전부 거절로 접는다
+
+네트워크 오류·HTTP 오류·JSON 파싱 실패·모르는 상태값이 **전부 `false`** 다.
+검증 실패를 통과로 접으면 검증이 없는 것과 똑같아진다.
+
+### 개발용 가짜 제공자는 이제 서버 보상을 못 받는다
+
+`devAdProvider` 가 `requestId: ''` 를 준다 → 서버가 `ad_invalid` 로 거절한다.
+**의도한 동작이다** — 진짜 광고가 아니니 보상도 없어야 한다. 클라이언트 흐름
+(버튼 잠금·문구·재활성화)은 그대로 시험되고, "코인이 실제로 느는가"는 이제
+`npm run test:server` 가 가짜 검증 응답으로 본다 (네트워크를 안 탄다).
+
+### 검증
+
+- 서버 **160/160** (광고 검증 24건 추가)
+- 서버로 고정한 것: 빈/비문자열/200자 초과 requestId 거절 · `dismissed`·`failed` 거절 ·
+  **네트워크 오류를 통과가 아니라 미검증으로 접음** · `pending` 2번 뒤 `verified` 면 통과 ·
+  fetch 3번 안에 끝남(딜레이 없음) · URL에 requestId가 실림 · 같은 requestId 재사용 거절 ·
+  계속 `pending` 이면 `ad_pending` · 쿨다운·하루 상한 그대로 · **`claimAdCoins` 에 쓴
+  requestId 를 2배 청구에서 재사용 못 함**
+- **사보타주 검증**: `verifyAdRequest` 호출 두 줄을 지우면 테스트가 통과가 아니라
+  **터진다** — 검사가 실제로 그 코드에 걸려 있다는 뜻이다. 확인 후 원복
+- 클라이언트 계약 실측 (브라우저): 제공자 없음/`show()` 예외 → `watched:false` ·
+  `rewarded` → `requestId` 그대로 전달 · `unsupported_env` 뒤 `ready()` 거짓
+- 프로덕션 번들: `devAdProvider` **0건**, `ads-verifier` **0건**(서버 전용이라 맞다),
+  `showRewarded` 1건
+- `npm run verify` 통과
+
+### 남은 것
+
+- **실기로는 못 눌러 봤다.** 진짜 광고는 Verse8 안에서만 뜨고, `requestId` 검증도
+  거기서만 실제로 돈다. 배포 후 상점에서 광고를 한 번 보고 코인이 +60 되는지 확인할 것
+- `AD_PLACEMENT_ID = 'towerwar-rewarded'` 가 Verse8 대시보드에 등록돼 있어야 한다.
+  안 맞으면 `showRewarded` 가 `platform_error` 로 떨어진다
 
 ---
 

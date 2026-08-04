@@ -92,6 +92,8 @@ export interface RoomSnapshot {
 const CALL_TIMEOUT_MS = 8000;
 /** Creating a private room also acquires a distributed lock and persists its code. */
 const ROOM_CALL_TIMEOUT_MS = 20000;
+/** 광고 보상 청구. 서버가 ads-verifier 를 최대 3번 왕복한 뒤 계정을 잠그고 저장한다. */
+const AD_CALL_TIMEOUT_MS = 15000;
 
 function withTimeout<T>(p: Promise<T>, what: string, timeoutMs = CALL_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -289,14 +291,31 @@ export class Agent8Client {
     return await withTimeout(this.server.remoteFunction('getAccount', []), '계정 불러오기');
   }
 
-  /** 광고를 보고 코인을 받는다. 금액·횟수 제한은 전부 서버가 정한다. */
-  async claimAdCoins(): Promise<RemoteAccount> {
-    return await withTimeout(this.server.remoteFunction('claimAdCoins', []), '광고 보상');
+  /**
+   * 광고를 보고 코인을 받는다. 금액·횟수 제한은 전부 서버가 정한다.
+   *
+   * `requestId` 는 `net/ads.ts` 의 `AdWatch.requestId` — 서버가 이 값으로
+   * `ads-verifier.verse8.io` 에 물어봐 실제로 봤는지 확인한다. 개발용 가짜
+   * 제공자는 빈 문자열을 주므로 서버가 `ad_invalid` 로 거절한다 (의도된 동작).
+   *
+   * **기본 타임아웃(8초)보다 길게 잡는다.** 서버가 검증 엔드포인트를 최대 3번
+   * 왕복한다 — 딜레이 없는 즉시 재시도라 보통은 순식간이지만, 느린 회선까지 감안했다.
+   */
+  async claimAdCoins(requestId: string): Promise<RemoteAccount> {
+    return await withTimeout(
+      this.server.remoteFunction('claimAdCoins', [requestId]),
+      '광고 보상',
+      AD_CALL_TIMEOUT_MS,
+    );
   }
 
-  /** 판이 끝난 뒤 보상을 한 번 더. 금액은 서버가 지불한 값 그대로다. */
-  async claimDoubleReward(): Promise<RemoteAccount> {
-    return await withTimeout(this.server.remoteFunction('claimDoubleReward', []), '두 배 보상');
+  /** 판이 끝난 뒤 보상을 한 번 더. 금액은 서버가 지불한 값 그대로다. `requestId` 는 위와 같다. */
+  async claimDoubleReward(requestId: string): Promise<RemoteAccount> {
+    return await withTimeout(
+      this.server.remoteFunction('claimDoubleReward', [requestId]),
+      '두 배 보상',
+      AD_CALL_TIMEOUT_MS,
+    );
   }
 
   /**

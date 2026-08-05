@@ -26,6 +26,7 @@ import {
   cleanName,
   fromRemote,
   loadAccount,
+  resetRecord,
   saveAccount,
   selectUnitKind,
   type Account,
@@ -173,6 +174,17 @@ export class AccountStore {
     } catch (e) {
       return String((e as Error)?.message ?? 'failed');
     }
+  }
+
+  /**
+   * 전적(승/패/무)만 초기화한다. 점수·코인·유닛은 유지 (사용자 지시).
+   * 온라인이면 서버가 지우고, 오프라인이면 로컬 계산으로 지운다.
+   */
+  async resetRecord(): Promise<void> {
+    await this.mutate(
+      () => this.net!.resetRecord(),
+      () => resetRecord(this.account),
+    );
   }
 
   /** 강화 구매. 못 사면 조용히 아무 일도 안 일어난다 — 버튼이 이미 비활성이다. */

@@ -359,6 +359,16 @@ export function applyReward(account: Account, reward: Reward): Account {
 }
 
 /**
+ * 전적만 초기화한 새 계정. **점수(rating)·코인·유닛은 그대로 둔다** (사용자 지시:
+ * "전적만 초기화, 점수 초기화는 아니야"). 화면에 뜨는 승/패/무(`wins/losses/draws`)만
+ * 0으로. **봇전 밸런스 분석용 solo 통계(§-7)는 건드리지 않는다** — 화면에 안 뜨는
+ * 별개 축이고, 초기화하면 표본 이력이 사라진다.
+ */
+export function resetRecord(account: Account): Account {
+  return { ...account, wins: 0, losses: 0, draws: 0 };
+}
+
+/**
  * 저장본의 생김새를 지금 형식으로 옮긴다.
  *
  * 카탈로그(`units.ts`)에서 사라진 종류는 전부 기본값으로 떨어진다. Tiny Swords 5종을

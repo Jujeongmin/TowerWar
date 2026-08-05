@@ -362,6 +362,11 @@ export class Agent8Client {
     return await withTimeout(this.server.remoteFunction('setProfile', [profile]), '아바타 저장');
   }
 
+  /** 전적(승/패/무)만 초기화. 점수·코인·유닛은 서버가 그대로 둔다. */
+  async resetRecord(): Promise<RemoteAccount> {
+    return await withTimeout(this.server.remoteFunction('resetRecord', []), '전적 초기화');
+  }
+
   async buyUpgrade(kind: string): Promise<RemoteAccount> {
     return await withTimeout(this.server.remoteFunction('buyUpgrade', [kind]), '강화 구매');
   }

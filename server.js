@@ -598,6 +598,21 @@ class Server {
   }
 
   /**
+   * 전적만 초기화. **점수(rating)·코인·유닛은 그대로 둔다** (사용자 지시:
+   * "전적만 초기화, 점수 초기화는 아니야"). 화면에 뜨는 승/패/무만 0으로.
+   * 봇전 밸런스 분석용 solo 통계(§-7)는 안 건드린다 — 화면에 안 뜨는 별개 축이다.
+   *
+   * **서버가 진짜다** (§-10). 여기서 안 지우면 온라인 사용자는 로컬만 0이 됐다가
+   * 다음 접속에 서버 값으로 되돌아온다.
+   */
+  async resetRecord() {
+    return await $lock(`acct:${$sender.account}`, async () => {
+      const a = await this.#loadAccount();
+      return await this.#saveAccount({ ...a, wins: 0, losses: 0, draws: 0 });
+    });
+  }
+
+  /**
    * 강화 한 단계 구매.
    *
    * **가격과 잔액 검사가 여기 있다.** 클라이언트의 같은 함수는 버튼을 회색으로

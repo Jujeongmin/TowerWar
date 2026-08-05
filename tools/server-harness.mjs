@@ -687,6 +687,21 @@ const paidC = await server.reportResult(1, 9999);
 check('타워 수는 12로 잘린다 = 100 + 96', paidC.coins === 196, paidC.coins);
 check('봇전은 일반 전적과 solo 통계에 모두 쌓인다', paidC.soloWins === 1 && paidC.wins === 1, paidC);
 
+// 32.5) 전적 초기화 — 전적만 0, 점수·코인·솔로 통계는 그대로
+as(C);
+userStates.set('0xCCC', {
+  ...defaultsFor('0xCCC'),
+  wins: 5, losses: 3, draws: 2,
+  soloWins: 4, soloLosses: 1,
+  rating: 1234, coins: 777, speedLevel: 2,
+});
+const rr = await server.resetRecord();
+check('전적 초기화: 승/패/무가 0', rr.wins === 0 && rr.losses === 0 && rr.draws === 0, rr);
+check('전적 초기화: 점수·코인·강화는 유지', rr.rating === 1234 && rr.coins === 777 && rr.speedLevel === 2, rr);
+check('전적 초기화: solo 통계는 안 지운다', rr.soloWins === 4 && rr.soloLosses === 1, rr);
+const rrSaved = await $global.getUserStateOf('0xCCC');
+check('전적 초기화가 서버에 저장된다', rrSaved.wins === 0 && rrSaved.rating === 1234, rrSaved);
+
 // 33) 닉네임 — 정리 규칙과 거부
 const E = { account: '0xEEE', roomId: null };
 as(E);

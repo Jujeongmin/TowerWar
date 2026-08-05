@@ -105,6 +105,10 @@ const settings = new SettingsScene(
   // 다시 부르는 것으로 충분하다 — 새로고침은 매칭·상점 상태를 날린다.
   () => current?.enter(),
   () => switchTo(lobby),
+  // 전적(승/패)만 초기화. 점수·코인은 store 가 유지한다. 로비로 돌아가면
+  // lobby.enter() 가 계정을 다시 읽어 0승 0패를 보여준다.
+  () => store.resetRecord(),
+  () => ({ wins: store.current.wins, losses: store.current.losses }),
 );
 const board = new BoardScene(
   need('board'),

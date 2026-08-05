@@ -125,6 +125,16 @@ export interface Strings {
   // 설정
   language: string;
   sound: string;
+  /** 전적 초기화 구역 제목. */
+  recordSection: string;
+  /** 전적 초기화 버튼(평상시). */
+  resetRecord: string;
+  /** 한 번 더 눌러야 실행되는 확인 문구. */
+  resetRecordConfirm: string;
+  /** 초기화 뒤 안내. */
+  resetRecordDone: string;
+  /** 점수는 유지된다는 안내. 지금 전적도 같이 보여준다. */
+  resetRecordNote: (w: number, l: number) => string;
   volMaster: string;
   volSfx: string;
   volBgm: string;
@@ -257,6 +267,11 @@ const en: Strings = {
   botJoin: (head, tail, tag) => `${head}${tail}${tag}`,
   language: 'Language',
   sound: 'Sound',
+  recordSection: 'Record',
+  resetRecord: 'Reset record',
+  resetRecordConfirm: 'Tap again to reset',
+  resetRecordDone: 'Record reset',
+  resetRecordNote: (w, l) => `Now ${w}W ${l}L · your score is kept`,
   volMaster: 'Overall',
   volSfx: 'Effects',
   volBgm: 'Music',
@@ -389,6 +404,11 @@ const ko: Strings = {
   botJoin: (head, tail, tag) => `${head}${tail}${tag}`,
   language: '언어',
   sound: '소리',
+  recordSection: '전적',
+  resetRecord: '전적 초기화',
+  resetRecordConfirm: '한 번 더 누르면 초기화',
+  resetRecordDone: '전적을 초기화했습니다',
+  resetRecordNote: (w, l) => `현재 ${w}승 ${l}패 · 점수는 유지됩니다`,
   volMaster: '전체',
   volSfx: '효과음',
   volBgm: '배경음',
@@ -524,6 +544,11 @@ const zh: Strings = {
   botJoin: (head, tail, tag) => `${head}${tail}${tag}`,
   language: '语言',
   sound: '声音',
+  recordSection: '战绩',
+  resetRecord: '重置战绩',
+  resetRecordConfirm: '再次点击以重置',
+  resetRecordDone: '战绩已重置',
+  resetRecordNote: (w, l) => `当前 ${w}胜 ${l}负 · 积分保留`,
   volMaster: '总音量',
   volSfx: '音效',
   volBgm: '音乐',

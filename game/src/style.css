@@ -985,6 +985,13 @@ body {
   #lobby .btn { min-height: 42px; padding-top: 9px; padding-bottom: 9px; }
 }
 
+/* 전적 초기화 확인 상태. "한 번 더 누르면" 일 때 호박색(되돌릴 수 없다는 신호,
+   renderer 의 CUT_COLOR 와 같은 뜻)으로 바꿔 실수 확정을 막는다. */
+#btn-reset-record.is-confirming {
+  border-color: #fbbf24;
+  color: #fbbf24;
+}
+
 /* ── 로비 상점 ─────────────────────────────────────────────────── */
 
 .shop {

@@ -23,6 +23,7 @@ const VOL_ROWS = [
 const ENDONYM: Record<Lang, string> = {
   en: 'English',
   ko: '한국어',
+  zh: '中文',
 };
 
 export class SettingsScene implements Scene {

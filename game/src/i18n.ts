@@ -22,7 +22,7 @@
  * 낱말 목록도 여기 있다.
  */
 
-export const LANGS = ['en', 'ko'] as const;
+export const LANGS = ['en', 'ko', 'zh'] as const;
 export type Lang = (typeof LANGS)[number];
 
 /** 기본 언어. 사용자 지시로 영어다. */
@@ -404,7 +404,141 @@ const ko: Strings = {
   adCooldown: '조금 뒤에 다시 시도하세요',
 };
 
-const TABLE: Record<Lang, Strings> = { en, ko };
+// 간체 중국어. 표기는 大陆 간체. 봇 이름도 언어를 따라간다(중국어 화면에 영어/한국어
+// 이름이 뜨면 "이건 봇"이 티 난다 — 머리말 참고).
+const zh: Strings = {
+  tutorial: '游戏教程',
+  tutorialTitle: '战场手册',
+  tutorialIntro: '建立补给线，占领据点，推进战线。',
+  tutorialRouteTitle: '设置路线',
+  tutorialRouteBody: '从你的据点拖动到另一个据点。路线开启期间，起点据点会持续派出兵力。',
+  tutorialCutTitle: '切断路线',
+  tutorialCutBody: '从空白处滑过自己的路线即可切断。无法直接切断对手的路线。',
+  tutorialCaptureTitle: '占领据点',
+  tutorialCaptureBody: '向中立或敌方据点派出兵力，将其守军减至零即可占领；抵达友方据点的兵力则会补充库存。',
+  tutorialStockTitle: '库存与路线数',
+  tutorialStockBody: '没有出向路线的据点会储存兵力。库存达到 1 / 10 / 20 时，可同时开启 1 / 2 / 3 条路线。',
+  tutorialRelayTitle: '利用满员据点',
+  tutorialRelayBody: '兵力达到 60 时，底座光环变白，据点成为中继站。抵达此处的友方兵力会沿其出向路线继续前进。',
+  tutorialWinTitle: '取得胜利',
+  tutorialWinBody: '消灭对手全部势力，或在时间结束时占领更多据点即可获胜。据点数相同时，由剩余总战力决定。',
+  gotIt: '知道了',
+  tagline: '划出补给线，推进战线',
+  autoMatch: '快速匹配',
+  playFriend: '和好友对战',
+  shop: '商店',
+  ranking: '排行榜',
+  settings: '设置',
+  nameTitle: '昵称与头像',
+  namePlaceholder: '请输入昵称',
+  start: '开始',
+  nameRequired: (max) => `请输入昵称（最多 ${max} 个字符）`,
+  back: '返回',
+  pvpTitleAuto: '对战',
+  pvpTitleFriend: '和好友对战',
+  searching: '正在寻找对手…',
+  matchingFallbackHint: '若 12 秒内未匹配到对手，将与 AI 对战。',
+  creatingRoom: '正在生成房间号…',
+  startingSoon: '即将开始',
+  waitingFriend: '正在等待好友…',
+  joiningRoom: '正在加入房间…',
+  makeRoomOrCode: '创建房间或输入房间号',
+  roomCodePlaceholder: '好友房间号',
+  join: '加入',
+  hostRoom: '创建房间',
+  couldNotJoin: '无法加入',
+  connectionRefused: '连接被拒绝',
+  roomClosed: (reason) => `房间已关闭（${reason}）`,
+  shopUpgrades: '永久强化',
+  shopSpeed: '生产速度',
+  shopUnits: '单位 — 越贵，生命与攻击越高',
+  shopVx: 'VX — 现金付费',
+  vxNotListed: '该商品尚未上架。',
+  vxOpenFailed: '无法打开支付窗口，请再次点击。',
+  maxed: '已满级',
+  equipped: '装备中',
+  equip: '装备',
+  buyWithVx: '用 VX 购买',
+  comingSoon: '敬请期待',
+  unitStats: (power) => `生命 ${power} · 攻击 ${power}`,
+  boardTitle: '排行榜 — 积分前 10 名',
+  boardLoading: '加载中…',
+  boardOffline: '未连接服务器，无法查看排行榜',
+  boardEmpty: '还没有人登上排行榜',
+  points: (n) => `${n} 分`,
+  playAgain: '重新匹配',
+  toLobby: '返回大厅',
+  resign: '认输',
+  victory: '胜利',
+  defeat: '失败',
+  draw: '平局',
+  resigned: '认输',
+  resignNoReward: '认输 — 无奖励',
+  rewardLine: (total, base, towers, bonus) =>
+    `+${total}  （基础 ${base} · 据点 ${towers} 个 ${bonus}）`,
+  ratingLine: (before, after, sign, diff) => `积分 ${before} → ${after}  （${sign}${diff}）`,
+  hint: '拖动：开启/关闭路线  ·  空白处滑动：切断路线',
+  waitingPeer: '正在等待对手',
+  record: (w, l) => `${w}胜 ${l}负`,
+  unitLabels: {
+    beergang: '啤酒帮',
+    beergang_white: '白啤酒帮',
+    beergang_gold: '金啤酒帮',
+    beergang_green: '绿啤酒帮',
+    beergang_purple: '紫啤酒帮',
+    beergang_rainbow: '彩虹啤酒帮',
+  },
+  unitBlurbs: {
+    beergang: '初始',
+    beergang_white: '白色下装',
+    beergang_gold: '金色下装',
+    beergang_green: '绿色下装',
+    beergang_purple: '紫色下装',
+    beergang_rainbow: 'VX 专属 · 最强',
+  },
+  profileNames: {
+    slate: '灰',
+    blue: '蓝',
+    cyan: '青',
+    green: '绿',
+    gold: '金',
+    orange: '橙',
+    red: '红',
+    purple: '紫',
+    pink: '粉',
+  },
+  botHead: [
+    '黑', '蓝', '红', '静', '疾', '迟', '小', '巨',
+    '孤', '怒', '闲', '寒', '炎', '灰',
+  ],
+  // 꼬리 첫 글자가 머리 글자(寒·疾·孤 등)와 겹치면 `寒寒鸦` 처럼 중복되므로 피했다.
+  botTail: [
+    '骑士', '苍狼', '玄鸦', '铁盾', '长枪', '追风', '暮色', '霜寒',
+    '战锤', '赤狐', '北风', '夜灯', '流沙', '碧波',
+  ],
+  botJoin: (head, tail, tag) => `${head}${tail}${tag}`,
+  language: '语言',
+  sound: '声音',
+  volMaster: '总音量',
+  volSfx: '音效',
+  volBgm: '音乐',
+  tempoItem: '加速',
+  opponentTempo: (scale) => `对手加速 · ${scale}×`,
+  tempoItemBlurb: '让整局对战加速',
+  tempoItemDesc:
+    '对战中会出现一个按钮。开启后，整局以 1.5 倍速运行 —— 不只是你，而是双方都加速。若对手也拥有并一同开启，则变为 2 倍速。',
+  adCard: '广告奖励',
+  adCardAction: '观看',
+  owned: '已拥有',
+  adWatch: (coins) => `观看广告 · +${coins}`,
+  adDouble: '观看广告 —— 奖励翻倍',
+  adUnavailable: '当前没有可观看的广告',
+  adFailed: '广告未看完，无法获得奖励',
+  adLimit: '今日广告奖励已全部领取',
+  adCooldown: '请稍后再试',
+};
+
+const TABLE: Record<Lang, Strings> = { en, ko, zh };
 
 function isLang(v: unknown): v is Lang {
   return typeof v === 'string' && (LANGS as readonly string[]).includes(v);

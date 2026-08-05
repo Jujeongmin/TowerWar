@@ -72,7 +72,10 @@ export function verse8AdProvider(): AdProvider {
   return {
     ready: () => !unsupported,
     show: async () => {
-      const result = await Verse8Ads.showRewarded({ placementId: AD_PLACEMENT_ID });
+      const result = await Verse8Ads.showRewarded({
+        placementId: AD_PLACEMENT_ID,
+        timeoutMs: 120_000,
+      });
       if (result.status === 'failed' && result.error.code === 'unsupported_env') {
         unsupported = true;
       }

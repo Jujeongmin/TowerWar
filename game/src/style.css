@@ -58,7 +58,14 @@ body {
   margin: 0 auto;
   /* 브라우저의 스크롤/줌 제스처가 드래그 조작을 가로채지 못하게 막는다 */
   touch-action: none;
-  cursor: crosshair;
+  /* 게임 필드 전용 커서 — 커맨드 화살촉(시안 C, 2026-08-04 사용자 선택).
+     날렵한 화살촉 + 어두운 외곽선이라 밝은 필드·어두운 콘솔 양쪽에서 보인다.
+     핫스팟은 촉 끝(3 2). SVG 커서를 못 쓰는 옛 브라우저는 crosshair 로 떨어진다.
+     이 커서는 #stage(캔버스)에만 건다 — 메뉴·버튼은 각자 pointer/default 를 쓴다. */
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%20width='32'%20height='32'%3E%3Cpath%20d='M3%202%20L3%2024%20L10%2018%20L14%2027%20L18%2025%20L14%2016%20L23%2015%20Z'%20fill='%238fe0ff'%20stroke='%2306141d'%20stroke-width='2.2'%20stroke-linejoin='round'/%3E%3C/svg%3E")
+      3 2,
+    crosshair;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;

@@ -28,6 +28,17 @@
      하한도 0.78 → 0.62 로 내렸다. 세로가 아주 짧은 창에서도 잘리는 대신 작아지게 한다. */
   --ui-scale: 1;
   --ui-scale: clamp(0.62, calc(100dvh / 880px), 1);
+
+  /* 게임 전역 커서 — 커맨드 화살촉(시안 C, 2026-08-04 사용자 선택).
+     처음엔 필드(#stage)에만 걸었는데, 로비·메뉴에서도 바뀌게 해달라는 지시로
+     `body` 기본값으로 올렸다. 밝은 필드·어두운 콘솔 양쪽에서 보이게 어두운
+     외곽선을 둘렀고 핫스팟은 촉 끝(3 2). SVG 커서를 못 쓰는 옛 브라우저는
+     crosshair 로 떨어진다. **버튼·입력은 각자 pointer 를 유지한다** — 클릭
+     표시를 없애면 눌리는 물건인지 안 보인다. */
+  --game-cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%20width='32'%20height='32'%3E%3Cpath%20d='M3%202%20L3%2024%20L10%2018%20L14%2027%20L18%2025%20L14%2016%20L23%2015%20Z'%20fill='%238fe0ff'%20stroke='%2306141d'%20stroke-width='2.2'%20stroke-linejoin='round'/%3E%3C/svg%3E")
+      3 2,
+    crosshair;
 }
 
 html,
@@ -43,6 +54,9 @@ body {
   overscroll-behavior: none;
   color: #dbe6ef;
   font-family: ui-sans-serif, system-ui, sans-serif;
+  /* 게임 전역 기본 커서. 로비·매칭·상점·설정·결과 모든 화면에 깔린다.
+     버튼·입력은 아래에서 pointer 로 덮는다. */
+  cursor: var(--game-cursor);
   /* 길게 눌렀을 때 뜨는 텍스트 선택·확대경. 드래그로 경로를 긋는 게임이라 방해가 된다. */
   -webkit-touch-callout: none;
   -webkit-text-size-adjust: 100%;
@@ -58,14 +72,8 @@ body {
   margin: 0 auto;
   /* 브라우저의 스크롤/줌 제스처가 드래그 조작을 가로채지 못하게 막는다 */
   touch-action: none;
-  /* 게임 필드 전용 커서 — 커맨드 화살촉(시안 C, 2026-08-04 사용자 선택).
-     날렵한 화살촉 + 어두운 외곽선이라 밝은 필드·어두운 콘솔 양쪽에서 보인다.
-     핫스팟은 촉 끝(3 2). SVG 커서를 못 쓰는 옛 브라우저는 crosshair 로 떨어진다.
-     이 커서는 #stage(캔버스)에만 건다 — 메뉴·버튼은 각자 pointer/default 를 쓴다. */
-  cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%20width='32'%20height='32'%3E%3Cpath%20d='M3%202%20L3%2024%20L10%2018%20L14%2027%20L18%2025%20L14%2016%20L23%2015%20Z'%20fill='%238fe0ff'%20stroke='%2306141d'%20stroke-width='2.2'%20stroke-linejoin='round'/%3E%3C/svg%3E")
-      3 2,
-    crosshair;
+  /* 필드 커서. body 와 같은 화살촉이지만 캔버스는 display:block 이라 따로 짚어 둔다. */
+  cursor: var(--game-cursor);
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;

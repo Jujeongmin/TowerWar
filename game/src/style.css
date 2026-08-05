@@ -85,6 +85,15 @@ body {
   display: none !important;
 }
 
+/* **버튼·입력창까지 무조건 화살촉** (2026-08-04 사용자 지시). 아래 곳곳의
+   `cursor: pointer|text|default` 를 이 한 줄이 덮는다 — `!important` 라야
+   클래스 규칙과 브라우저 기본(입력창 I빔)을 이긴다.
+   affordance(손모양·I빔)가 사라지는 것은 사용자가 그렇게 요청한 결과다.
+   되돌리려면 이 규칙만 지우면 아래 pointer 규칙들이 되살아난다. */
+* {
+  cursor: var(--game-cursor) !important;
+}
+
 /* ── 화면 ──────────────────────────────────────────────────────── */
 
 .screen {

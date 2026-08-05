@@ -102,6 +102,15 @@ const TOWER_SPRITE_W = 1.75;
 /** 건물 바닥이 타워 중심에서 아래로 얼마나 내려가는가 (반경 배수). */
 const TOWER_FOOT = 0.55;
 
+/**
+ * 판 시작 직후 **내 진영을 강조하는 시간**(틱). 30Hz라 105틱 ≈ 3.5초(게임시간).
+ * PVP는 절반이 P2라 내 홈이 위·빨강이 되어 판마다 자리가 바뀐다 — 그때 헷갈리지
+ * 않게 시작 순간에만 펄스 링과 라벨로 짚어 준다 (2026-08-04 사용자 지시).
+ */
+const INTRO_TICKS = 105;
+/** 마지막 이 시간(틱) 동안 서서히 사라진다. */
+const INTRO_FADE_TICKS = 30;
+
 /** 바닥에 눕힌 원의 납작한 정도. 3/4 시점 건물과 같은 각도로 보이게 맞춘 값. */
 const GROUND_SQUASH = 0.42;
 
@@ -381,6 +390,7 @@ export class Renderer {
     this.drawEffects();
     this.drawUnits(state, alpha);
     for (const t of state.towers) this.drawTower(t, state, ui);
+    this.drawStartMarkers(state, ui);
 
     ctx.restore();
     this.drawHud(state, ui);
@@ -823,6 +833,75 @@ export class Renderer {
     ctx.fillText(String(Math.floor(t.troops)), t.x, foot + 1);
 
     if (t.owner !== 0) this.drawRouteSlots(t, r, foot, routesOut, c.main);
+  }
+
+  /**
+   * 판 시작 직후 **내 진영을 몇 초간 강조한다** (2026-08-04 사용자 지시:
+   * "내 타워가 위인지 아래인지 처음에 알아보기 힘들다"). PVP는 절반이 P2라
+   * 내 홈이 위·빨강이 되어 판마다 자리가 바뀐다 — 시작 순간에만 짚어 준다.
+   *
+   * `state.tick` 으로 몬다: 결정론적이고 새 판마다 저절로 리셋되며(틱 되감김을
+   * `render` 가 처리한다) PVP 양쪽에서 똑같이 보인다. 펄스 위상만 실시간(`this.time`).
+   * **내 소유 타워 전부**를 짚으므로 시작 시엔 홈 하나, 초반에 점령하면 그것도
+   * 잠깐 강조된다 — 방향을 알려 주는 것이 목적이라 문제가 안 된다.
+   */
+  private drawStartMarkers(state: MatchState, ui: UiState): void {
+    if (state.tick >= INTRO_TICKS) return;
+    const ctx = this.ctx;
+    const color = OWNER_COLOR[ui.local].main;
+    const fade = Math.min(1, (INTRO_TICKS - state.tick) / INTRO_FADE_TICKS);
+    const label = t().youBase;
+
+    for (const tw of state.towers) {
+      if (tw.owner !== ui.local) continue;
+      const r = towerRadiusOf(tw);
+      const foot = tw.y + r * TOWER_FOOT;
+
+      // 발치에서 퍼지는 펄스 링 두 겹. 위상을 어긋내 끊임없이 번지게 한다.
+      // 재고 게이지·슬롯과 같은 바닥 타원 규격(GROUND_SQUASH)이라 겉돌지 않는다.
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 2; i++) {
+        const phase = (this.time * 0.9 + i * 0.5) % 1;
+        const rr = r * (1.25 + phase * 1.4);
+        ctx.strokeStyle = withAlpha(color, (1 - phase) * 0.7 * fade);
+        ctx.beginPath();
+        ctx.ellipse(tw.x, foot, rr, rr * GROUND_SQUASH, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // 라벨 알약 + 아래로 향한 꼭지. 건물 위로 띄워 이 타워를 가리킨다.
+      // 위아래로 살짝 떠서 눈에 든다.
+      const bob = Math.sin(this.time * 3) * (r * 0.12);
+      const cy = tw.y - r * 2.9 + bob;
+      const fs = Math.round(r * 0.82);
+      ctx.font = `800 ${fs}px ui-sans-serif, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const padX = r * 0.55;
+      const bh = r * 1.25;
+      const bw = ctx.measureText(label).width + padX * 2;
+      const bx = tw.x - bw / 2;
+      const by = cy - bh / 2;
+
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(bx, by, bw, bh, bh / 2);
+      } else {
+        ctx.rect(bx, by, bw, bh);
+      }
+      // 꼭지 삼각형을 같은 경로에 이어 붙여 한 번에 칠한다.
+      const tip = r * 0.5;
+      ctx.moveTo(tw.x - tip, by + bh);
+      ctx.lineTo(tw.x + tip, by + bh);
+      ctx.lineTo(tw.x, by + bh + tip);
+      ctx.closePath();
+      ctx.fillStyle = withAlpha(color, 0.92 * fade);
+      ctx.fill();
+
+      // 글자는 어두운 바탕색으로 — 내 색이 밝아(파랑·빨강) 흰 글자보다 대비가 산다.
+      ctx.fillStyle = withAlpha('#0a0e14', fade);
+      ctx.fillText(label, tw.x, cy + 1);
+    }
   }
 
   /**

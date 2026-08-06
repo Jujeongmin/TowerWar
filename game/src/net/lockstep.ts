@@ -71,6 +71,32 @@ export class Lockstep {
   lateBatches = 0;
   /** 마지막으로 상대를 기다린 적이 있는가. UI가 "대기 중"을 띄우는 데 쓴다. */
   stalled = false;
+  /** 보낸 배치 수. 정지 진단용. */
+  private sent = 0;
+  /** 상대에게서 받은 배치 수. 정지 진단용 — 0에서 안 늘면 채널이 죽은 것이다. */
+  private received = 0;
+  /** 마지막으로 상대 배치를 받은 벽시계 시각(ms). */
+  private lastRecvAt = 0;
+
+  /**
+   * 정지 원인을 가르는 값들. **화면에는 안 쓴다** — 멈췄을 때 콘솔에 한 번 찍는 용도다.
+   *
+   * `peerAck` 이 `tick` 을 못 따라오는데 `received` 가 안 늘면 채널이 죽은 것이고,
+   * `received` 는 느는데 `peerAck` 이 굼뜨면 상대의 전송률 문제다. 이 둘을 못 가르면
+   * 로그를 봐도 어느 쪽을 고쳐야 하는지 알 수 없다.
+   */
+  stats(): Record<string, number> {
+    const peer: PlayerId = this.setup.local === 1 ? 2 : 1;
+    return {
+      peerAck: this.ackTick[peer],
+      myAck: this.ackTick[this.setup.local],
+      lastSentFor: this.lastSentFor,
+      sent: this.sent,
+      received: this.received,
+      msSinceRecv: this.lastRecvAt === 0 ? -1 : Date.now() - this.lastRecvAt,
+      lateBatches: this.lateBatches,
+    };
+  }
 
   constructor(
     private readonly setup: MatchSetup,
@@ -162,12 +188,15 @@ export class Lockstep {
 
     // 보내면서 내 쪽에도 같이 예약한다. 돌아온 내 배치는 receive 에서 버린다.
     this.place(batch);
+    this.sent++;
     this.transport.send(batch);
   }
 
   private receive(batch: InputBatch): void {
     // 서버가 모두에게 뿌리므로 내 것도 돌아온다. 이미 예약해 뒀으니 버린다.
     if (batch.player === this.setup.local) return;
+    this.received++;
+    this.lastRecvAt = Date.now();
     this.place(batch);
   }
 

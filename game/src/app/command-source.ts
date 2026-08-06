@@ -25,6 +25,8 @@ export interface CommandSource {
   dispose?(): void;
   /** 상대를 기다리는 중인가. HUD가 "대기 중"을 띄우는 데 쓴다. */
   readonly waiting: boolean;
+  /** 정지가 길어졌을 때 콘솔에 찍을 값들. 봇전에는 없다. */
+  stats?(): Record<string, number>;
 }
 
 /**
@@ -81,6 +83,10 @@ export class NetSource implements CommandSource {
 
   pump(nextTick: number, state: MatchState): void {
     this.lockstep.pump(nextTick, state);
+  }
+
+  stats(): Record<string, number> {
+    return this.lockstep.stats();
   }
 
   dispose(): void {

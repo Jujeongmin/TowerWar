@@ -105,6 +105,9 @@ export interface Strings {
   draw: string;
   resigned: string;
   resignNoReward: string;
+  /** 상대와의 연결이 끊겨 판을 끝냈다. 승패가 아니다 — 점수도 보상도 안 움직인다. */
+  disconnected: string;
+  disconnectedNote: string;
   rewardLine: (total: number, base: number, towers: number, bonus: number) => string;
   ratingLine: (before: number, after: number, sign: string, diff: number) => string;
   hint: string;
@@ -222,6 +225,8 @@ const en: Strings = {
   draw: 'Draw',
   resigned: 'Resigned',
   resignNoReward: 'Resigned — no reward',
+  disconnected: 'Disconnected',
+  disconnectedNote: 'Lost connection to your opponent. Score and rewards are unchanged.',
   rewardLine: (total, base, towers, bonus) =>
     `+${total}  (base ${base} · ${towers} towers ${bonus})`,
   ratingLine: (before, after, sign, diff) => `Score ${before} → ${after}  (${sign}${diff})`,
@@ -359,6 +364,8 @@ const ko: Strings = {
   draw: '무승부',
   resigned: '항복',
   resignNoReward: '항복 — 보상 없음',
+  disconnected: '연결 끊김',
+  disconnectedNote: '상대와의 연결이 끊겼습니다. 점수와 보상은 그대로입니다.',
   rewardLine: (total, base, towers, bonus) =>
     `+${total}  (기본 ${base} · 타워 ${towers}개 ${bonus})`,
   ratingLine: (before, after, sign, diff) => `점수 ${before} → ${after}  (${sign}${diff})`,
@@ -498,6 +505,8 @@ const zh: Strings = {
   draw: '平局',
   resigned: '认输',
   resignNoReward: '认输 — 无奖励',
+  disconnected: '连接中断',
+  disconnectedNote: '与对手的连接已中断。分数和奖励均不变。',
   rewardLine: (total, base, towers, bonus) =>
     `+${total}  （基础 ${base} · 据点 ${towers} 个 ${bonus}）`,
   ratingLine: (before, after, sign, diff) => `积分 ${before} → ${after}  （${sign}${diff}）`,

@@ -36,13 +36,18 @@ const MAX_ACCUMULATOR = 0.5;
  *
  * **정상 경로가 아니다.** 상대가 끊기면 서버가 `PEER_TIMEOUT_MS`(10초) 뒤에 남은 쪽
  * 승리로 방을 닫고, 그 판정이 `transport.onClosed` 로 온다. 이건 **그 신호마저 못 받는
- * 경우**의 마지막 수단이다 — 내 소켓이 죽으면 배치도 방 상태도 안 오는데, 그때 서버는
- * 나를 조용한 쪽으로 보고 **상대 승리**로 닫는다. 그래서 여기서 내는 결론도 패배여야
- * 서버와 맞는다.
+ * 경우**의 마지막 수단이므로 서버 타임아웃보다 넉넉해야 한다.
  *
- * 서버 타임아웃보다 넉넉해야 한다 — 서버가 먼저 정하게 두고, 안 오면 그때 움직인다.
+ * **여기서 승패를 정하지 않는다** (2026-08-06 실기 영상). 처음엔 "내 소켓이 죽었으면
+ * 서버도 나를 조용한 쪽으로 볼 테니 패배가 맞다"고 봤는데, 실제로는 **상대가 끊긴
+ * 경우에도** 이 타이머가 먼저 도는 일이 있었다 — 그때 패배를 지어내 보고하면 멀쩡히
+ * 이기고 있던 사람의 점수가 깎인다. 승패는 서버만 정한다. 여기서는 판을 닫고
+ * "연결 끊김"만 알린다 (`endedByDisconnect`).
  */
 const STALL_GIVEUP_MS = 15000;
+
+/** 정지가 이만큼(ms) 이어지면 콘솔에 원인 진단을 **한 번** 찍는다. */
+const STALL_DIAGNOSE_MS = 3000;
 
 export class MatchScene implements Scene {
   private state: MatchState = createMatch([]);
@@ -77,6 +82,13 @@ export class MatchScene implements Scene {
   private serverVerdict: Owner | null = null;
   /** 상대를 기다리기 시작한 벽시계 시각(ms). 0이면 안 기다리는 중. */
   private stalledSince = 0;
+  /** 이번 정지에 대해 진단을 이미 찍었는가. 매 프레임 찍으면 콘솔이 못 쓰게 된다. */
+  private stallLogged = false;
+  /**
+   * 연결이 끊겨 끝난 판인가. **승패가 아니다** — 결과 화면이 이걸 보고 보상·점수 보고를
+   * 통째로 건너뛴다 (`STALL_GIVEUP_MS` 주석).
+   */
+  private endedByDisconnect = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -279,6 +291,8 @@ export class MatchScene implements Scene {
     this.resigned = false;
     this.serverVerdict = null;
     this.stalledSince = 0;
+    this.stallLogged = false;
+    this.endedByDisconnect = false;
     audio.setBgm('match');
     audio.play('match-start');
     this.resignBtn.hidden = false;
@@ -398,6 +412,7 @@ export class MatchScene implements Scene {
   private watchStall(waiting: boolean): void {
     if (!waiting || this.state.winner !== null) {
       this.stalledSince = 0;
+      this.stallLogged = false;
       return;
     }
     // 서버 판정이 있으면 그걸 쓴다. 승패를 정하는 것은 언제나 서버다.
@@ -410,11 +425,22 @@ export class MatchScene implements Scene {
       this.stalledSince = now;
       return;
     }
-    if (now - this.stalledSince < STALL_GIVEUP_MS) return;
-    // 서버 판정조차 못 받았다 = 내 소켓이 죽었다. 서버는 나를 조용한 쪽으로 보고
-    // 상대 승리로 닫았을 것이므로 여기서도 패배로 끝낸다 (`STALL_GIVEUP_MS` 주석).
-    const local = this.input?.ui.local ?? 1;
-    this.finish(local === 1 ? 2 : 1);
+    const held = now - this.stalledSince;
+
+    // **정지가 길어지면 원인을 콘솔에 남긴다.** 화면만 보면 "배치가 안 온다"와
+    // "배치는 오는데 상대 약속이 굼뜨다"가 똑같이 멈춤으로 보이는데, 고칠 곳은 정반대다.
+    // `received` 가 안 늘면 채널이 죽은 것이고, 느는데 `peerAck` 이 안 오르면 전송률이다.
+    if (!this.stallLogged && held >= STALL_DIAGNOSE_MS) {
+      this.stallLogged = true;
+      console.warn('[net] 정지', { heldMs: held, tick: this.state.tick, ...this.source.stats?.() });
+    }
+
+    if (held < STALL_GIVEUP_MS) return;
+    // 서버 판정조차 못 받았다. **승패를 지어내지 않는다** — 상대가 끊긴 경우에도 여기까지
+    // 오므로(2026-08-06 실기), 패배로 보고하면 이기고 있던 사람의 점수가 깎인다.
+    // 판만 닫고 결과 화면은 "연결 끊김"으로 간다.
+    this.endedByDisconnect = true;
+    this.finish(0);
   }
 
   /**
@@ -445,7 +471,15 @@ export class MatchScene implements Scene {
 
     const local = this.input?.ui.local ?? 1;
     const w = this.state.winner;
-    this.resultTitle.textContent = this.resigned ? t().resigned : w === 0 ? t().draw : w === local ? t().victory : t().defeat;
+    this.resultTitle.textContent = this.endedByDisconnect
+      ? t().disconnected
+      : this.resigned
+        ? t().resigned
+        : w === 0
+          ? t().draw
+          : w === local
+            ? t().victory
+            : t().defeat;
 
     // resultShown 플래그가 이 블록을 판당 한 번으로 막는다. 여기가 두 번 돌면
     // 보상이 두 번 들어간다.
@@ -460,16 +494,20 @@ export class MatchScene implements Scene {
 
     // **화면에 뜬 글자와 같은 소리를 낸다.** 항복도 패배고, 무승부는 이긴 소리를
     // 내면 안 된다 — 소리가 화면보다 먼저 들리므로 어긋나면 그게 더 눈에 띈다.
-    audio.play(!this.resigned && w !== 0 && w === local ? 'victory' : 'defeat');
+    audio.play(!this.resigned && !this.endedByDisconnect && w !== 0 && w === local ? 'victory' : 'defeat');
 
     // **항복은 보상이 0이라 두 배도 없다.** 서버도 `paid` 가 없어 거절한다.
     // 광고가 안 붙어 있으면(`isAdReady`) 아예 안 보여 준다 — 눌러도 아무 일이 없는
     // 버튼은 고장으로 읽힌다.
-    this.adDoubleBtn.hidden = this.resigned || !isAdReady();
+    this.adDoubleBtn.hidden = this.resigned || this.endedByDisconnect || !isAdReady();
     this.adDoubleBtn.disabled = false;
     this.adDoubleBtn.textContent = t().adDouble;
 
-    if (this.resigned) {
+    if (this.endedByDisconnect) {
+      // **보고하지 않는다.** 승패를 모르는 판이라 무엇을 보고해도 거짓말이 된다.
+      // 서버가 이 방을 자기 타임아웃으로 닫고 자기 판정대로 점수를 매긴다.
+      this.resultReward.textContent = t().disconnectedNote;
+    } else if (this.resigned) {
       this.resultReward.textContent = t().resignNoReward;
     } else {
       const reward = rewardFor(this.state, local);

@@ -995,11 +995,17 @@ class Server {
 
       // 봇전은 배치를 안 보내므로 seenAt 이 안 갱신된다. 모두 조용해졌을 때만 닫는다 —
       // 안 닫으면 방이 playing 인 채로 영원히 남는다.
+      //
+      // **`endedAt` 은 여기서 찍지 않는다.** 봇전 방은 시작(`#startSolo`) 직후 seenAt 이
+      // 이미 낡아 다음 틱에 바로 이리로 떨어진다. 여기서 `endedAt` 을 찍으면 클라이언트가
+      // ~90초 뒤 판을 끝내고 `reportResult` 를 해도 `endedAt: state.endedAt ?? now` 가
+      // 이 조기 값을 유지해 `played≈0` 이 되고 → `MIN_RATED_MS` 를 못 넘겨 **봇전 점수가
+      // 영영 안 오른다** (2026-08-04 사용자 신고로 찾음). 방만 닫고 종료시각은 실제
+      // 보고가 찍게 둔다 — 보고가 영영 안 와도 `played` 는 그때만 계산되므로 안전하다.
       if (silent.length === accounts.length) {
         await $global.updateRoomState(roomId, {
           phase: PHASE_FINISHED,
           reason: 'abandoned',
-          endedAt: now,
         });
         return;
       }

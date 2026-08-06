@@ -328,6 +328,19 @@ rooms.get(r6.roomId).state.players['0xAAA'].seenAt = Date.now() - 30000;
 await server.$roomTick(300, r6.roomId);
 const closed = await $global.getRoomState(r6.roomId);
 check('버려진 봇전 방은 닫힌다', closed.phase === 'finished' && closed.reason === 'abandoned', closed);
+// **abandon 은 endedAt 을 안 찍는다** (2026-08-04). 찍으면 클라가 ~90초 뒤 판을 끝내고
+// 보고해도 played≈0 이라 MIN_RATED_MS 를 못 넘겨 봇전 점수가 영영 안 오른다.
+check('abandon 이 endedAt 을 미리 안 찍는다', closed.endedAt === undefined, closed.endedAt);
+
+// 15.5) 봇전도 전적·점수가 오른다 — 방이 조기 abandon 돼도. 클라가 ~60초 판을 하고
+// 이겼다고 보고한 상황을 startedAt 을 뒤로 밀어 흉내낸다.
+as(A);
+userStates.set('0xAAA', { ...userStates.get('0xAAA'), rating: 1000, wins: 0 });
+age(r6.roomId, 60000);
+const soloResult = await server.reportResult(1, 0);
+check('봇전 승리로 전적이 오른다', soloResult && soloResult.wins === 1, soloResult && soloResult.wins);
+check('봇전 승리로 점수가 오른다 (+4)', soloResult && soloResult.rating === 1004, soloResult && soloResult.rating);
+as(A); await server.leaveMatch().catch(() => {});
 
 // 16) 방 코드 — 발급, 정규화, 참가
 as(A);

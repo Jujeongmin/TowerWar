@@ -86,8 +86,6 @@ export class ShopScene implements Scene {
   private readonly tempoRow: HTMLButtonElement;
   /** 광고 재생~청구가 진행 중. 그동안은 쿨다운 틱이 버튼을 다시 켜지 못하게 한다. */
   private watching = false;
-  /** 지금 광고 노트가 쿨다운 카운트다운을 보여주는 중인가. 0이 되면 지워야 한다. */
-  private cooldownShown = false;
   /** 쿨다운 남은 시간을 매초 갱신하는 타이머. 상점이 보일 때만 돈다. */
   private cooldownTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -165,7 +163,6 @@ export class ShopScene implements Scene {
         const msg = err === null ? '' : adMessage(err);
         this.adNote.textContent = msg;
         this.adNote.hidden = msg.length === 0;
-        this.cooldownShown = false; // 아래 render 가 쿨다운이면 다시 세운다
         this.render();
       });
     });
@@ -366,8 +363,9 @@ export class ShopScene implements Scene {
   }
 
   /**
-   * 광고 쿨다운 남은 시간을 버튼·노트에 반영한다. 매초 틱(`cooldownTimer`)과 `render`
-   * 양쪽에서 부른다.
+   * 광고 쿨다운 남은 시간을 **버튼 안**(상태 칸)에 `MM:SS` 로 반영한다. 매초 틱
+   * (`cooldownTimer`)과 `render` 양쪽에서 부른다. 쿨다운 안내는 별도 노트(`ad-note`)가
+   * 아니라 버튼 안에 들어간다 (2026-08-04 사용자 지시) — 노트는 성공·실패 문구 전용.
    *
    * **광고를 보는 중(`watching`)에는 손대지 않는다** — 그때 버튼은 이미 잠겨 있고,
    * 쿨다운이 0이라고 여기서 다시 켜면 재생 도중 두 번 눌린다.
@@ -377,17 +375,12 @@ export class ShopScene implements Scene {
     const remain = AD_COOLDOWN_MS - (Date.now() - this.getAccount().adAt);
     if (remain > 0) {
       this.adCard.disabled = true;
-      this.adNote.textContent = t().adCooldownWait(Math.ceil(remain / 1000));
-      this.adNote.hidden = false;
-      this.cooldownShown = true;
+      set(this.adCard, 'state', `⏳ ${mmss(remain)}`);
     } else {
       this.adCard.disabled = false;
-      // 방금까지 카운트다운을 보여줬으면 지운다. 다른 메시지(성공·실패)는 안 건드린다.
-      if (this.cooldownShown) {
-        this.adNote.textContent = '';
-        this.adNote.hidden = true;
-        this.cooldownShown = false;
-      }
+      // 쿨다운이 끝났으면 상태 칸을 원래 문구("보기")로 되돌린다. 틱에서는 render 가
+      // 안 도므로 여기서 직접 써 줘야 한다.
+      set(this.adCard, 'state', t().adCardAction);
     }
   }
 }
@@ -416,4 +409,12 @@ function adMessage(err: string): string {
 function set(row: HTMLElement, role: string, text: string): void {
   const el = row.querySelector<HTMLElement>(`[data-role="${role}"]`);
   if (el) el.textContent = text;
+}
+
+/** 남은 ms 를 `M:SS` 로. 30분 쿨다운이라 분·초가 다 필요하다. 숫자뿐이라 번역 불필요. */
+function mmss(ms: number): string {
+  const total = Math.ceil(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }

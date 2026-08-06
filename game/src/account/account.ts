@@ -123,7 +123,7 @@ export interface Account {
  * 진짜로 막는 값이고, 이건 화면에 남은 시간을 표시하기 위한 사본이다. 어긋나면
  * "0초라는데 서버는 거절"이 된다.
  */
-export const AD_COOLDOWN_MS = 30000;
+export const AD_COOLDOWN_MS = 30 * 60 * 1000;
 
 export function defaultAccount(): Account {
   return {

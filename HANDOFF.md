@@ -4,6 +4,65 @@
 
 ---
 
+## -69. 진짜 원인 — SDK 재연결이 방 참가·구독을 복구하지 않는다 (2026-08-06, 콘솔)
+
+§-68 이 심은 진단 로그가 원인을 갈랐다. 사용자 콘솔:
+
+```
+WebSocket connection to 'wss://verse8-game-backend-kr-…' failed
+Unexpected disconnection detected, starting reconnection attempts...
+Attempting to reconnect... (attempt 1, delay 1000ms)
+[net] 정지 {heldMs: 3000, tick: 25, peerAck: 24, myAck: 121, lastSentFor: 121}
+Reconnection successful!
+```
+
+### 원인 — 소켓만 붙고 방 밖에 남는다
+
+`@agent8/gameserver` 의 `useGameServerStore` 재연결 경로가 하는 일은 **`server.connect()`
+하나뿐**이다. `joinRoom` 도, `subscribeRoomState`/`onRoomMessage` 재등록도 없다.
+
+그래서 **"Reconnection successful!" 이 찍힌 뒤에도 배치가 한 톨도 안 온다** — 소켓은
+살아났지만 클라이언트는 방 밖이고 구독은 죽은 채다. `onClosed` 도 당연히 안 와서
+§-67·§-68 의 서버 판정 경로가 통째로 무력해지고, 백스톱만 남는다.
+
+### 고침 1 — 통로를 우리가 다시 세운다
+
+`MatchTransport.recover()` 를 새로 두고, `agent8.ts` 의 `transport()` 가 핸들러를 들고
+있다가 죽은 구독을 걷어내고 새로 건다. 서버에는 `rejoinRoom(roomId)` 을 추가했다 —
+**그 방에 슬롯이 있는 사람만** 받고(슬롯은 `#start` 이후 안 바뀌므로 이것이 곧 신원
+확인이다), `$global.joinRoom` 뒤 `seenAt` 을 지금으로 되돌린다. 안 되돌리면 돌아오자마자
+`$roomTick` 이 나를 조용한 쪽으로 보고 부전패로 닫는다.
+
+부르는 자리는 `MatchScene.watchStall` 이다 — 판이 멈췄다는 것 말고는 단서가 없어서
+거기가 유일하다. 정지 `STALL_RECOVER_MS`(4초)부터 `RECOVER_RETRY_MS`(3초)마다 다시 부른다.
+
+`PEER_TIMEOUT_MS` 를 **10 → 20초**로 늘렸다. SDK 백오프(1·2·4초) + 정지 감지 + 재참가가
+10초 안에 안 끝나 복구되기 전에 방이 닫혔다. 클라이언트 포기 타이머도 15 → **25초**로
+같이 올렸다 (서버가 먼저 판정해야 한다).
+
+### 고침 2 — 약속이 끝없이 앞서 나가던 것
+
+같은 로그가 두 번째 버그를 잡았다: `tick: 25` 인데 `lastSentFor: 121` — **96틱(3.2초)**
+앞섰다. §-67 의 교착 해소가 정지 3초 동안 계속 밀어올린 결과다.
+
+연결이 돌아와도 이 격차는 **안 줄어든다.** 시뮬레이션은 실시간보다 빨리 못 돌아
+(`MAX_ACCUMULATOR`) 약속을 못 따라잡고, 그만큼이 판 끝까지 입력 지연으로 남는다.
+§-67 이 "수요만큼만 올린다"로 막았다고 봤지만 **수요만큼 올려도 격차는 안 줄어든다** —
+줄어들려면 상한이 있어야 한다.
+
+`MAX_LEAD_FACTOR = 2` 로 `nextTick + delay*2` 를 상한으로 건다. 이 값이 곧 정지에서
+복구된 뒤 남는 최악의 입력 지연이다(12틱 설정에서 0.8초). 상한이 있어도 교착은 안
+생긴다 — 약속이 `nextTick + delay` 를 넘기만 하면 되고, 그 이상은 내가 안 굴러서 줄
+수 있는 것도 없다.
+
+### 검증
+
+`npm run verify` **161/161**(+3: 재참가 승인·`seenAt` 되돌림·남의 판 거절), tsc 0, 빌드 통과.
+
+**서버 재배포가 필요하다** (`rejoinRoom`, `PEER_TIMEOUT_MS`).
+
+---
+
 ## -68. 정지 백스톱이 패배를 지어냈다 (2026-08-06, 사용자 실기 영상)
 
 §-67 배포 후 녹화. 타임라인이 원인을 그대로 보여 준다:

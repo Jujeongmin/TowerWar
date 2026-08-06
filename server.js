@@ -74,8 +74,13 @@ const DESYNC_CHECK_TICKS = 30;
 /**
  * 상대가 이 시간(ms) 넘게 아무 배치도 안 보내면 끊긴 것으로 본다.
  * `$roomTick` 이 200~1000ms 주기라 그보다 넉넉해야 한다.
+ *
+ * **재연결 복구(`rejoinRoom`)가 끝날 시간을 줘야 한다.** SDK 재연결이 백오프로
+ * 1·2·4초를 쓰고, 클라이언트가 정지를 알아채 `rejoinRoom` 을 부르기까지 또 몇 초가
+ * 걸린다. 10초로는 복구되기 전에 방이 부전패로 닫혔다 — 20초로 늘렸다 (2026-08-06).
+ * 클라이언트의 포기 타이머(`STALL_GIVEUP_MS`)는 이 값보다 커야 서버가 먼저 정한다.
  */
-const PEER_TIMEOUT_MS = 10000;
+const PEER_TIMEOUT_MS = 20000;
 
 /**
  * 혼자 이만큼 기다리면 봇전으로 확정한다.
@@ -934,6 +939,32 @@ class Server {
     const patch = { players };
     if (batch && batch.hash) Object.assign(patch, this.#desyncPatch(state, account, batch.hash));
     await $room.updateRoomState(patch);
+    return true;
+  }
+
+  /**
+   * 판 도중에 소켓이 끊겼다 붙은 사람을 방에 다시 넣는다.
+   *
+   * **SDK 재연결은 소켓만 다시 붙인다.** `useGameServerStore` 의 재연결 경로는
+   * `connect()` 하나만 다시 부르고 방 참가도 구독도 복구하지 않는다. 그래서 "Reconnection
+   * successful!" 이 찍힌 뒤에도 클라이언트는 방 밖이라 배치가 오가지 않고, 화면은 멈춘 채로
+   * 남는다 (2026-08-06 실기 콘솔). 클라이언트가 정지를 감지하면 이걸 부른다.
+   *
+   * **이 방에 슬롯이 있는 사람만 받는다.** 슬롯은 `#start` 가 정한 뒤로 안 바뀌므로,
+   * 이걸로 "원래 이 판의 사람인가"가 가려진다 — 남이 남의 판에 끼어들 수 없다.
+   * 인원 상한도 안 본다: 이미 자기 자리가 있는 사람이라 새로 차지하는 것이 없다.
+   */
+  async rejoinRoom(roomId) {
+    const state = await $global.getRoomState(roomId);
+    if (!state || state.phase !== PHASE_PLAYING) return false;
+    if (!(state.slots || {})[$sender.account]) return false;
+
+    await $global.joinRoom(roomId);
+    // `seenAt` 을 지금으로 되돌린다. 끊겨 있는 동안 안 갱신됐으므로 그대로 두면
+    // 돌아오자마자 `$roomTick` 이 나를 조용한 쪽으로 보고 부전패로 닫는다.
+    await $room.updateRoomState({
+      players: this.#patchPlayer(state, $sender.account, { seenAt: Date.now() }),
+    });
     return true;
   }
 

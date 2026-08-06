@@ -43,11 +43,28 @@ const MAX_ACCUMULATOR = 0.5;
  * 경우에도** 이 타이머가 먼저 도는 일이 있었다 — 그때 패배를 지어내 보고하면 멀쩡히
  * 이기고 있던 사람의 점수가 깎인다. 승패는 서버만 정한다. 여기서는 판을 닫고
  * "연결 끊김"만 알린다 (`endedByDisconnect`).
+ *
+ * 서버의 `PEER_TIMEOUT_MS`(20초)보다 커야 한다 — 서버가 먼저 판정하게 두는 것이 낫다.
  */
-const STALL_GIVEUP_MS = 15000;
+const STALL_GIVEUP_MS = 25000;
 
 /** 정지가 이만큼(ms) 이어지면 콘솔에 원인 진단을 **한 번** 찍는다. */
 const STALL_DIAGNOSE_MS = 3000;
+
+/**
+ * 정지가 이만큼(ms) 이어지면 통로를 다시 세워 본다 (`transport.recover`).
+ *
+ * SDK 재연결이 소켓만 붙이고 방 참가·구독은 복구하지 않으므로, 끊겼다 붙으면
+ * **아무도 안 고쳐 주는 상태**로 남는다 (`net/agent8.ts` 의 `recover` 주석).
+ * 여기가 그걸 알아채는 유일한 자리다 — 판이 멈췄다는 사실 말고는 단서가 없다.
+ *
+ * 정상적인 지연(왕복 지터)과 구분되게 넉넉히 잡는다. 헛불러도 손해는 구독을
+ * 다시 거는 것뿐이라 크게 위험하지 않다.
+ */
+const STALL_RECOVER_MS = 4000;
+
+/** 복구를 다시 시도하기까지의 간격(ms). SDK 재연결 백오프(1·2·4초)와 맞물릴 시간을 준다. */
+const RECOVER_RETRY_MS = 3000;
 
 export class MatchScene implements Scene {
   private state: MatchState = createMatch([]);
@@ -84,6 +101,8 @@ export class MatchScene implements Scene {
   private stalledSince = 0;
   /** 이번 정지에 대해 진단을 이미 찍었는가. 매 프레임 찍으면 콘솔이 못 쓰게 된다. */
   private stallLogged = false;
+  /** 마지막으로 통로 복구를 시도한 벽시계 시각(ms). 0이면 이번 정지에서 아직 안 했다. */
+  private recoveredAt = 0;
   /**
    * 연결이 끊겨 끝난 판인가. **승패가 아니다** — 결과 화면이 이걸 보고 보상·점수 보고를
    * 통째로 건너뛴다 (`STALL_GIVEUP_MS` 주석).
@@ -292,6 +311,7 @@ export class MatchScene implements Scene {
     this.serverVerdict = null;
     this.stalledSince = 0;
     this.stallLogged = false;
+    this.recoveredAt = 0;
     this.endedByDisconnect = false;
     audio.setBgm('match');
     audio.play('match-start');
@@ -413,6 +433,7 @@ export class MatchScene implements Scene {
     if (!waiting || this.state.winner !== null) {
       this.stalledSince = 0;
       this.stallLogged = false;
+      this.recoveredAt = 0;
       return;
     }
     // 서버 판정이 있으면 그걸 쓴다. 승패를 정하는 것은 언제나 서버다.
@@ -433,6 +454,16 @@ export class MatchScene implements Scene {
     if (!this.stallLogged && held >= STALL_DIAGNOSE_MS) {
       this.stallLogged = true;
       console.warn('[net] 정지', { heldMs: held, tick: this.state.tick, ...this.source.stats?.() });
+    }
+
+    // **끊겼다 붙은 통로를 다시 세운다.** 판이 멈췄다는 것 말고는 단서가 없으므로
+    // 여기가 알아채는 유일한 자리다 (`STALL_RECOVER_MS` 주석). 소켓이 아직 안 붙었으면
+    // 실패하니 정지가 이어지는 동안 주기적으로 다시 부른다.
+    const plan = this.getPlan();
+    if (plan.mode === 'pvp' && held >= STALL_RECOVER_MS && now - this.recoveredAt >= RECOVER_RETRY_MS) {
+      this.recoveredAt = now;
+      console.warn('[net] 통로 복구 시도', { heldMs: held });
+      plan.transport.recover?.();
     }
 
     if (held < STALL_GIVEUP_MS) return;

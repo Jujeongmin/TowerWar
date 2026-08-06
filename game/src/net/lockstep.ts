@@ -42,6 +42,16 @@ import type { InputBatch, MatchSetup, MatchTransport } from './types';
  */
 const SEND_INTERVAL_MS = 130;
 
+/**
+ * 정지 중에 약속(`execTick`)이 현재 틱보다 앞설 수 있는 한도 —
+ * `inputDelayTicks` 의 몇 배까지인가.
+ *
+ * 이 값이 곧 **정지에서 복구된 뒤 남는 최악의 입력 지연**이다. 2배면 12틱 설정에서
+ * 최대 24틱(0.8초)이고, 정지가 아무리 길어도 그 이상은 안 는다. 상한이 없으면
+ * 3초 정지에 96틱(3.2초)까지 벌어졌다 (2026-08-06 실기 로그).
+ */
+const MAX_LEAD_FACTOR = 2;
+
 interface Slot {
   1: Command[];
   2: Command[];
@@ -165,12 +175,25 @@ export class Lockstep {
     // **얼마나 앞서느냐가 복구를 가른다.** 고정 3틱은 100ms 전송 시절의 값이었다.
     // 지금은 130ms 마다 보내므로 3틱 = 23틱/초인데 시뮬레이션은 30틱/초(배속이면 45·60)를
     // 요구한다 — 약속이 수요보다 느려서 한 번 멈추면 **영영 못 풀린다** (2026-08-06 신고).
-    // 그래서 실제로 흐른 시간이 요구하는 틱 수만큼 올린다. 더 올리면 정지가 끝난 뒤에도
-    // 약속이 앞서 남아 입력 지연이 영구히 늘고, 덜 올리면 지금처럼 못 푼다.
-    let execTick = nextTick + this.setup.inputDelayTicks;
+    // 그래서 실제로 흐른 시간이 요구하는 틱 수만큼 올린다.
+    //
+    // **그리고 상한을 건다.** 상한이 없으면 정지가 길어질수록 약속이 끝없이 앞서 나간다 —
+    // 실기 로그에서 3초 정지에 `tick: 25` 인데 `lastSentFor: 121` 이 나왔다(96틱 = 3.2초).
+    // 연결이 돌아와도 이 격차는 안 줄어든다: 시뮬레이션은 실시간보다 빨리 못 돌아
+    // (`MAX_ACCUMULATOR`) 약속을 따라잡지 못하고, 그만큼이 **판 끝까지 입력 지연으로
+    // 남는다.** 상한을 걸면 정지가 아무리 길어도 복구 후 지연이 원래대로 돌아온다.
+    //
+    // 상한을 걸어도 교착은 안 생긴다. 약속이 `nextTick + delay` 를 넘어서기만 하면
+    // 상대는 내가 멈춘 틱 너머까지 진행할 수 있고, 그 이상은 애초에 내가 안 굴러서
+    // 줄 수 있는 것도 없다.
+    const delay = this.setup.inputDelayTicks;
+    let execTick = nextTick + delay;
     if (execTick <= this.lastSentFor) {
       const owed = Math.round((since / 1000) * TICK_RATE * tempoScaleOf(state));
-      execTick = this.lastSentFor + Math.max(1, owed);
+      execTick = Math.min(this.lastSentFor + Math.max(1, owed), nextTick + delay * MAX_LEAD_FACTOR);
+      // 상한에 이미 닿아 있으면 한 틱도 못 올린다. 그래도 배치는 보낸다 —
+      // 늦게 도착한 상대 배치가 이 사이에 나를 풀어 줄 수 있다.
+      if (execTick < this.lastSentFor) execTick = this.lastSentFor;
     }
     this.lastSentFor = execTick;
 

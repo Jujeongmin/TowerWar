@@ -293,6 +293,25 @@ export class Agent8Client {
     const server = this.server;
     if (!roomId) throw new Error('방에 들어가기 전입니다');
 
+    // 구독을 **다시 걸 수 있게** 핸들러를 들고 있는다. SDK 재연결은 소켓만 새로 붙이고
+    // 방 참가도 구독도 복구하지 않아서(`recover` 주석), 끊긴 뒤에는 이 둘을 우리가
+    // 다시 만들어야 한다.
+    let onBatchHandler: ((batch: InputBatch) => void) | null = null;
+    let onClosedHandler: ((state: RoomSnapshot) => void) | null = null;
+    let stopBatch: (() => void) | null = null;
+    let stopRoom: (() => void) | null = null;
+
+    const bindBatch = (): void => {
+      if (!onBatchHandler) return;
+      const h = onBatchHandler;
+      stopBatch = server.onRoomMessage(roomId, MSG_INPUTS, (msg: InputBatch) => h(msg));
+    };
+    const bindRoom = (): void => {
+      if (!onClosedHandler) return;
+      const h = onClosedHandler;
+      stopRoom = server.subscribeRoomState(roomId, (state: RoomSnapshot) => h(state));
+    };
+
     return {
       send(batch: InputBatch) {
         // 응답을 기다리면 왕복이 한 번 더 붙어 입력 지연만 늘어난다.
@@ -308,19 +327,53 @@ export class Agent8Client {
           .catch((e: unknown) => console.warn('[net] sendInputs 실패', e));
       },
       onBatch(handler) {
-        return server.onRoomMessage(roomId, MSG_INPUTS, (msg: InputBatch) => handler(msg));
+        onBatchHandler = handler;
+        bindBatch();
+        return () => {
+          onBatchHandler = null;
+          stopBatch?.();
+          stopBatch = null;
+        };
       },
       onClosed(handler) {
         // 매칭 화면이 판을 넘기면서 자기 구독을 끊는다(`PvpScene.handOff`). 여기서
         // 다시 걸어 판이 도는 동안에도 방 상태를 본다 — 안 그러면 상대가 끊겼을 때
         // 서버가 방을 닫아도 화면은 그걸 모르고 영영 멈춰 있다.
         let done = false;
-        return server.subscribeRoomState(roomId, (state: RoomSnapshot) => {
+        onClosedHandler = (state: RoomSnapshot) => {
           if (done || state?.phase !== 'finished') return;
           done = true;
           const slot = state.winnerSlot;
           handler(slot === 1 || slot === 2 ? slot : 0);
-        });
+        };
+        bindRoom();
+        return () => {
+          onClosedHandler = null;
+          stopRoom?.();
+          stopRoom = null;
+        };
+      },
+      /**
+       * 끊겼다 붙은 뒤 통로를 다시 세운다.
+       *
+       * **SDK 재연결은 `connect()` 만 다시 부른다** (`useGameServerStore` 의 재연결
+       * 경로). 방 참가도 구독도 복구하지 않아서, "Reconnection successful!" 이 찍힌
+       * 뒤에도 배치가 한 톨도 안 오고 화면이 멈춘 채로 남는다 (2026-08-06 실기 콘솔).
+       *
+       * 그래서 셋을 직접 한다: 죽은 구독을 걷어내고, 서버에 방으로 다시 넣어 달라고
+       * 하고(`rejoinRoom`), 구독을 새로 건다. 소켓이 아직 안 붙었으면 `rejoinRoom` 이
+       * 실패하는데, 부르는 쪽이 정지가 이어지는 동안 다시 부르므로 그때 붙는다.
+       */
+      recover() {
+        stopBatch?.();
+        stopRoom?.();
+        stopBatch = null;
+        stopRoom = null;
+        bindBatch();
+        bindRoom();
+        void server
+          .remoteFunction('rejoinRoom', [roomId])
+          .catch((e: unknown) => console.warn('[net] rejoinRoom 실패', e));
       },
     };
   }

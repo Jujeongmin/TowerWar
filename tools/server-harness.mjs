@@ -248,6 +248,25 @@ const emptyOk = await server.sendInputs({ execTick: 45 });
 check('빈 배치도 받는다', emptyOk === true);
 check('빈 배치도 ackTick 을 올린다', (await $global.getRoomState('room-1')).players['0xAAA'].ackTick === 45);
 
+// 7-b) 재연결 복구 — 끊겼다 붙은 사람을 방에 다시 넣는다
+// SDK 재연결은 소켓만 붙이고 방 참가를 복구하지 않는다 (server.js `rejoinRoom` 주석).
+as(A);
+// 끊겨 있던 동안 seenAt 이 안 갱신됐다고 치고 낡은 값을 박는다. 복구가 이걸 되돌려야
+// 돌아오자마자 $roomTick 이 나를 조용한 쪽으로 보고 부전패로 닫는 일이 안 생긴다.
+{
+  const st = await $global.getRoomState('room-1');
+  st.players['0xAAA'].seenAt = Date.now() - 60000;
+  await $global.updateRoomState('room-1', { players: st.players });
+}
+check('이 판의 사람이면 방에 다시 들어간다', (await server.rejoinRoom('room-1')) === true);
+check(
+  '복구가 seenAt 을 되돌린다',
+  Date.now() - (await $global.getRoomState('room-1')).players['0xAAA'].seenAt < 5000,
+);
+as(C);
+check('남의 판에는 못 끼어든다', (await server.rejoinRoom('room-1')) === false);
+as(A);
+
 // 8) 해시 일치 → 데싱크 없음
 as(A);
 await server.sendInputs({ execTick: 60, hash: { tick: 30, value: 'h1' } });

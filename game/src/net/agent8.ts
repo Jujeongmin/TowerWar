@@ -310,6 +310,18 @@ export class Agent8Client {
       onBatch(handler) {
         return server.onRoomMessage(roomId, MSG_INPUTS, (msg: InputBatch) => handler(msg));
       },
+      onClosed(handler) {
+        // 매칭 화면이 판을 넘기면서 자기 구독을 끊는다(`PvpScene.handOff`). 여기서
+        // 다시 걸어 판이 도는 동안에도 방 상태를 본다 — 안 그러면 상대가 끊겼을 때
+        // 서버가 방을 닫아도 화면은 그걸 모르고 영영 멈춰 있다.
+        let done = false;
+        return server.subscribeRoomState(roomId, (state: RoomSnapshot) => {
+          if (done || state?.phase !== 'finished') return;
+          done = true;
+          const slot = state.winnerSlot;
+          handler(slot === 1 || slot === 2 ? slot : 0);
+        });
+      },
     };
   }
 

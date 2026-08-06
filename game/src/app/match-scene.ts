@@ -15,7 +15,7 @@ import { Lockstep } from '../net/lockstep';
 import { TICK_DT, speedMulFor } from '../sim/config';
 import { generateMap } from '../sim/maps';
 import { createMatch, step, tempoScaleOf } from '../sim/sim';
-import type { MatchState, PlayerId, PlayerMods, TickEvents } from '../sim/types';
+import type { MatchState, Owner, PlayerId, PlayerMods, TickEvents } from '../sim/types';
 import { InputController } from '../render/input';
 import type { Renderer } from '../render/renderer';
 import { stepDownKind, unitPowerOf, type UnitKind } from '../units';
@@ -30,6 +30,19 @@ import type { MatchPlan, Scene } from './scene';
  * 락스텝은 틱 번호로 맞추므로 벽시계가 밀려도 결과는 안 갈라진다.
  */
 const MAX_ACCUMULATOR = 0.5;
+
+/**
+ * 상대를 이만큼(ms) 계속 기다렸으면 끊긴 것으로 보고 판을 끝낸다.
+ *
+ * **정상 경로가 아니다.** 상대가 끊기면 서버가 `PEER_TIMEOUT_MS`(10초) 뒤에 남은 쪽
+ * 승리로 방을 닫고, 그 판정이 `transport.onClosed` 로 온다. 이건 **그 신호마저 못 받는
+ * 경우**의 마지막 수단이다 — 내 소켓이 죽으면 배치도 방 상태도 안 오는데, 그때 서버는
+ * 나를 조용한 쪽으로 보고 **상대 승리**로 닫는다. 그래서 여기서 내는 결론도 패배여야
+ * 서버와 맞는다.
+ *
+ * 서버 타임아웃보다 넉넉해야 한다 — 서버가 먼저 정하게 두고, 안 오면 그때 움직인다.
+ */
+const STALL_GIVEUP_MS = 15000;
 
 export class MatchScene implements Scene {
   private state: MatchState = createMatch([]);
@@ -54,6 +67,16 @@ export class MatchScene implements Scene {
    * 보고하고 승리 보상을 그대로 받는다.
    */
   private resigned = false;
+  /** 방 상태 구독 해제. PVP에서만 걸린다. */
+  private unwatchRoom: (() => void) | null = null;
+  /**
+   * 서버가 내린 판정. **바로 안 쓴다** — 판이 정상적으로 끝나는 순간에도 방은 닫히는데,
+   * 그때 이 값을 박으면 내 시뮬레이션이 마지막 몇 틱을 못 돌아 타워 수가 어긋난다
+   * (보상이 그 수로 계산된다). 시뮬레이션이 **실제로 멈춰 있을 때만** 적용한다.
+   */
+  private serverVerdict: Owner | null = null;
+  /** 상대를 기다리기 시작한 벽시계 시각(ms). 0이면 안 기다리는 중. */
+  private stalledSince = 0;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -203,6 +226,12 @@ export class MatchScene implements Scene {
         2: { speedMul: speedMulFor(levels[2]), unitPower: unitPowerOf(kinds[2]), canTempo: plan.setup.tempo[2] },
       });
       this.source = new NetSource(new Lockstep(plan.setup, plan.transport));
+      // 상대가 끊기면 배치가 영영 안 온다. 그때 판을 끝낼 수 있는 유일한 길이다
+      // (`net/types.ts` 의 `onClosed` 주석).
+      this.unwatchRoom =
+        plan.transport.onClosed?.((slot) => {
+          this.serverVerdict = slot;
+        }) ?? null;
       shownKinds = { 1: kinds[1], 2: kinds[2] };
     } else {
       // 봇도 사람의 강화 단계를 따라 세진다 (app/difficulty.ts). 안 그러면 강화를 살수록
@@ -248,6 +277,8 @@ export class MatchScene implements Scene {
     // [다시 하기]로 들어온 판이면 앞 판의 항복 상태가 남아 있다. 안 지우면
     // 새 판을 이기고도 '항복 — 보상 없음'이 뜬다.
     this.resigned = false;
+    this.serverVerdict = null;
+    this.stalledSince = 0;
     audio.setBgm('match');
     audio.play('match-start');
     this.resignBtn.hidden = false;
@@ -348,6 +379,7 @@ export class MatchScene implements Scene {
     // 명령이 적용된 순간에 숫자가 바뀌어야 실제 속도와 맞는다.
     this.paintTempo();
     this.renderer.setWaiting(this.source.waiting);
+    this.watchStall(this.source.waiting);
 
     const ui = this.input?.ui;
     if (ui) this.renderer.render(this.state, ui, this.accumulator / TICK_DT, dt);
@@ -356,10 +388,53 @@ export class MatchScene implements Scene {
     if (this.state.winner !== null && !this.resultShown) this.showResult();
   }
 
+  /**
+   * 상대가 끊겨 영영 안 풀리는 정지에서 빠져나온다.
+   *
+   * 판이 도는 동안에는 아무것도 안 한다 — 여기 걸리는 것은 시뮬레이션이 **멈춰 있을
+   * 때**뿐이다. 멈춘 판은 항복도 안 먹는다: 항복은 명령이라 `execTick` 까지 시뮬레이션이
+   * 굴러야 적용되는데 그 틱이 안 온다. 그래서 탈출은 여기밖에 없다.
+   */
+  private watchStall(waiting: boolean): void {
+    if (!waiting || this.state.winner !== null) {
+      this.stalledSince = 0;
+      return;
+    }
+    // 서버 판정이 있으면 그걸 쓴다. 승패를 정하는 것은 언제나 서버다.
+    if (this.serverVerdict !== null) {
+      this.finish(this.serverVerdict);
+      return;
+    }
+    const now = Date.now();
+    if (this.stalledSince === 0) {
+      this.stalledSince = now;
+      return;
+    }
+    if (now - this.stalledSince < STALL_GIVEUP_MS) return;
+    // 서버 판정조차 못 받았다 = 내 소켓이 죽었다. 서버는 나를 조용한 쪽으로 보고
+    // 상대 승리로 닫았을 것이므로 여기서도 패배로 끝낸다 (`STALL_GIVEUP_MS` 주석).
+    const local = this.input?.ui.local ?? 1;
+    this.finish(local === 1 ? 2 : 1);
+  }
+
+  /**
+   * 시뮬레이션 밖에서 판을 끝낸다.
+   *
+   * **평소에는 절대 이러면 안 된다** — 승패는 양쪽 시뮬레이션이 같은 틱에 같은 결론을
+   * 내야 하고, 그래서 항복도 배속도 명령으로 낸다. 여기가 예외인 이유는 **갈라질 상대가
+   * 이미 없기 때문**이다. 상대가 끊겨 명령이 영영 안 오는 상황에서만 불린다.
+   */
+  private finish(winner: Owner): void {
+    if (this.state.winner !== null) return;
+    this.state.winner = winner;
+  }
+
   private teardown(): void {
     this.input?.dispose();
     this.input = null;
     this.source.dispose?.();
+    this.unwatchRoom?.();
+    this.unwatchRoom = null;
   }
 
   private showResult(): void {

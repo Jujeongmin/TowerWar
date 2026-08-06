@@ -8,7 +8,7 @@
  * 한 프로세스에 붙여 락스텝을 검증할 수 있어야 한다 (`loopback.ts`).
  */
 import type { ProfileId } from '../profiles';
-import type { Command, PlayerId } from '../sim/types';
+import type { Command, Owner, PlayerId } from '../sim/types';
 import type { UnitKind } from '../units';
 
 /**
@@ -37,6 +37,17 @@ export interface MatchTransport {
   send(batch: InputBatch): void;
   /** 상대(그리고 서버가 되돌려 준 내 것)의 배치를 받는다. 해제 함수를 돌려준다. */
   onBatch(handler: (batch: InputBatch) => void): () => void;
+  /**
+   * 서버가 방을 닫았다. `winnerSlot` 은 서버가 정한 승자(무승부·미정이면 0).
+   *
+   * **이게 상대가 완전히 끊겼을 때의 유일한 탈출구다.** 배치가 영영 안 오면 락스텝이
+   * 멈추고, 항복조차 안 먹는다 — 항복은 명령이라 `execTick` 까지 시뮬레이션이 굴러야
+   * 적용되는데 그 틱이 안 온다. 서버는 `PEER_TIMEOUT_MS` 뒤에 남은 쪽 승리로 방을
+   * 닫으므로, 그 판정을 받아 판을 끝낸다.
+   *
+   * 선택 사항이다 — 루프백 등 서버가 없는 트랜스포트에는 닫아 줄 방이 없다.
+   */
+  onClosed?(handler: (winner: Owner) => void): () => void;
   // 결과 보고는 여기 없다. 보상이 서버 계정을 바꾸므로 계정을 든 쪽(main.ts)이
   // 한 번만 보고해야 한다 — 트랜스포트에도 두면 두 경로가 생긴다.
   close?(): void;

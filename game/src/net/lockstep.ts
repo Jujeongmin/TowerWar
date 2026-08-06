@@ -27,6 +27,17 @@ import type { InputBatch, MatchSetup, MatchTransport } from './types';
 /** 몇 틱마다 배치를 보내는가. 30Hz 기준 3틱 ≈ 100ms — remote function 초당 10회 제한에 맞춘 값. */
 const BATCH_TICKS = 3;
 
+/**
+ * 배치를 보내는 최소 간격(ms). **벽시계로 잰다.**
+ *
+ * `pump` 는 매 틱(달릴 땐 30Hz, 멈췄을 땐 프레임마다) 불린다. 틱 수(`state.tick`)로
+ * 빈도를 재면 두 함정에 빠진다: 시뮬레이션이 멈추면 틱이 안 늘어 **영영 안 보내고**
+ * (교착), 반대로 매 틱 보내면 **초당 30회**라 remote function 한도(10회)를 넘겨
+ * 서버가 배치를 버린다 — 그러면 시간은 상대 배치로 흐르는데 **내 조작(항복·경로)만
+ * 유실**된다. 벽시계로 100ms 마다 한 번만 보내면 둘 다 안 생긴다 (2026-08-06).
+ */
+const SEND_INTERVAL_MS = 100;
+
 interface Slot {
   1: Command[];
   2: Command[];
@@ -48,6 +59,8 @@ export class Lockstep {
   private outgoing: Command[] = [];
   /** 마지막으로 보낸 배치의 실행 틱. `state.tick` 이 아니라 **execTick** 기준이다. */
   private lastSentFor = -1;
+  /** 마지막으로 배치를 보낸 벽시계 시각(ms). 전송 빈도를 `SEND_INTERVAL_MS` 로 묶는다. */
+  private lastSendAt = 0;
   private readonly stop: () => void;
 
   /** 이미 지나간 틱으로 도착한 배치 수. 0이 아니면 입력 지연이 모자란 것이다. */
@@ -102,18 +115,21 @@ export class Lockstep {
    * @param state    해시를 뜨기 위한 현재 상태
    */
   pump(nextTick: number, state: MatchState): void {
+    // **전송 빈도는 벽시계로 묶는다** (`SEND_INTERVAL_MS`). `pump` 는 매 틱 불리므로
+    // 그대로 보내면 초당 30회라 remote function 한도를 넘겨 내 조작이 유실된다.
+    // 아직 간격이 안 됐으면 `outgoing` 을 그대로 쌓아 두고 다음 기회에 함께 보낸다 —
+    // 명령은 버려지지 않고 최대 100ms 늦게 나갈 뿐이다.
+    const now = Date.now();
+    if (now - this.lastSendAt < SEND_INTERVAL_MS) return;
+    this.lastSendAt = now;
+
     // **`state.tick` 이 멈춰도 배치를 계속 보내야 한다.**
     //
     // 상대 배치가 늦게 와서(`commandsFor` → `stalled`) 시뮬레이션이 멈추면
-    // `state.tick` 이 그 자리에 고정된다. 그런데 `execTick` 을 `state.tick` 에서
-    // 계산하면 그 값도 고정이라, `nextTick % BATCH_TICKS !== 0` 인 틱에 멈추면
-    // 배치를 **영원히 안 보낸다** — 상대는 내 배치를 기다리고 나는 상대를 기다리는
-    // 교착이 된다. 실제로 났다: PVP에서 "상대를 기다리는중"이 뜨고 영원히 멈췄다.
-    //
-    // 그래서 `lastSentFor` 를 `state.tick` 이 아니라 **마지막으로 보낸 배치의
-    // execTick** 으로 두고, 그보다 앞선 execTick 으로 계속 예약한다. 시뮬레이션이
-    // 멈춰 있어도 빈 배치(`commands: []`)는 상대의 `ackTick` 을 올려 상대가
-    // 진행하게 하고, 상대도 같은 규칙으로 배치를 보내므로 내 쪽도 풀린다.
+    // `state.tick` 이 그 자리에 고정된다. `execTick` 을 `state.tick` 에서 계산하면
+    // 그 값도 고정이라 교착이 된다 — 상대는 내 배치를, 나는 상대를 기다린다.
+    // 그래서 `lastSentFor`(마지막으로 보낸 execTick)보다 앞선 execTick 으로 계속
+    // 예약한다. 멈춰 있어도 빈 배치가 상대의 `ackTick` 을 올려 양쪽이 풀린다.
     let execTick = nextTick + this.setup.inputDelayTicks;
     if (execTick <= this.lastSentFor) execTick = this.lastSentFor + BATCH_TICKS;
     this.lastSentFor = execTick;

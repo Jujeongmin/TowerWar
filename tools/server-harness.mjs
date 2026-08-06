@@ -223,8 +223,49 @@ await server.$roomTick(300, 'room-1');
 const started = await $global.getRoomState('room-1');
 check('둘 다 준비면 시작', started.phase === 'playing', started.phase);
 check('시드가 16비트 범위', Number.isInteger(started.seed) && started.seed >= 0 && started.seed < 0x10000, started.seed);
-check('슬롯이 계정 순으로 1,2', started.slots['0xAAA'] === 1 && started.slots['0xBBB'] === 2, started.slots);
+// 슬롯은 무작위로 준다 (같은 두 사람이 붙어도 위아래가 바뀌게). 순서는 못 박지만
+// **둘이 서로 다른 번호를 하나씩 갖는 것**은 반드시 지켜져야 한다 — 둘 다 P1이 되면
+// 양쪽이 서로를 자기 자리에 놓고 첫 틱부터 갈라진다.
+check(
+  '슬롯이 1과 2로 하나씩 나뉜다',
+  [started.slots['0xAAA'], started.slots['0xBBB']].sort().join() === '1,2',
+  started.slots,
+);
+// 슬롯별 값이 그 사람 것이어야 한다. 무작위로 바뀌는 것은 번호지 사람이 아니다.
+check(
+  '이름이 슬롯 번호를 따라간다',
+  started.names[started.slots['0xAAA']] === started.players['0xAAA'].name &&
+    started.names[started.slots['0xBBB']] === started.players['0xBBB'].name,
+  { names: started.names, slots: started.slots },
+);
 check('입력 지연이 방 상태에 실린다', started.inputDelayTicks === 12);
+
+// 4-b) 슬롯이 **정말로** 뒤집히는가. 한 번 돌려서 통과하는 것은 증명이 아니다 —
+// 계정 순 고정이던 시절에도 위 검사는 통과한다. 같은 두 사람으로 여러 판을 열어
+// 두 배치가 모두 나오는지 본다 (2026-08-06 사용자 지시: 같은 상대여도 위아래가 바뀌게).
+{
+  const seen = new Set();
+  // 200번이면 한쪽으로만 나올 확률이 2^-199 다. 실패하면 무작위가 아닌 것이다.
+  for (let i = 0; i < 200 && seen.size < 2; i++) {
+    const id = `slotmix-${i}`;
+    const r = room(id);
+    r.users = new Set(['0xAAA', '0xBBB']);
+    const now = Date.now();
+    r.state = {
+      roomId: id,
+      phase: 'waiting',
+      createdAt: now,
+      players: {
+        '0xAAA': { ready: true, joinedAt: now },
+        '0xBBB': { ready: true, joinedAt: now },
+      },
+    };
+    await server.$roomTick(300, id);
+    seen.add(rooms.get(id).state.slots['0xAAA']);
+    rooms.delete(id);
+  }
+  check('같은 두 사람이어도 슬롯이 판마다 바뀐다', seen.size === 2, [...seen]);
+}
 
 // 5) 진행 중인 방에는 새 사람이 안 들어간다 (새 방을 판다)
 as(C);
@@ -239,7 +280,7 @@ messages.length = 0;
 await server.sendInputs({ execTick: 42, commands: [{ kind: 'upgrade', player: 99, towerId: 3 }] });
 const relayed = messages.at(-1);
 check('명령이 룸에 브로드캐스트된다', relayed && relayed.type === 'tw.inputs', relayed);
-check('클라이언트가 보낸 player 를 서버 값으로 덮는다', relayed.message.commands[0].player === 2, relayed.message.commands[0]);
+check('클라이언트가 보낸 player 를 서버 값으로 덮는다', relayed.message.commands[0].player === started.slots['0xBBB'], relayed.message.commands[0]);
 check('ackTick 이 기록된다', (await $global.getRoomState('room-1')).players['0xBBB'].ackTick === 42);
 
 // 7) 빈 배치도 통과해야 한다 (상대가 진행할 수 있게)
@@ -287,14 +328,17 @@ check('해시가 다르면 데싱크 기록', d && d.tick === 60, d);
 
 // 10) 결과 보고
 as(A);
-await server.reportResult(1);
+// 슬롯이 무작위라 A의 번호를 읽어서 보고한다. 이 검사의 뜻은 "A가 이겼다"이지
+// "1번이 이겼다"가 아니다.
+const slotA = started.slots['0xAAA'];
+await server.reportResult(slotA);
 const fin = await $global.getRoomState('room-1');
-check('결과가 기록된다', fin.phase === 'finished' && fin.winner === '0xAAA' && fin.winnerSlot === 1, fin);
+check('결과가 기록된다', fin.phase === 'finished' && fin.winner === '0xAAA' && fin.winnerSlot === slotA, fin);
 // 끝난 방에 복구를 시도하면 되살리지 않고 판정을 실어 보낸다 (§-70).
 const rejoinFin = await server.rejoinRoom('room-1');
 check(
   '닫힌 방은 복구 대신 판정을 돌려준다',
-  rejoinFin.ok === false && rejoinFin.phase === 'finished' && rejoinFin.winnerSlot === 1,
+  rejoinFin.ok === false && rejoinFin.phase === 'finished' && rejoinFin.winnerSlot === slotA,
   rejoinFin,
 );
 check('끝난 판에는 명령이 안 들어간다', (await server.sendInputs({ execTick: 99 })) === false);
@@ -386,7 +430,7 @@ check('소문자·공백을 넣어도 정규화되어 들어간다', joined.room
 
 // 16.5) 점수 대역 매칭 — "될 때가 있고 안 될 때가 있다"의 원인 (2026-08-04)
 //
-// 대역은 기다린 시간에 따라 넓어진다 (0초 ±100 / 4초 ±250 / 8초 ±600 / 10초 무제한).
+// 대역은 기다린 시간에 따라 넓어진다 (0초 ±150 / 4초 ±250 / 8초 ±600 / 10초 무제한).
 // 세 가지를 고정한다:
 //   ① 점수가 멀면 갓 생긴 방을 안 집는다
 //   ② **내 대기 시간도 대역을 넓힌다** — 전에는 상대 것만 봐서, 늦게 온 사람은
@@ -493,10 +537,10 @@ await server.setReady(true);
 await server.$roomTick(300, lv.roomId);
 const lvState = await $global.getRoomState(lv.roomId);
 check('시작 시 levels 가 내려온다', lvState.levels != null, lvState);
-check('A는 슬롯1/3단계', lvState.slots['0xAAA'] === 1 && lvState.levels[1] === 3, lvState.levels);
+check('A의 3단계가 A 슬롯으로 내려온다', lvState.levels[lvState.slots['0xAAA']] === 3, lvState.levels);
 // 상한이 없어졌다(2026-08-04). 높은 단계도 그대로 내려간다 — 양쪽이 같은 값을 봐야
 // 같은 판을 돈다는 것이 이 검사의 핵심이고, 자르는 것은 그 목적이 아니었다.
-check('B의 99단계가 그대로 내려온다', lvState.slots['0xBBB'] === 2 && lvState.levels[2] === 99, lvState.levels);
+check('B의 99단계가 그대로 내려온다', lvState.levels[lvState.slots['0xBBB']] === 99, lvState.levels);
 
 // 24) 음수·문자열도 0으로 떨어진다
 as(A); await server.leaveMatch();
@@ -535,8 +579,8 @@ await server.setReady(true);
 await server.$roomTick(300, uk.roomId);
 const uks = await $global.getRoomState(uk.roomId);
 check('시작 시 kinds 가 내려온다', uks.kinds != null, uks);
-check('A는 슬롯1/보라 (산 것)', uks.slots['0xAAA'] === 1 && uks.kinds[1] === 'beergang_purple', uks.kinds);
-check('B는 안 산 금색을 자칭 못 한다', uks.slots['0xBBB'] === 2 && uks.kinds[2] === 'beergang', uks.kinds);
+check('A가 산 보라가 A 슬롯으로 내려온다', uks.kinds[uks.slots['0xAAA']] === 'beergang_purple', uks.kinds);
+check('B는 안 산 금색을 자칭 못 한다', uks.kinds[uks.slots['0xBBB']] === 'beergang', uks.kinds);
 check('힘 수치는 서버가 안 내려준다', uks.powers === undefined && uks.unitPower === undefined, uks);
 
 // 24.6) 모르는 종류는 기본값으로 떨어진다 (배포 시점이 어긋난 클라이언트)

@@ -318,7 +318,10 @@ function eloDelta(mine, theirs, score, k) {
  * 받도록 하기 위해서다 — 사람과 붙을 여지를 봇 폴백 직전까지 최대로 준다.
  */
 const RATING_BAND_STEPS = [
-  { afterMs: 0, band: 100 },
+  // 첫 칸이 ±100 이었는데, 12초짜리 창에서 그 폭으로 첫 3번을 헛돌면 남는 기회가
+  // 얼마 없다. 사람이 붙을 확률이 봇전보다 값지고, 맵이 완전 대칭이라 점수 차가
+  // 곧 유불리도 아니다 — ±150 으로 조금 넓힌다 (2026-08-06 사용자 지시).
+  { afterMs: 0, band: 150 },
   { afterMs: 4000, band: 250 },
   { afterMs: 8000, band: 600 },
   { afterMs: 10000, band: Infinity },
@@ -1165,7 +1168,20 @@ class Server {
    * 클라이언트가 정하면 둘이 다른 맵을 만들거나 둘 다 P1이 되어 버린다.
    */
   async #start(roomId, users, players) {
-    // 계정 문자열 순으로 번호를 준다. 접속 순서로 주면 재접속 때 번호가 뒤집힌다.
+    // **번호를 무작위로 준다** (2026-08-06 사용자 지시). 맵이 P1을 아래, P2를 위에 놓으므로
+    // (`maps.ts`) 번호가 곧 화면에서의 위아래다. 계정 문자열 순으로 주던 때는 같은 두 사람이
+    // 붙으면 **늘 같은 쪽**이었다.
+    //
+    // **재접속에 안전하다.** 여기서 한 번 뽑아 `slots` 로 방 상태에 박고, 그 뒤로는 아무도
+    // 다시 계산하지 않는다 — 클라이언트도 `rejoinRoom` 도 저장된 값을 읽는다. 계정 순
+    // 정렬은 원래 "접속 순서로 주면 재접속 때 뒤집힌다"를 막으려던 것인데, 저장해 두는
+    // 이상 정렬이 그 역할을 하고 있던 것이 아니다.
+    //
+    // 정렬을 먼저 하는 것은 남겨 둔다. 뒤집기 전 순서가 접속 순서에 안 흔들려야
+    // 무작위성이 오롯이 아래 동전에서만 나온다.
+    const order = [...users].sort();
+    if (Math.random() < 0.5) order.reverse();
+
     const slots = {};
     const levels = {};
     const names = {};
@@ -1173,7 +1189,7 @@ class Server {
     const kinds = {};
     const ratings = {};
     const tempo = {};
-    [...users].sort().forEach((account, i) => {
+    order.forEach((account, i) => {
       const slot = i + 1;
       slots[account] = slot;
       profiles[slot] = cleanProfile((players[account] || {}).profile);

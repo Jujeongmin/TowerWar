@@ -869,16 +869,26 @@ export class Renderer {
         ctx.stroke();
       }
 
-      // 라벨 알약 + 아래로 향한 꼭지. 건물 위로 띄워 이 타워를 가리킨다.
+      // 라벨 알약 + 타워로 향한 꼭지. 건물 밖으로 띄워 이 타워를 가리킨다.
       // 위아래로 살짝 떠서 눈에 든다.
-      const bob = Math.sin(this.time * 3) * (r * 0.12);
-      const cy = tw.y - r * 2.9 + bob;
-      const fs = Math.round(r * 0.82);
+      //
+      // **크게 그린다** (2026-08-06 사용자 지시). 헷갈리는 것은 위치가 아니라
+      // **내가 무슨 색인가**이고, 알약이 곧 내 색 견본이라 클수록 그 답이 빨리 든다.
+      // 전에는 글자 `r*0.82` 였는데 "나" 한 글자라 판 전체에서 티끌만 했다.
+      const bob = Math.sin(this.time * 3) * (r * 0.16);
+      // **위 진영이면 아래쪽에 단다.** P2 홈은 화면 맨 위라(`maps.ts`) 위로 띄우면
+      // 알약이 판 밖으로 잘린다 — 정작 위 진영일 때가 더 헷갈리는데 그때 안 보였다.
+      const below = tw.y < FIELD_H / 2;
+      const side = below ? 1 : -1;
+      // 건물이 발치에서 위로 서 있어(`TOWER_SPRITE_W`) 반경보다 훨씬 높다. 알약을 키운
+      // 만큼 더 띄우지 않으면 지붕에 얹힌다.
+      const cy = tw.y + side * r * 4.3 + bob;
+      const fs = Math.round(r * 1.5);
       ctx.font = `800 ${fs}px ui-sans-serif, system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const padX = r * 0.55;
-      const bh = r * 1.25;
+      const padX = r * 0.8;
+      const bh = r * 2.1;
       const bw = ctx.measureText(label).width + padX * 2;
       const bx = tw.x - bw / 2;
       const by = cy - bh / 2;
@@ -889,14 +899,20 @@ export class Renderer {
       } else {
         ctx.rect(bx, by, bw, bh);
       }
-      // 꼭지 삼각형을 같은 경로에 이어 붙여 한 번에 칠한다.
-      const tip = r * 0.5;
-      ctx.moveTo(tw.x - tip, by + bh);
-      ctx.lineTo(tw.x + tip, by + bh);
-      ctx.lineTo(tw.x, by + bh + tip);
+      // 꼭지 삼각형을 같은 경로에 이어 붙여 한 번에 칠한다. 타워를 향하게 뒤집는다.
+      const tip = r * 0.62;
+      const tipBase = below ? by : by + bh;
+      ctx.moveTo(tw.x - tip, tipBase);
+      ctx.lineTo(tw.x + tip, tipBase);
+      ctx.lineTo(tw.x, tipBase - side * tip);
       ctx.closePath();
-      ctx.fillStyle = withAlpha(color, 0.92 * fade);
+      ctx.fillStyle = withAlpha(color, 0.95 * fade);
       ctx.fill();
+      // 어두운 테두리. 알약이 커진 만큼 밝은 지형 위에서 형태가 풀어지는데,
+      // 한 겹 두르면 색 견본으로서의 윤곽이 산다.
+      ctx.strokeStyle = withAlpha('#0a0e14', 0.55 * fade);
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
 
       // 글자는 어두운 바탕색으로 — 내 색이 밝아(파랑·빨강) 흰 글자보다 대비가 산다.
       ctx.fillStyle = withAlpha('#0a0e14', fade);

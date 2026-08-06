@@ -53,6 +53,38 @@ lastSentFor = execTick;
 
 ---
 
+## -66. PVP 전송 100ms 는 한도 경계였다 — 130ms + SDK throttle (2026-08-06, 사용자 신고)
+
+§-65 로 100ms(10회/초) 스로틀을 넣었는데, 실기에서 **`sendInputs 실패: Too many
+calls to the function. Use throttle option.`** 이 떴다(1.5배속, "상대를 기다리는 중" 정지).
+
+### 원인 — SDK 한도가 "롤링 1초에 10회"다
+
+`@agent8/gameserver` 의 `remoteFunction` 은 **throttle 옵션이 없으면** 같은 함수를
+**롤링 1초 안에 10회 넘게** 부르면 던진다(`callTimestamps.length >= 10 → reject`).
+100ms 간격 = 정확히 10회/초라 롤링 윈도우 정렬에 따라 **11번째가 걸린다.** 경계값이라
+가끔 터졌다.
+
+### 고침 — 이중
+
+1. **락스텝 간격 100 → 130ms**(`SEND_INTERVAL_MS`). ≈7.7회/초 = 롤링 1초 최대 8회로
+   여유(실측). 지연은 130ms 로 미미
+2. **`sendInputs` 에 SDK `throttle: 100` 옵션**(`agent8.ts`). throttle 을 주면 SDK 가
+   내부 lodash throttle 로 묶어 **절대 안 던진다.** 락스텝 간격(130)이 이 값(100)보다
+   커서 정상 전송은 안 버려지고, 재연결·지터 버스트만 걸러진다
+
+`INPUT_DELAY_TICKS = 12`(1.5배속 예산 267ms) 라 130ms + RTT 로도 execTick 안에 도착한다.
+**2배속(예산 200ms)은 여유가 빠듯하다** — 계속 정지가 나면 `INPUT_DELAY_TICKS` 를
+올리는 것이 손잡이다(대신 1배속 조작 지연이 함께 는다).
+
+### 검증
+
+- 브라우저(가짜 transport, ~45Hz=1.5배속 흉내): 전송 7.5회/초, **롤링 1초 최대 8회**
+  (한도 10 미만), 명령 전달됨. 교착 시 execTick 전진(§-65)은 그대로
+- `tsc` 0, 서버 158/158, 빌드 통과
+
+---
+
 ## -65. PVP 입력 유실 — daa4d27 이 전송 빈도 제한을 없앴다 (2026-08-06, 사용자 신고)
 
 **"PVP 매칭 잡혔는데 항복도 경로도 안 되고, 시간은 간다."** 시간이 간다 = sim 은

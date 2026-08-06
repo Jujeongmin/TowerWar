@@ -426,4 +426,6 @@ export interface RemoteAccount {
   rating: number;
   /** 유료(VX)로 열린 항목들. 코인으로 산 `ownedUnits` 와 갈라져 있다. */
   entitlements: string[];
+  /** 마지막 광고 코인 수령 시각(ms). 상점이 쿨다운 남은 시간 표시에 쓴다. */
+  adAt: number;
 }

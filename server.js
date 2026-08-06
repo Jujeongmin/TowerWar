@@ -233,12 +233,12 @@ const MAX_TOWERS = 12;
 
 /** 광고 한 번에 주는 코인. 승리 보상(100)보다 낮게 잡았다 — 판을 이기는 편이 낫다. */
 const AD_COINS = 60;
-/** 광고 사이 최소 간격(ms). 연타로 하루치를 몇 초에 소진하지 못하게 한다. */
-const AD_COOLDOWN_MS = 90000;
-/** 하루 상한. 이걸로 광고 코인의 총량이 정해진다. */
-const AD_DAILY_MAX = 10;
-/** 하루의 길이(ms). UTC 기준으로 자른다 — 서버가 시간대를 모른다. */
-const DAY_MS = 86400000;
+/**
+ * 광고 사이 최소 간격(ms). **30초** (2026-08-04 사용자 지시). 연타만 막는다.
+ * 하루 상한은 없앴다 — SDM처럼 "다 봤는데 안 됨"을 없애는 게 우선이라, 남은 유일한
+ * 게이트가 이 짧은 쿨다운이다. **클라이언트도 이 값을 알아야** 남은 시간을 표시한다
+ * (`game/src/account/account.ts` 의 `AD_COOLDOWN_MS` 와 맞춰 둘 것). */
+const AD_COOLDOWN_MS = 30000;
 
 function num(v) {
   const n = typeof v === 'number' ? v : Number(v);
@@ -633,22 +633,10 @@ class Server {
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();
       const now = Date.now();
-      // UTC 기준 날짜. 서버가 사용자 시간대를 모르므로 한 기준으로 잘라야
-      // 사람마다 상한이 달라지지 않는다.
-      const day = Math.floor(now / DAY_MS);
-      const count = a.adDay === day ? a.adCount : 0;
-
+      // 남은 게이트는 30초 쿨다운 하나뿐이다 (하루 상한 제거, 2026-08-04).
       // **기계가 읽는 코드로 던진다.** 화면 문구는 언어마다 달라야 한다(§-40).
-      if (count >= AD_DAILY_MAX) throw new Error('ad_limit');
       if (now - a.adAt < AD_COOLDOWN_MS) throw new Error('ad_cooldown');
-
-      return await this.#saveAccount({
-        ...a,
-        coins: a.coins + AD_COINS,
-        adAt: now,
-        adDay: day,
-        adCount: count + 1,
-      });
+      return await this.#saveAccount({ ...a, coins: a.coins + AD_COINS, adAt: now });
     });
   }
 

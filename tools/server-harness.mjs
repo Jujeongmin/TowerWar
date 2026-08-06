@@ -967,8 +967,8 @@ userStates.set('0xGGG', {
 const vxClean = await server.getAccount();
 check('중복·모르는 항목이 걸러진다', JSON.stringify(vxClean.entitlements) === JSON.stringify(['beergang_rainbow']), vxClean.entitlements);
 
-// 51) 광고 코인 — **서버 사이드 검증 없이 바로 지급** (2026-08-04, B안). 그 대신
-// 금액은 서버가 정하고, 간격(쿨다운)·하루 상한은 그대로 서버가 쥔다.
+// 51) 광고 코인 — **검증 없이 바로 지급** (B안). 남은 게이트는 30초 쿨다운 하나.
+// 하루 상한은 제거했다 (2026-08-04, 사용자 지시: SDM처럼 "다 봤는데 안 됨"을 없앤다).
 const H = { account: '0xHHH', roomId: null };
 as(H);
 userStates.set('0xHHH', { ...defaultsFor('0xHHH'), coins: 0 });
@@ -976,31 +976,22 @@ userStates.set('0xHHH', { ...defaultsFor('0xHHH'), coins: 0 });
 const ad1 = await server.claimAdCoins('req-1');
 check('광고 보상 = +60 (검증 없이 바로)', ad1.coins === 60, ad1.coins);
 
-// requestId 를 안 봐도 된다 — dev 가짜 제공자가 주는 빈 문자열도 그대로 지급된다.
-userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 });
-const adEmpty = await server.claimAdCoins('');
-check('빈 requestId 로도 지급된다 (검증을 안 하므로)', adEmpty.coins === 120, adEmpty.coins);
-
-// 쿨다운 — "너무 자주"는 여전히 막는다.
+// 쿨다운 — 바로 다시 부르면 거절한다 ("연타" 만 막는다).
 let aerr = null;
 try { await server.claimAdCoins('req-2'); } catch (e) { aerr = e.message; }
 check('연달아 부르면 거절 (쿨다운)', aerr === 'ad_cooldown', aerr);
 
-// 하루 상한까지 밀어붙인다 (이미 2회 = 나머지 8번, 합 10회 = 600)
-for (let i = 0; i < 8; i++) {
-  userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 });
-  await server.claimAdCoins(`req-fill-${i}`);
-}
-check('하루 10번까지 = 600코인', (await server.getAccount()).coins === 600, (await server.getAccount()).coins);
+// 쿨다운이 지나면 다시 받는다. 빈 requestId 로도 된다 (검증을 안 하므로).
 userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 });
-aerr = null;
-try { await server.claimAdCoins('req-over'); } catch (e) { aerr = e.message; }
-check('하루 상한을 넘으면 거절', aerr === 'ad_limit', aerr);
+const adAgain = await server.claimAdCoins('');
+check('쿨다운 지나면 다시 받는다 (빈 requestId 로도)', adAgain.coins === 120, adAgain.coins);
 
-// 날이 바뀌면 다시 받는다
-userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0, adDay: 0 });
-const ad2 = await server.claimAdCoins('req-newday');
-check('날이 바뀌면 다시 받는다', ad2.coins === 660, ad2.coins);
+// **하루 상한이 없다.** 쿨다운만 비켜 주면 몇 번이든 받는다.
+for (let i = 0; i < 20; i++) {
+  userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 });
+  await server.claimAdCoins(`req-many-${i}`);
+}
+check('하루 상한 없음 — 20번 더 받아도 안 막힘', (await server.getAccount()).coins === 120 + 20 * 60, (await server.getAccount()).coins);
 
 // 52) 광고 2배 — 서버가 지불한 금액을 그대로 한 번 더, 판당 한 번. 검증 없음.
 as(A); await server.leaveMatch().catch(() => {});

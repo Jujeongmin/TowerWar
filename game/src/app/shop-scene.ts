@@ -10,6 +10,7 @@
  * 씬마다 localStorage를 만지면 어느 쪽이 최신인지 알 수 없게 된다.
  */
 import {
+  AD_COOLDOWN_MS,
   canUseTempo,
   ownsUnitKind,
   upgradeCostOf,
@@ -83,6 +84,12 @@ export class ShopScene implements Scene {
   private readonly adNote: HTMLElement;
   private readonly adCard: HTMLButtonElement;
   private readonly tempoRow: HTMLButtonElement;
+  /** 광고 재생~청구가 진행 중. 그동안은 쿨다운 틱이 버튼을 다시 켜지 못하게 한다. */
+  private watching = false;
+  /** 지금 광고 노트가 쿨다운 카운트다운을 보여주는 중인가. 0이 되면 지워야 한다. */
+  private cooldownShown = false;
+  /** 쿨다운 남은 시간을 매초 갱신하는 타이머. 상점이 보일 때만 돈다. */
+  private cooldownTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly root: HTMLElement,
@@ -150,12 +157,15 @@ export class ShopScene implements Scene {
     ad.addEventListener('click', () => {
       // 광고를 보는 동안 두 번 눌리면 두 번 재생된다.
       ad.disabled = true;
+      this.watching = true;
       this.adNote.textContent = '';
       this.adNote.hidden = true;
       void this.watchAdForCoins().then((err) => {
+        this.watching = false;
         const msg = err === null ? '' : adMessage(err);
         this.adNote.textContent = msg;
         this.adNote.hidden = msg.length === 0;
+        this.cooldownShown = false; // 아래 render 가 쿨다운이면 다시 세운다
         this.render();
       });
     });
@@ -210,6 +220,8 @@ export class ShopScene implements Scene {
   enter(): void {
     this.render();
     this.root.hidden = false;
+    // 쿨다운 남은 시간을 매초 갱신한다. 상점을 나가면 멈춘다 (`exit`).
+    this.cooldownTimer ??= setInterval(() => this.refreshAdCooldown(), 1000);
   }
 
   /**
@@ -222,6 +234,10 @@ export class ShopScene implements Scene {
 
   exit(): void {
     this.root.hidden = true;
+    if (this.cooldownTimer !== null) {
+      clearInterval(this.cooldownTimer);
+      this.cooldownTimer = null;
+    }
   }
 
   frame(): void {
@@ -346,7 +362,33 @@ export class ShopScene implements Scene {
     set(this.adCard, 'name', t().adCard);
     set(this.adCard, 'amount', `+${AD_COINS}`);
     set(this.adCard, 'state', t().adCardAction);
-    this.adCard.disabled = false;
+    this.refreshAdCooldown();
+  }
+
+  /**
+   * 광고 쿨다운 남은 시간을 버튼·노트에 반영한다. 매초 틱(`cooldownTimer`)과 `render`
+   * 양쪽에서 부른다.
+   *
+   * **광고를 보는 중(`watching`)에는 손대지 않는다** — 그때 버튼은 이미 잠겨 있고,
+   * 쿨다운이 0이라고 여기서 다시 켜면 재생 도중 두 번 눌린다.
+   */
+  private refreshAdCooldown(): void {
+    if (this.watching) return;
+    const remain = AD_COOLDOWN_MS - (Date.now() - this.getAccount().adAt);
+    if (remain > 0) {
+      this.adCard.disabled = true;
+      this.adNote.textContent = t().adCooldownWait(Math.ceil(remain / 1000));
+      this.adNote.hidden = false;
+      this.cooldownShown = true;
+    } else {
+      this.adCard.disabled = false;
+      // 방금까지 카운트다운을 보여줬으면 지운다. 다른 메시지(성공·실패)는 안 건드린다.
+      if (this.cooldownShown) {
+        this.adNote.textContent = '';
+        this.adNote.hidden = true;
+        this.cooldownShown = false;
+      }
+    }
   }
 }
 

@@ -111,7 +111,19 @@ export interface Account {
    * 일어나고 서버 계정에만 기록된다 (`net/vx.ts`).
    */
   entitlements: string[];
+  /**
+   * 마지막으로 광고 코인을 받은 시각(ms). 상점이 이걸로 쿨다운 남은 시간을 표시한다.
+   * **서버가 진짜다** — 오프라인에서는 안 움직인다 (광고 코인 청구가 서버에만 있다).
+   */
+  adAt: number;
 }
+
+/**
+ * 광고 코인 쿨다운(ms). **`server.js` 의 `AD_COOLDOWN_MS` 와 같아야 한다** — 서버가
+ * 진짜로 막는 값이고, 이건 화면에 남은 시간을 표시하기 위한 사본이다. 어긋나면
+ * "0초라는데 서버는 거절"이 된다.
+ */
+export const AD_COOLDOWN_MS = 30000;
 
 export function defaultAccount(): Account {
   return {
@@ -130,6 +142,7 @@ export function defaultAccount(): Account {
     soloDraws: 0,
     rating: DEFAULT_RATING,
     entitlements: [],
+    adAt: 0,
   };
 }
 
@@ -155,6 +168,7 @@ export function fromRemote(r: {
   soloWins: number; soloLosses: number; soloDraws: number;
   rating?: number;
   entitlements?: string[];
+  adAt?: number;
 }): Account {
   const owned = r.ownedUnits.filter(isUnitKind);
   const kind = isUnitKind(r.unitKind) ? r.unitKind : DEFAULT_UNIT_KIND;
@@ -174,6 +188,7 @@ export function fromRemote(r: {
     soloDraws: num(r.soloDraws),
     rating: ratingOr(r.rating, DEFAULT_RATING),
     entitlements: [...new Set(r.entitlements ?? [])],
+    adAt: num(r.adAt),
   };
   return { ...a, unitKind: unitKindOf(a) };
 }
@@ -417,6 +432,7 @@ export function loadAccount(): Account {
       // **로컬 사본은 참고용이다.** 유료 소유의 진짜 출처는 서버다 — 여기 값을
       // 손으로 넣어도 착용은 서버가 거절한다 (`selectUnitKind`).
       entitlements: [...new Set(Array.isArray(parsed.entitlements) ? parsed.entitlements : [])],
+      adAt: num(parsed.adAt),
     };
     // 안 가진 것이 착용돼 있으면(손으로 고친 저장본 등) 기본으로 되돌린다.
     return { ...account, unitKind: unitKindOf(account) };

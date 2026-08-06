@@ -152,6 +152,8 @@ export interface Strings {
   adFailed: string;
   adLimit: string;
   adCooldown: string;
+  /** 광고 쿨다운 남은 시간. 상점에서 매초 갱신된다. */
+  adCooldownWait: (seconds: number) => string;
 }
 
 const en: Strings = {
@@ -289,6 +291,7 @@ const en: Strings = {
   adFailed: 'Ad was not finished, so no reward',
   adLimit: "You've claimed all of today's ads",
   adCooldown: 'Try again in a moment',
+  adCooldownWait: (s) => `Available in ${s}s`,
 };
 
 const ko: Strings = {
@@ -426,6 +429,7 @@ const ko: Strings = {
   adFailed: '광고를 끝까지 안 봐서 보상이 없습니다',
   adLimit: '오늘 받을 수 있는 광고를 다 받았습니다',
   adCooldown: '조금 뒤에 다시 시도하세요',
+  adCooldownWait: (s) => `${s}초 후 다시 볼 수 있어요`,
 };
 
 // 간체 중국어. 표기는 大陆 간체. 봇 이름도 언어를 따라간다(중국어 화면에 영어/한국어
@@ -566,6 +570,7 @@ const zh: Strings = {
   adFailed: '广告未看完，无法获得奖励',
   adLimit: '今日广告奖励已全部领取',
   adCooldown: '请稍后再试',
+  adCooldownWait: (s) => `${s}秒后可再看`,
 };
 
 const TABLE: Record<Lang, Strings> = { en, ko, zh };

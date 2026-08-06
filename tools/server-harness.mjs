@@ -224,7 +224,7 @@ const started = await $global.getRoomState('room-1');
 check('둘 다 준비면 시작', started.phase === 'playing', started.phase);
 check('시드가 16비트 범위', Number.isInteger(started.seed) && started.seed >= 0 && started.seed < 0x10000, started.seed);
 check('슬롯이 계정 순으로 1,2', started.slots['0xAAA'] === 1 && started.slots['0xBBB'] === 2, started.slots);
-check('입력 지연이 방 상태에 실린다', started.inputDelayTicks === 15);
+check('입력 지연이 방 상태에 실린다', started.inputDelayTicks === 12);
 
 // 5) 진행 중인 방에는 새 사람이 안 들어간다 (새 방을 판다)
 as(C);

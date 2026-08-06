@@ -52,6 +52,16 @@ const SEND_INTERVAL_MS = 130;
  */
 const MAX_LEAD_FACTOR = 2;
 
+/**
+ * 정지 중에 실시간 수요보다 **더** 얹어 주는 틱 수.
+ *
+ * 딱 수요만큼만 올리면 정지가 풀린 뒤에도 경계에 붙어 있어서, 전송 주기마다 걸렸다
+ * 풀렸다를 반복한다 — 판은 굴러가는데 "상대를 기다리는 중"이 계속 깜빡인다.
+ * 여유분이 있어야 한 번 풀릴 때 확실히 풀린다. `MAX_LEAD_FACTOR` 가 상한이라
+ * 이 여유가 쌓여 입력 지연이 되지는 않는다.
+ */
+const STALL_SURPLUS_TICKS = 2;
+
 interface Slot {
   1: Command[];
   2: Command[];
@@ -199,8 +209,12 @@ export class Lockstep {
     const delay = Math.round(this.setup.inputDelayTicks * tempoScaleOf(state));
     let execTick = nextTick + delay;
     if (execTick <= this.lastSentFor) {
-      const owed = Math.round((since / 1000) * TICK_RATE * tempoScaleOf(state));
-      execTick = Math.min(this.lastSentFor + Math.max(1, owed), nextTick + delay * MAX_LEAD_FACTOR);
+      // **수요보다 조금 더 준다.** 딱 수요만큼 올리면 풀린 뒤에도 경계에 붙어 있어서,
+      // 전송 주기마다 걸렸다 풀렸다를 반복한다 — 판은 굴러가는데 "상대를 기다리는 중"이
+      // 계속 깜빡인다 (2026-08-06 사용자 신고). 여유분이 있어야 한 번 풀릴 때 확실히
+      // 풀린다. 위 상한이 있어서 이 여유가 쌓여 지연이 되지는 않는다.
+      const owed = Math.ceil((since / 1000) * TICK_RATE * tempoScaleOf(state)) + STALL_SURPLUS_TICKS;
+      execTick = Math.min(this.lastSentFor + owed, nextTick + delay * MAX_LEAD_FACTOR);
       // 상한에 이미 닿아 있으면 한 틱도 못 올린다. 그래도 배치는 보낸다 —
       // 늦게 도착한 상대 배치가 이 사이에 나를 풀어 줄 수 있다.
       if (execTick < this.lastSentFor) execTick = this.lastSentFor;

@@ -52,6 +52,17 @@ const STALL_GIVEUP_MS = 25000;
 const STALL_DIAGNOSE_MS = 3000;
 
 /**
+ * "상대를 기다리는 중"을 띄우기까지 참는 시간(ms).
+ *
+ * 락스텝은 상대 배치가 전송 주기(130ms)마다 뭉텅이로 오므로, 그 사이 한두 프레임쯤
+ * 걸리는 것은 **정상이다.** 그때마다 글자를 띄우면 판이 멀쩡히 굴러가는데도 계속
+ * 깜빡여서, 진짜 정지와 구분이 안 된다 (2026-08-06 사용자 신고).
+ *
+ * 전송 주기보다 넉넉히 잡아 한 주기를 통째로 놓쳤을 때만 뜨게 한다.
+ */
+const WAITING_HINT_MS = 400;
+
+/**
  * 정지가 이만큼(ms) 이어지면 통로를 다시 세워 본다 (`transport.recover`).
  *
  * SDK 재연결이 소켓만 붙이고 방 참가·구독은 복구하지 않으므로, 끊겼다 붙으면
@@ -412,8 +423,12 @@ export class MatchScene implements Scene {
     // 배속은 상대가 켜도 바뀐다. 매 프레임 다시 적는다 — 눌린 순간이 아니라
     // 명령이 적용된 순간에 숫자가 바뀌어야 실제 속도와 맞는다.
     this.paintTempo();
-    this.renderer.setWaiting(this.source.waiting);
+    // **순서가 중요하다.** `watchStall` 이 `stalledSince` 를 갱신하고, 화면은 그 값으로
+    // "얼마나 오래 기다렸나"를 판단한다. 뒤집으면 한 프레임씩 늦은 값을 그린다.
     this.watchStall(this.source.waiting);
+    this.renderer.setWaiting(
+      this.stalledSince !== 0 && Date.now() - this.stalledSince >= WAITING_HINT_MS,
+    );
 
     const ui = this.input?.ui;
     if (ui) this.renderer.render(this.state, ui, this.accumulator / TICK_DT, dt);

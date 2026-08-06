@@ -111,8 +111,6 @@ export interface Strings {
   rewardLine: (total: number, base: number, towers: number, bonus: number) => string;
   ratingLine: (before: number, after: number, sign: string, diff: number) => string;
   hint: string;
-  /** 판 시작 직후 내 홈 타워 위에 뜨는 짧은 라벨. 내 진영이 어느 쪽인지 짚어 준다. */
-  youBase: string;
   waitingPeer: string;
   record: (w: number, l: number) => string;
   // 유닛 카탈로그
@@ -231,7 +229,6 @@ const en: Strings = {
     `+${total}  (base ${base} · ${towers} towers ${bonus})`,
   ratingLine: (before, after, sign, diff) => `Score ${before} → ${after}  (${sign}${diff})`,
   hint: 'Drag: open/close a route  ·  Swipe empty space: cut routes',
-  youBase: 'YOU',
   waitingPeer: 'Waiting for opponent',
   record: (w, l) => `${w}W ${l}L`,
   unitLabels: {
@@ -370,7 +367,6 @@ const ko: Strings = {
     `+${total}  (기본 ${base} · 타워 ${towers}개 ${bonus})`,
   ratingLine: (before, after, sign, diff) => `점수 ${before} → ${after}  (${sign}${diff})`,
   hint: '드래그: 경로 개설/차단  ·  빈 곳 스와이프: 경로 절단',
-  youBase: '나',
   waitingPeer: '상대를 기다리는 중',
   record: (w, l) => `${w}승 ${l}패`,
   unitLabels: {
@@ -511,7 +507,6 @@ const zh: Strings = {
     `+${total}  （基础 ${base} · 据点 ${towers} 个 ${bonus}）`,
   ratingLine: (before, after, sign, diff) => `积分 ${before} → ${after}  （${sign}${diff}）`,
   hint: '拖动：开启/关闭路线  ·  空白处滑动：切断路线',
-  youBase: '我方',
   waitingPeer: '正在等待对手',
   record: (w, l) => `${w}胜 ${l}负`,
   unitLabels: {

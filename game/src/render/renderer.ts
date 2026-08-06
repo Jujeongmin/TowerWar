@@ -103,13 +103,62 @@ const TOWER_SPRITE_W = 1.75;
 const TOWER_FOOT = 0.55;
 
 /**
- * 판 시작 직후 **내 진영을 강조하는 시간**(틱). 30Hz라 105틱 ≈ 3.5초(게임시간).
+ * 판 시작 직후 **내 진영을 강조하는 시간**(틱). 30Hz라 135틱 ≈ 4.5초(게임시간).
+ *
  * PVP는 절반이 P2라 내 홈이 위·빨강이 되어 판마다 자리가 바뀐다 — 그때 헷갈리지
- * 않게 시작 순간에만 펄스 링과 라벨로 짚어 준다 (2026-08-04 사용자 지시).
+ * 않게 시작 순간에만 짚어 준다 (2026-08-04 사용자 지시). 짚는 방법은 펄스 링과
+ * **끌기 제스처**다 (`drawStartGesture`).
+ *
+ * 105틱(3.5초)에서 늘렸다: 제스처 한 주기가 1.9초라 3.5초면 두 번을 겨우 못 채운다.
  */
-const INTRO_TICKS = 105;
+const INTRO_TICKS = 135;
 /** 마지막 이 시간(틱) 동안 서서히 사라진다. */
 const INTRO_FADE_TICKS = 30;
+
+/** 시작 제스처가 한 번 끌고 다시 시작하기까지(초). 실시간이라 배속과 무관하다. */
+const GESTURE_PERIOD_SEC = 1.9;
+/** 그중 실제로 끄는 데 쓰는 비율. 나머지는 쉬는 구간이다. */
+const GESTURE_DRAG_FRACTION = 0.62;
+/**
+ * 상대 본진까지의 거리 중 어디까지 끄는가.
+ *
+ * **내 절반을 안 벗어나게 짧게 잡는다.** 중앙까지 끌면 한가운데 중립 타워들을 선이
+ * 관통해, 정작 첫 수로 노릴 곳이 안 보인다 (실기 확인). 방향만 보여 주면 되는 연출이라
+ * 멀리 갈 이유가 없다.
+ */
+const GESTURE_REACH = 0.28;
+
+/**
+ * 게임 커서 모양. **`style.css` 의 `--game-cursor` 와 같은 경로다** — 둘이 어긋나면
+ * 화면 위의 커서와 시작 제스처가 서로 다른 물건으로 보여, "이걸 끌어라"라는 뜻이 깨진다.
+ *
+ * `Path2D` 는 브라우저가 있어야 만들 수 있어서 처음 쓸 때 만들고 들고 있는다.
+ */
+const CURSOR_PATH_D = 'M3 2 L3 24 L10 18 L14 27 L18 25 L14 16 L23 15 Z';
+let cursorPathCache: Path2D | null = null;
+function cursorPath(): Path2D {
+  if (!cursorPathCache) cursorPathCache = new Path2D(CURSOR_PATH_D);
+  return cursorPathCache;
+}
+
+/**
+ * 그 진영의 본진. **`maps.ts` 가 진영을 판의 위아래 끝에 놓으므로** 내 타워 중
+ * 중앙선에서 가장 먼 것이 본진이다. 타워 id 에 기대지 않는 이유: 맵 유형이 늘 때마다
+ * 생성 순서가 흔들릴 수 있는데, "끝에 있다"는 성질은 대칭 규칙이라 안 흔들린다.
+ */
+function homeTowerOf(state: MatchState, p: PlayerId): Tower | null {
+  let best: Tower | null = null;
+  let far = -1;
+  for (const t of state.towers) {
+    if (t.owner !== p) continue;
+    const d = Math.abs(t.y - FIELD_H / 2);
+    if (d > far) {
+      far = d;
+      best = t;
+    }
+  }
+  return best;
+}
 
 /** 바닥에 눕힌 원의 납작한 정도. 3/4 시점 건물과 같은 각도로 보이게 맞춘 값. */
 const GROUND_SQUASH = 0.42;
@@ -850,7 +899,6 @@ export class Renderer {
     const ctx = this.ctx;
     const color = OWNER_COLOR[ui.local].main;
     const fade = Math.min(1, (INTRO_TICKS - state.tick) / INTRO_FADE_TICKS);
-    const label = t().youBase;
 
     for (const tw of state.towers) {
       if (tw.owner !== ui.local) continue;
@@ -869,55 +917,74 @@ export class Renderer {
         ctx.stroke();
       }
 
-      // 라벨 알약 + 타워로 향한 꼭지. 건물 밖으로 띄워 이 타워를 가리킨다.
-      // 위아래로 살짝 떠서 눈에 든다.
-      //
-      // **크게 그린다** (2026-08-06 사용자 지시). 헷갈리는 것은 위치가 아니라
-      // **내가 무슨 색인가**이고, 알약이 곧 내 색 견본이라 클수록 그 답이 빨리 든다.
-      // 전에는 글자 `r*0.82` 였는데 "나" 한 글자라 판 전체에서 티끌만 했다.
-      const bob = Math.sin(this.time * 3) * (r * 0.16);
-      // **위 진영이면 아래쪽에 단다.** P2 홈은 화면 맨 위라(`maps.ts`) 위로 띄우면
-      // 알약이 판 밖으로 잘린다 — 정작 위 진영일 때가 더 헷갈리는데 그때 안 보였다.
-      const below = tw.y < FIELD_H / 2;
-      const side = below ? 1 : -1;
-      // 건물이 발치에서 위로 서 있어(`TOWER_SPRITE_W`) 반경보다 훨씬 높다. 알약을 키운
-      // 만큼 더 띄우지 않으면 지붕에 얹힌다.
-      const cy = tw.y + side * r * 4.3 + bob;
-      const fs = Math.round(r * 1.5);
-      ctx.font = `800 ${fs}px ui-sans-serif, system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const padX = r * 0.8;
-      const bh = r * 2.1;
-      const bw = ctx.measureText(label).width + padX * 2;
-      const bx = tw.x - bw / 2;
-      const by = cy - bh / 2;
-
-      ctx.beginPath();
-      if (typeof ctx.roundRect === 'function') {
-        ctx.roundRect(bx, by, bw, bh, bh / 2);
-      } else {
-        ctx.rect(bx, by, bw, bh);
-      }
-      // 꼭지 삼각형을 같은 경로에 이어 붙여 한 번에 칠한다. 타워를 향하게 뒤집는다.
-      const tip = r * 0.62;
-      const tipBase = below ? by : by + bh;
-      ctx.moveTo(tw.x - tip, tipBase);
-      ctx.lineTo(tw.x + tip, tipBase);
-      ctx.lineTo(tw.x, tipBase - side * tip);
-      ctx.closePath();
-      ctx.fillStyle = withAlpha(color, 0.95 * fade);
-      ctx.fill();
-      // 어두운 테두리. 알약이 커진 만큼 밝은 지형 위에서 형태가 풀어지는데,
-      // 한 겹 두르면 색 견본으로서의 윤곽이 산다.
-      ctx.strokeStyle = withAlpha('#0a0e14', 0.55 * fade);
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      // 글자는 어두운 바탕색으로 — 내 색이 밝아(파랑·빨강) 흰 글자보다 대비가 산다.
-      ctx.fillStyle = withAlpha('#0a0e14', fade);
-      ctx.fillText(label, tw.x, cy + 1);
     }
+
+    this.drawStartGesture(state, ui, fade);
+  }
+
+  /**
+   * 내 본진에서 상대 본진 쪽으로 **커서가 끌려가는 시늉**을 반복한다
+   * (2026-08-06 사용자 지시: "나"라는 글자보다 이게 낫겠다).
+   *
+   * 글자는 "어느 것이 내 것인가"까지만 답했다. 이 연출은 세 가지를 한 번에 말한다 —
+   * 어디가 내 본진인지, 어느 쪽이 앞인지, 그리고 **이 게임을 어떻게 하는지**(끌어서
+   * 보급선을 긋는다). 튜토리얼을 안 본 사람에게 첫 조작을 보여 주는 자리이기도 하다.
+   *
+   * **그리는 모양은 게임 커서 그대로다** (`style.css` 의 `--game-cursor` 와 같은 경로).
+   * 손 아이콘을 따로 들이지 않은 이유: 플레이어가 지금 쥐고 있는 바로 그 물건이라
+   * "이걸 끌어라"가 설명 없이 읽힌다. 커서를 게임 전역으로 통일해 둔 결정과도 맞는다.
+   */
+  private drawStartGesture(state: MatchState, ui: UiState, fade: number): void {
+    const from = homeTowerOf(state, ui.local);
+    const enemy: PlayerId = ui.local === 1 ? 2 : 1;
+    const to = homeTowerOf(state, enemy);
+    if (!from || !to) return;
+
+    const ctx = this.ctx;
+    const color = OWNER_COLOR[ui.local].main;
+    const r = towerRadiusOf(from);
+
+    // 한 번 끌고 잠시 쉬었다 다시. 쉬는 구간이 없으면 눈이 따라갈 지점을 못 잡는다.
+    const cycle = (this.time % GESTURE_PERIOD_SEC) / GESTURE_PERIOD_SEC;
+    const drag = Math.min(1, cycle / GESTURE_DRAG_FRACTION);
+    // ease-out. 손이 출발할 때 빠르고 끝에서 멎는 편이 사람 손짓처럼 읽힌다.
+    const eased = 1 - (1 - drag) * (1 - drag);
+    // 끝까지 안 간다. 판을 가로지르면 중립 타워들을 덮어 정작 첫 수가 안 보인다.
+    const reach = eased * GESTURE_REACH;
+    const hx = from.x + (to.x - from.x) * reach;
+    const hy = from.y + (to.y - from.y) * reach;
+    // 마지막 구간에서 사그라든다 — 다음 반복이 툭 튀지 않게.
+    const live = cycle > GESTURE_DRAG_FRACTION ? Math.max(0, 1 - (cycle - GESTURE_DRAG_FRACTION) * 4) : 1;
+    const a = fade * live;
+    if (a <= 0.01) return;
+
+    ctx.save();
+
+    // 끌린 자국. 실제로 경로를 그을 때 나오는 선과 같은 대시라 흉내가 아니라 예고가 된다.
+    ctx.strokeStyle = withAlpha(color, 0.78 * a);
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([10, 9]);
+    ctx.lineDashOffset = -this.time * 26;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(hx, hy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 커서. `--game-cursor` 와 같은 경로를 32단위 좌표계에서 그린다.
+    const scale = (r * 2.4) / 32;
+    ctx.translate(hx, hy);
+    ctx.scale(scale, scale);
+    const path = cursorPath();
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = withAlpha('#06141d', a);
+    ctx.lineWidth = 2.2 / 1; // 경로 좌표계 기준. CSS 커서의 stroke-width 와 같은 값이다
+    ctx.stroke(path);
+    ctx.fillStyle = withAlpha(color, a);
+    ctx.fill(path);
+
+    ctx.restore();
   }
 
   /**

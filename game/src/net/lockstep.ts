@@ -186,7 +186,17 @@ export class Lockstep {
     // 상한을 걸어도 교착은 안 생긴다. 약속이 `nextTick + delay` 를 넘어서기만 하면
     // 상대는 내가 멈춘 틱 너머까지 진행할 수 있고, 그 이상은 애초에 내가 안 굴러서
     // 줄 수 있는 것도 없다.
-    const delay = this.setup.inputDelayTicks;
+    // **배속이 깎아 먹은 예산을 되돌린다.**
+    //
+    // `inputDelayTicks` 는 틱 단위인데 배속을 켜면 틱이 그만큼 빨리 지나간다 — 12틱은
+    // 1배속에서 400ms 지만 1.5배속 267ms, 2배속 200ms 다. 왕복 지연은 벽시계로 일정하니
+    // **배속을 켤수록 예산만 줄어 정지가 잦아진다** (2026-08-06 사용자: "2배속일 때 자주
+    // 끊긴다"). 배수를 그대로 곱해 주면 어느 속도에서나 벽시계 예산이 같아진다.
+    //
+    // 결정론에 안 걸린다. `tempoScaleOf` 는 시뮬레이션 상태에서 나오는 값이라 양쪽이 같고,
+    // 애초에 이 값은 **내 배치를 몇 틱 뒤에 걸지**만 정한다 — 실제 배치 시점은 배치에 실린
+    // `execTick` 이 정하므로 양쪽 계산이 달라도 갈라지지 않는다.
+    const delay = Math.round(this.setup.inputDelayTicks * tempoScaleOf(state));
     let execTick = nextTick + delay;
     if (execTick <= this.lastSentFor) {
       const owed = Math.round((since / 1000) * TICK_RATE * tempoScaleOf(state));

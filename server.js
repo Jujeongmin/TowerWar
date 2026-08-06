@@ -956,8 +956,22 @@ class Server {
    */
   async rejoinRoom(roomId) {
     const state = await $global.getRoomState(roomId);
-    if (!state || state.phase !== PHASE_PLAYING) return false;
-    if (!(state.slots || {})[$sender.account]) return false;
+    if (!state) return { ok: false, phase: null, winnerSlot: 0 };
+
+    // **닫힌 방은 되살리지 않는다. 대신 판정을 돌려준다.**
+    //
+    // 끊겨 있는 동안 방이 닫히는 일이 실제로 흔하다(양쪽이 동시에 조용해지면
+    // `abandoned`). 그때 `false` 만 돌려주면 클라이언트는 될 때까지 계속 재시도하고,
+    // 방 상태 재구독으로도 못 알아챈다 — `subscribeRoomState` 는 **변경이 있을 때**
+    // 부르는데 이미 닫힌 방에는 더 올 변경이 없다. 그래서 지금 상태를 실어 보낸다
+    // (2026-08-06 실기 콘솔: 복구 8번이 25초 동안 헛돌았다).
+    const phase = state.phase || null;
+    if (phase !== PHASE_PLAYING) {
+      return { ok: false, phase, winnerSlot: state.winnerSlot || 0 };
+    }
+    if (!(state.slots || {})[$sender.account]) {
+      return { ok: false, phase, winnerSlot: 0 };
+    }
 
     await $global.joinRoom(roomId);
     // `seenAt` 을 지금으로 되돌린다. 끊겨 있는 동안 안 갱신됐으므로 그대로 두면
@@ -965,7 +979,7 @@ class Server {
     await $room.updateRoomState({
       players: this.#patchPlayer(state, $sender.account, { seenAt: Date.now() }),
     });
-    return true;
+    return { ok: true, phase, winnerSlot: 0 };
   }
 
   /**

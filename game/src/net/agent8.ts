@@ -373,6 +373,18 @@ export class Agent8Client {
         bindRoom();
         void server
           .remoteFunction('rejoinRoom', [roomId])
+          .then((res: unknown) => {
+            // **결과를 반드시 본다.** 예전에는 예외만 봤는데, 닫힌 방은 예외가 아니라
+            // "못 들어감"으로 조용히 돌아온다 — 그래서 복구가 헛도는데도 로그가 한 줄도
+            // 안 남았다 (2026-08-06 실기 콘솔).
+            const r = res as { ok?: boolean; phase?: string; winnerSlot?: number } | boolean | null;
+            console.warn('[net] rejoinRoom', r);
+            if (typeof r !== 'object' || r === null) return;
+            // 방이 이미 닫혔으면 되살릴 방법이 없다. 서버가 실어 보낸 판정을 그대로 쓴다 —
+            // 재구독으로는 못 알아챈다(닫힌 방에는 더 올 변경이 없다).
+            if (r.ok || r.phase !== 'finished' || !onClosedHandler) return;
+            onClosedHandler({ phase: 'finished', winnerSlot: r.winnerSlot ?? 0 });
+          })
           .catch((e: unknown) => console.warn('[net] rejoinRoom 실패', e));
       },
     };

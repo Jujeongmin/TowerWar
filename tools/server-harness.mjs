@@ -258,14 +258,17 @@ as(A);
   st.players['0xAAA'].seenAt = Date.now() - 60000;
   await $global.updateRoomState('room-1', { players: st.players });
 }
-check('이 판의 사람이면 방에 다시 들어간다', (await server.rejoinRoom('room-1')) === true);
+check('이 판의 사람이면 방에 다시 들어간다', (await server.rejoinRoom('room-1')).ok === true);
 check(
   '복구가 seenAt 을 되돌린다',
   Date.now() - (await $global.getRoomState('room-1')).players['0xAAA'].seenAt < 5000,
 );
 as(C);
-check('남의 판에는 못 끼어든다', (await server.rejoinRoom('room-1')) === false);
+check('남의 판에는 못 끼어든다', (await server.rejoinRoom('room-1')).ok === false);
 as(A);
+// 닫힌 방은 되살리지 않고 판정을 실어 보낸다. 이게 없으면 클라이언트가 복구를 계속
+// 재시도하며 25초를 버린다 (재구독으로는 못 알아챈다 — 닫힌 방엔 더 올 변경이 없다).
+check('없는 방은 phase 가 null', (await server.rejoinRoom('no-such-room')).phase === null);
 
 // 8) 해시 일치 → 데싱크 없음
 as(A);
@@ -287,6 +290,13 @@ as(A);
 await server.reportResult(1);
 const fin = await $global.getRoomState('room-1');
 check('결과가 기록된다', fin.phase === 'finished' && fin.winner === '0xAAA' && fin.winnerSlot === 1, fin);
+// 끝난 방에 복구를 시도하면 되살리지 않고 판정을 실어 보낸다 (§-70).
+const rejoinFin = await server.rejoinRoom('room-1');
+check(
+  '닫힌 방은 복구 대신 판정을 돌려준다',
+  rejoinFin.ok === false && rejoinFin.phase === 'finished' && rejoinFin.winnerSlot === 1,
+  rejoinFin,
+);
 check('끝난 판에는 명령이 안 들어간다', (await server.sendInputs({ execTick: 99 })) === false);
 
 // 11) 진행 중 이탈 → 상대 부전승

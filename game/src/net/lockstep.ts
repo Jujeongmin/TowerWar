@@ -20,12 +20,11 @@
  * 한 틱의 명령을 항상 **플레이어 번호 순**으로 붙이기 때문에 도착 순서와 무관하게
  * 양쪽이 같은 배열을 만든다.
  */
+import { TICK_RATE } from '../sim/config';
+import { tempoScaleOf } from '../sim/sim';
 import type { Command, MatchState, PlayerId } from '../sim/types';
 import { hashState } from './hash';
 import type { InputBatch, MatchSetup, MatchTransport } from './types';
-
-/** 몇 틱마다 배치를 보내는가. 30Hz 기준 3틱 ≈ 100ms — remote function 초당 10회 제한에 맞춘 값. */
-const BATCH_TICKS = 3;
 
 /**
  * 배치를 보내는 최소 간격(ms). **벽시계로 잰다.**
@@ -125,7 +124,8 @@ export class Lockstep {
     // 아직 간격이 안 됐으면 `outgoing` 을 그대로 쌓아 두고 다음 기회에 함께 보낸다 —
     // 명령은 버려지지 않고 최대 100ms 늦게 나갈 뿐이다.
     const now = Date.now();
-    if (now - this.lastSendAt < SEND_INTERVAL_MS) return;
+    const since = now - this.lastSendAt;
+    if (since < SEND_INTERVAL_MS) return;
     this.lastSendAt = now;
 
     // **`state.tick` 이 멈춰도 배치를 계속 보내야 한다.**
@@ -135,8 +135,17 @@ export class Lockstep {
     // 그 값도 고정이라 교착이 된다 — 상대는 내 배치를, 나는 상대를 기다린다.
     // 그래서 `lastSentFor`(마지막으로 보낸 execTick)보다 앞선 execTick 으로 계속
     // 예약한다. 멈춰 있어도 빈 배치가 상대의 `ackTick` 을 올려 양쪽이 풀린다.
+    //
+    // **얼마나 앞서느냐가 복구를 가른다.** 고정 3틱은 100ms 전송 시절의 값이었다.
+    // 지금은 130ms 마다 보내므로 3틱 = 23틱/초인데 시뮬레이션은 30틱/초(배속이면 45·60)를
+    // 요구한다 — 약속이 수요보다 느려서 한 번 멈추면 **영영 못 풀린다** (2026-08-06 신고).
+    // 그래서 실제로 흐른 시간이 요구하는 틱 수만큼 올린다. 더 올리면 정지가 끝난 뒤에도
+    // 약속이 앞서 남아 입력 지연이 영구히 늘고, 덜 올리면 지금처럼 못 푼다.
     let execTick = nextTick + this.setup.inputDelayTicks;
-    if (execTick <= this.lastSentFor) execTick = this.lastSentFor + BATCH_TICKS;
+    if (execTick <= this.lastSentFor) {
+      const owed = Math.round((since / 1000) * TICK_RATE * tempoScaleOf(state));
+      execTick = this.lastSentFor + Math.max(1, owed);
+    }
     this.lastSentFor = execTick;
 
     const batch: InputBatch = {

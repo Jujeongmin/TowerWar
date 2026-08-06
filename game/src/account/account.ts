@@ -8,7 +8,6 @@
  * `sim/`은 이 모듈을 몰라야 한다. 계정 상태가 시뮬레이션에 흘러들면 서버 권위 PVP에서
  * 클라이언트마다 결과가 갈라진다.
  */
-import { speedMulFor } from '../sim/config';
 import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
 import { DEFAULT_UNIT_KIND, UNIT_KIND_META, isPremiumKind, isUnitKind, unitPowerOf, type UnitKind } from '../units';
@@ -78,8 +77,6 @@ export interface Account {
   wins: number;
   losses: number;
   draws: number;
-  /** 상점에서 산 공속 강화 단계. speedMulFor가 배수로 바꾼다. */
-  speedLevel: number;
   /** 상점에서 산 유닛 생김새들. 기본 생김새는 여기 없어도 쓸 수 있다. */
   ownedUnits: UnitKind[];
   /** 지금 판에 나갈 생김새. */
@@ -134,7 +131,6 @@ export function defaultAccount(): Account {
     wins: 0,
     losses: 0,
     draws: 0,
-    speedLevel: 0,
     ownedUnits: [],
     unitKind: DEFAULT_UNIT_KIND,
     soloWins: 0,
@@ -164,7 +160,7 @@ export function fromRemote(r: {
   name?: string;
   profile?: string;
   coins: number; wins: number; losses: number; draws: number;
-  speedLevel: number; ownedUnits: string[]; unitKind: string;
+  ownedUnits: string[]; unitKind: string;
   soloWins: number; soloLosses: number; soloDraws: number;
   rating?: number;
   entitlements?: string[];
@@ -180,7 +176,6 @@ export function fromRemote(r: {
     wins: num(r.wins),
     losses: num(r.losses),
     draws: num(r.draws),
-    speedLevel: num(r.speedLevel),
     ownedUnits: [...new Set(owned)],
     unitKind: kind,
     soloWins: num(r.soloWins),
@@ -196,84 +191,16 @@ export function fromRemote(r: {
 // ── 로비 상점 ─────────────────────────────────────────────────────
 
 /**
- * 살 수 있는 축. **지금은 공속 하나뿐이다.**
- *
- * 멤버가 하나인 유니온을 남겨 둔 이유는 상점 UI와 저장 코드가 축을 매개변수로 받게
- * 짜여 있어서다 — 축이 다시 늘 때 여기만 늘리면 된다.
- * 전투력 축은 두 번 만들고 두 번 제거했다. 되살리지 말 것 (sim/config.ts 참고).
- */
-export type UpgradeKind = 'speed';
-
-/**
- * 앞쪽 단계의 코인 가격. **이 표가 끝나도 강화는 계속 살 수 있다** —
- * 그 뒤로는 `SPEED_COST_GROWTH` 로 이어 붙인다 (`speedCostAt`).
- *
- * **잠정치다.** 승리 보상이 100 + 타워×8 이라 판당 대략 150~180이 들어온다.
- */
-export const UPGRADE_COSTS: Record<UpgradeKind, readonly number[]> = {
-  speed: [300, 700, 1300, 2200, 3500],
-};
-
-/**
- * 표를 넘어선 단계의 가격 증가율. 표의 증가폭(400→600→900→1300, 약 1.5배)을 그대로 잇는다.
- *
- * **상한을 없앤 뒤로 이것이 유일한 제동장치다** (2026-08-04 사용자 지시로 단계 제한 제거).
- * 값을 낮추면 후반 강화가 싸져서 판이 빨리 기운다.
- */
-const SPEED_COST_GROWTH = 1.5;
-
-/**
- * `level` 단계에서 다음 단계로 갈 때의 가격. **`server.js` 의 같은 이름과 반드시 같아야 한다** —
- * 서버가 진짜 가격이고 여기는 화면 표시용이다 (§-10). 어긋나면 "보이는 값과 깎이는 값이 다름"이 된다.
- *
- * 100원 단위로 반올림해 값이 지저분해지지 않게 한다.
- */
-export function speedCostAt(level: number): number {
-  const table = UPGRADE_COSTS.speed;
-  if (level < table.length) return table[level];
-  let cost = table[table.length - 1];
-  for (let i = table.length; i <= level; i++) {
-    cost = Math.round((cost * SPEED_COST_GROWTH) / 100) * 100;
-  }
-  return cost;
-}
-
-export const UPGRADE_LABEL: Record<UpgradeKind, string> = {
-  speed: '생산 속도',
-};
-
-/** 저장값이 오염돼 있어도 0 이상으로 잘라서 돌려준다. **상한은 없다.** */
-export function upgradeLevelOf(a: Account, _kind: UpgradeKind): number {
-  return Math.max(0, Math.floor(num(a.speedLevel)));
-}
-
-/**
- * 다음 단계 가격. **`null` 을 돌려주는 일이 없다 — 상한이 없어졌다** (2026-08-04).
- * 부르는 쪽이 아직 `null` 을 만렙으로 다루고 있어도 그 분기가 안 밟힐 뿐이라 안전하다.
- */
-export function upgradeCostOf(a: Account, kind: UpgradeKind): number | null {
-  if (kind !== 'speed') return null;
-  return speedCostAt(upgradeLevelOf(a, kind));
-}
-
-/**
- * 한 단계 구매한 새 계정. 만렙이거나 코인이 모자라면 null.
- *
- * 원본을 바꾸지 않는다 — 호출부가 반환값을 저장해야 실제로 적용된다.
- */
-export function buyUpgrade(a: Account, kind: UpgradeKind): Account | null {
-  const cost = upgradeCostOf(a, kind);
-  if (cost === null || a.coins < cost) return null;
-  return { ...a, coins: a.coins - cost, speedLevel: upgradeLevelOf(a, kind) + 1 };
-}
-
-/**
  * 계정 강화를 매치가 이해하는 형태로. 이 함수가 계정과 시뮬레이션 사이의 유일한 통로다.
  * `sim/`이 계정을 모르게 유지하려면 변환이 반드시 이쪽에 있어야 한다.
+ *
+ * **공속 강화(`speedLevel`)는 2026-08-06에 없앴다** (사용자 지시). 생산속도를 타워
+ * 외형이 이어받기로 해서, 단계 곱셈이 남아 있으면 두 축이 겹친다. `speedMul` 배관은
+ * 그대로 두었다 — 외형이 그 자리에 값을 넣는다. 그때까지는 모두 1.0 이다.
  */
 export function modsFor(a: Account): PlayerMods {
   return {
-    speedMul: speedMulFor(upgradeLevelOf(a, 'speed')),
+    speedMul: 1,
     // 착용한 종류가 유닛의 힘이다. `unitKindOf` 로 읽는 이유: 저장본이 오염됐거나
     // 안 가진 것이 착용돼 있으면 여기서 기본값으로 떨어져야 sim 에 들어가지 않는다.
     unitPower: unitPowerOf(unitKindOf(a)),
@@ -420,7 +347,6 @@ export function loadAccount(): Account {
       wins: num(parsed.wins),
       losses: num(parsed.losses),
       draws: num(parsed.draws),
-      speedLevel: num(parsed.speedLevel),
       // 중복이 쌓이면 소유 목록이 무한히 길어진다. 저장할 때가 아니라 읽을 때 정리한다.
       ownedUnits: [...new Set(owned)],
       unitKind: migrateUnitKind(parsed.unitKind),

@@ -4,7 +4,7 @@
  * 계정 데이터도 시뮬레이션 규칙도 아니고 "이 판을 어떤 조건으로 시작하는가"라서 app/에 둔다.
  * 스테이지 캠페인이 붙으면 스테이지 번호도 여기로 들어온다.
  */
-import { canUseTempo, modsFor, unitKindOf, upgradeLevelOf, type Account } from '../account/account';
+import { canUseTempo, modsFor, unitKindOf, type Account } from '../account/account';
 import { stepDownKind, unitPowerOf, type UnitKind } from '../units';
 import { SPEED_STEP } from '../sim/config';
 import type { PlayerId, PlayerMods } from '../sim/types';
@@ -26,6 +26,22 @@ import type { PlayerId, PlayerMods } from '../sim/types';
 const BOT_SPEED_LAG = 0.5;
 
 /**
+ * 봇의 실제 공속 배수. **사람은 항상 1.0 이므로 봇을 그 아래로 내려야 한다.**
+ *
+ * 전에는 `사람 강화 단계 − BOT_SPEED_LAG` 로 계산했는데, 상점의 공속 강화를 없애면서
+ * (2026-08-06) 모두가 0단계가 됐다. 그 식은 `max(0, 0 − 0.5) = 0` 이라 **봇이 사람과
+ * 동등**해지고, 위 실측표의 "지연 0 → 40%" 로 떨어진다 — 사람이 지는 판이 된다.
+ *
+ * 그래서 상대 기준이 아니라 **절대값**으로 박는다. `1 − 0.04×0.5 = 0.98` 은 옛 식이
+ * 0단계 사람에게 주려 했던 값과 같아서, 실측해 둔 66.7~68.3% 가 그대로 유지된다.
+ *
+ * **임시 자리다.** 생산속도를 타워 외형이 이어받으면 봇도 유닛과 같은 방식으로
+ * **사람보다 한 단계 낮은 타워**를 쓴다 (사용자 지시, `botUnitKindFor` 와 같은 꼴).
+ * 그때 이 상수는 "가장 낮은 타워를 쓴 사람과 붙는 봇"의 바닥값으로만 남는다.
+ */
+const BOT_SPEED_MUL = 1 - SPEED_STEP * BOT_SPEED_LAG;
+
+/**
  * 봇에게 줄 보정. **공속만 반 단계 아래고, 유닛의 힘은 사람과 정확히 같다.**
  *
  * 두 축을 다르게 다루는 이유는 §-0.75의 실측이다. 유닛의 힘은 조절 가능한 축이 아니라
@@ -42,9 +58,7 @@ const BOT_SPEED_LAG = 0.5;
  * 100%로 붙는다 — 위 표가 그 값이다.
  */
 export function botModsFor(a: Account): PlayerMods {
-  // speedMulFor는 단계를 정수로 내림한다. 봇은 반 단계를 써야 하므로 직접 계산한다.
-  const speedLevel = Math.max(0, upgradeLevelOf(a, 'speed') - BOT_SPEED_LAG);
-  return { speedMul: 1 + SPEED_STEP * speedLevel, unitPower: unitPowerOf(botUnitKindFor(a)) };
+  return { speedMul: BOT_SPEED_MUL, unitPower: unitPowerOf(botUnitKindFor(a)) };
 }
 
 /**

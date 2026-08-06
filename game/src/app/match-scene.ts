@@ -12,7 +12,7 @@ import { audio } from '../audio';
 import { isAdReady } from '../net/ads';
 import { t } from '../i18n';
 import { Lockstep } from '../net/lockstep';
-import { TICK_DT, speedMulFor } from '../sim/config';
+import { TICK_DT } from '../sim/config';
 import { generateMap } from '../sim/maps';
 import { createMatch, step, tempoScaleOf } from '../sim/sim';
 import type { MatchState, Owner, PlayerId, PlayerMods, TickEvents } from '../sim/types';
@@ -260,12 +260,12 @@ export class MatchScene implements Scene {
     if (plan.mode === 'pvp') {
       // **보정은 서버가 내려준 값으로만 만든다.** 각자 자기 계정을 읽으면 두 쪽이
       // 다른 배수로 시뮬레이션해 첫 틱부터 갈라진다 (net/types.ts MatchSetup 참고).
-      const { levels, kinds } = plan.setup;
+      const { kinds } = plan.setup;
       this.state = createMatch(generateMap(seed), {
         // `canTempo` 도 서버가 내려준다. 각자 자기 계정을 읽으면 한쪽만 배속을 켤 수
         // 있다고 믿어 같은 명령을 다르게 처리한다 — 그 순간 갈라진다.
-        1: { speedMul: speedMulFor(levels[1]), unitPower: unitPowerOf(kinds[1]), canTempo: plan.setup.tempo[1] },
-        2: { speedMul: speedMulFor(levels[2]), unitPower: unitPowerOf(kinds[2]), canTempo: plan.setup.tempo[2] },
+        1: { speedMul: 1, unitPower: unitPowerOf(kinds[1]), canTempo: plan.setup.tempo[1] },
+        2: { speedMul: 1, unitPower: unitPowerOf(kinds[2]), canTempo: plan.setup.tempo[2] },
       });
       this.source = new NetSource(new Lockstep(plan.setup, plan.transport));
       // 상대가 끊기면 배치가 영영 안 온다. 그때 판을 끝낼 수 있는 유일한 길이다

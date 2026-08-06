@@ -52,8 +52,6 @@ export interface RoomSnapshot {
   solo?: boolean;
   seed?: number;
   slots?: Record<string, PlayerId>;
-  /** 슬롯 번호 → 상점 공속 강화 단계. 서버가 잘라서 내려준다. */
-  levels?: Record<number, number>;
   /** 슬롯 번호 → 유닛 종류. 힘을 정하는 값이라 서버 계정에서 읽어 내려준다. */
   kinds?: Record<number, string>;
   /** 슬롯 번호 → 닉네임. 서버가 자기 계정에서 읽어 내려준다. */
@@ -253,8 +251,6 @@ export class Agent8Client {
     return {
       seed: state.seed,
       local,
-      // 서버가 안 내려줬으면 양쪽 다 0단계로 본다. 한쪽만 기본값으로 떨어지면 갈라진다.
-      levels: { 1: state.levels?.[1] ?? 0, 2: state.levels?.[2] ?? 0 },
       kinds: { 1: toKind(state.kinds?.[1]), 2: toKind(state.kinds?.[2]) },
       names: { 1: state.names?.[1] ?? '', 2: state.names?.[2] ?? '' },
       profiles: {
@@ -450,9 +446,6 @@ export class Agent8Client {
     return await withTimeout(this.server.remoteFunction('resetRecord', []), '전적 초기화');
   }
 
-  async buyUpgrade(kind: string): Promise<RemoteAccount> {
-    return await withTimeout(this.server.remoteFunction('buyUpgrade', [kind]), '강화 구매');
-  }
 
   async buyUnitKind(kind: string): Promise<RemoteAccount> {
     return await withTimeout(this.server.remoteFunction('buyUnitKind', [kind]), '유닛 구매');
@@ -498,7 +491,6 @@ export interface RemoteAccount {
   wins: number;
   losses: number;
   draws: number;
-  speedLevel: number;
   ownedUnits: string[];
   unitKind: string;
   /** 봇 대체 판의 전적. 화면에는 안 드러내지만 갈라서 센다 (§-7). */

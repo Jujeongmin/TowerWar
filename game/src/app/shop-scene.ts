@@ -1,10 +1,13 @@
 /**
  * 상점 화면. DOM만 쓴다.
  *
- * 두 종류를 판다:
- *   - **영구 강화** — 매치 결과를 바꾼다. 지금은 생산 속도 하나뿐 (`UpgradeKind`)
+ * 파는 것:
  *   - **유닛 종류** — 2026-07-31부터 **성능이 다르다**. 종류가 체력=공격력을 정하고
  *     그 값이 `PlayerMods.unitPower` 로 sim 에 들어간다 (`src/units.ts`)
+ *   - **유료(VX) 항목** — 배속과 무지개 유닛
+ *
+ * **영구 강화(생산 속도) 칸은 2026-08-06에 뺐다** (사용자 지시). 생산속도를 타워 외형이
+ * 이어받기로 해서, 추상적인 단계 강화가 같이 있으면 두 축이 겹친다.
  *
  * 계정을 직접 읽거나 쓰지 않는다. 읽기는 `getAccount`, 쓰기는 콜백으로만 —
  * 씬마다 localStorage를 만지면 어느 쪽이 최신인지 알 수 없게 된다.
@@ -13,14 +16,9 @@ import {
   AD_COOLDOWN_MS,
   canUseTempo,
   ownsUnitKind,
-  upgradeCostOf,
-  upgradeLevelOf,
-
   unitKindOf,
   type Account,
-  type UpgradeKind,
 } from '../account/account';
-import { speedMulFor } from '../sim/config';
 
 /**
  * 광고 한 번에 주는 코인. **`server.js` 의 `AD_COINS` 와 같아야 한다** — 여기 값은
@@ -46,23 +44,6 @@ import { t } from '../i18n';
 import type { Scene } from './scene';
 
 /**
- * 다음 단계를 사면 무엇이 어떻게 변하는가.
- * **만렙이 없어져(2026-08-04) 항상 "지금 → 다음"으로 보여준다.**
- */
-function effectText(_kind: UpgradeKind, level: number): string {
-  const val = (lv: number) => `×${speedMulFor(lv).toFixed(2)}`;
-  return `${val(level)} → ${val(level + 1)}`;
-}
-
-/**
- * 단계 표시. 상한이 없어서 눈금(`●○○○○`)을 못 쓴다 — 대신 숫자로 적는다.
- * 눈금은 "몇 칸 남았나"를 보여주는 것이라 끝이 없는 축에는 의미가 없다.
- */
-function levelText(level: number): string {
-  return `Lv.${level}`;
-}
-
-/**
  * 가장 약한 유닛의 미리보기 높이(px). 여기에 `sizeFactorOf` 를 곱한다.
  * `.unit-art` 의 상자 높이(56px)보다 낮아야 가장 센 것도 안 잘린다.
  */
@@ -77,7 +58,6 @@ function previewSrc(kind: UnitKind): string {
 
 export class ShopScene implements Scene {
   private readonly coins: HTMLElement;
-  private readonly upgradeRows: { kind: UpgradeKind; el: HTMLButtonElement }[];
   private readonly unitCards: { kind: UnitKind; el: HTMLButtonElement }[];
   private readonly premiumCards: { kind: UnitKind; el: HTMLButtonElement }[];
   private readonly vxNote: HTMLElement;
@@ -92,7 +72,6 @@ export class ShopScene implements Scene {
   constructor(
     private readonly root: HTMLElement,
     private readonly getAccount: () => Account,
-    private readonly buyUpgrade: (kind: UpgradeKind) => void,
     /** 안 가진 것이면 사고, 가진 것이면 착용한다. 판정은 계정 쪽에 있다. */
     private readonly pickUnit: (kind: UnitKind) => void,
     /**
@@ -169,18 +148,6 @@ export class ShopScene implements Scene {
     this.adCard = ad;
     this.coins = coins;
     backBtn.addEventListener('click', back);
-
-    const kinds: UpgradeKind[] = ['speed'];
-    this.upgradeRows = kinds.map((kind) => {
-      const el = root.querySelector<HTMLButtonElement>(`#buy-${kind}`);
-      if (!el) throw new Error(`상점 행 #buy-${kind}가 없습니다`);
-      el.addEventListener('click', () => {
-        this.buyUpgrade(kind);
-        // 코인이 줄고 단계가 올랐다. 다시 그리지 않으면 화면이 옛 값을 들고 있는다.
-        this.render();
-      });
-      return { kind, el };
-    });
 
     this.unitCards = SHOP_UNIT_ORDER.map((kind) => {
       const el = this.buildUnitCard(kind);
@@ -275,19 +242,6 @@ export class ShopScene implements Scene {
   private render(): void {
     const a = this.getAccount();
     this.coins.textContent = a.coins.toLocaleString();
-
-    for (const { kind, el } of this.upgradeRows) {
-      const level = upgradeLevelOf(a, kind);
-      const cost = upgradeCostOf(a, kind);
-      const affordable = cost !== null && a.coins >= cost;
-
-      // 상한이 없어져 눈금 대신 숫자다. `cost` 는 이제 항상 값이 있다.
-      set(el, 'pips', levelText(level));
-      set(el, 'effect', effectText(kind, level));
-      set(el, 'price', cost === null ? t().maxed : `◈ ${cost.toLocaleString()}`);
-      el.querySelector('[data-role="price"]')?.classList.toggle('locked', !affordable);
-      el.disabled = !affordable;
-    }
 
     // **이름·스탯·설명은 매번 다시 쓴다.** 카드는 생성자에서 한 번만 만들어지므로
     // 여기서 안 채우면 언어를 바꿔도 처음 언어가 그대로 남는다 — 실제로 그 버그를 냈다.

@@ -76,24 +76,15 @@ export const UNIT_SPEED = 105;
  * 조절 가능한 축이 아니라 계단이다. 되살리지 말 것.
  */
 
-/** 공속 강화 한 단계가 gen/emit에 더하는 비율. 한 단계당 +4%. */
-export const SPEED_STEP = 0.04;
-
 /**
- * 공속 강화 단계 → gen/emit에 곱할 배수.
+ * 공속 배수가 오르는 폭의 기준. **지금 이 값을 쓰는 곳은 봇 보정 하나뿐이다**
+ * (`app/difficulty.ts` 의 `BOT_SPEED_MUL`).
  *
- * **상한이 없다** (2026-08-04 사용자 지시로 5단계 제한 제거). 무한히 오르지만
- * 실제 효과는 저절로 포화된다 — `emitUnits` 가 **틱당 경로당 1기**만 내보내므로
- * 배출은 30기/초에서 멈춘다. 그 뒤로 오르는 것은 재고 생산(`gen`)뿐이다.
- * 그래서 무한 루프나 발산 없이 안전하다.
- *
- * 음수·NaN 만 막는다. 가격이 단계마다 1.5배씩 뛰므로(`account.ts` 의
- * `SPEED_COST_GROWTH`) 실질적인 제동은 경제 쪽에 있다.
+ * 상점의 공속 강화(`speedLevel`)는 2026-08-06에 제거했다 — 생산속도를 타워 외형이
+ * 이어받기로 해서(사용자 지시), 단계 곱셈이 남아 있으면 두 축이 겹친다.
+ * `PlayerMods.speedMul` 배관은 그대로 남겼다: 외형이 그 자리에 값을 넣는다.
  */
-export function speedMulFor(level: number): number {
-  const n = Math.max(0, Math.floor(Number(level) || 0));
-  return 1 + SPEED_STEP * n;
-}
+export const SPEED_STEP = 0.04;
 
 /**
  * 정면으로 맞물린 통로에서 적 유닛이 이 거리 안으로 들어오면 전투력을 맞교환한다.

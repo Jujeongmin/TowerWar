@@ -5,7 +5,7 @@
  * 매치의 고정 타임스텝 루프는 MatchScene 안에 있다.
  */
 import './style.css';
-import { unitKindOf, type Reward, type UpgradeKind } from './account/account';
+import { unitKindOf, type Reward } from './account/account';
 import { AccountStore, type RatingChange } from './account/store';
 import { matchModsFor } from './app/difficulty';
 import { BoardScene } from './app/board-scene';
@@ -52,14 +52,6 @@ const store = new AccountStore();
 function grantReward(reward: Reward, winnerSlot: number): Promise<RatingChange | null> {
   const serverRoom = plan.mode === 'pvp' || plan.serverRoom;
   return store.grantReward(reward, winnerSlot, serverRoom);
-}
-
-/** 못 사는 구매는 조용히 무시된다 — 버튼이 이미 비활성이라 여기까지 오면 경쟁 상태다. */
-function buy(kind: UpgradeKind): void {
-  void store.buyUpgrade(kind).then(() => {
-    audio.play('purchase');
-    shop.refresh();
-  });
 }
 
 /**
@@ -133,7 +125,6 @@ const pvp = new PvpScene(
 const shop = new ShopScene(
   need('shop'),
   () => store.current,
-  buy,
   pickUnit,
   openVxShop,
   () => store.watchAdForCoins(),

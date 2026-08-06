@@ -117,19 +117,6 @@ const ROOM_CODE_LEN = 4;
 /** 코드 발급은 반드시 락 안에서. 두 사람이 같은 코드를 잡으면 남의 방에 끼어든다. */
 const CODE_LOCK = 'towerwar:roomcode';
 
-/**
- * 공속 강화 단계 정리. **상한이 없다** (2026-08-04 사용자 지시로 5단계 제한 제거).
- * 음수·NaN 만 막는다.
- *
- * **배수 공식은 서버에 두지 않는다.** 서버는 정수 단계만 정리하고, 배수로 바꾸는 것은
- * 클라이언트의 `speedMulFor` 가 한다 — 공식을 양쪽에 복사하면 언젠가 어긋나고,
- * 어긋나는 순간 두 클라이언트가 다른 판을 돌게 된다.
- */
-function clampSpeedLevel(v) {
-  const n = Math.floor(Number(v));
-  return Number.isFinite(n) ? Math.max(0, n) : 0;
-}
-
 // ── 계정 ──────────────────────────────────────────────────────────
 //
 // 재화와 강화가 **서버에 산다.** 전에는 클라이언트의 localStorage 가 유일한 저장소라
@@ -138,27 +125,6 @@ function clampSpeedLevel(v) {
 // 유저 상태는 **덮어쓰기**다 (글로벌 상태의 병합과 다르다). 그래서 저장할 때마다
 // 계정 객체 전체를 쓴다 — 일부 필드만 넘기면 나머지가 날아갈 수 있다.
 
-/** 가격표. **클라이언트에도 같은 표가 있다** (화면 표시용). 여기가 진짜다. */
-const UPGRADE_COSTS = { speed: [300, 700, 1300, 2200, 3500] };
-/**
- * 표를 넘어선 단계의 가격 증가율. **`game/src/account/account.ts` 의 같은 이름과
- * 반드시 같아야 한다** — 어긋나면 "보이는 값과 깎이는 값이 다름"이 된다 (§-10).
- */
-const SPEED_COST_GROWTH = 1.5;
-
-/**
- * `level` 단계에서 다음 단계로 갈 때의 가격. 상한이 없어서(2026-08-04) 표가 끝나면
- * 증가율로 이어 만든다. 클라이언트의 `speedCostAt` 과 같은 계산이어야 한다.
- */
-function speedCostAt(level) {
-  const table = UPGRADE_COSTS.speed;
-  if (level < table.length) return table[level];
-  let cost = table[table.length - 1];
-  for (let i = table.length; i <= level; i++) {
-    cost = Math.round((cost * SPEED_COST_GROWTH) / 100) * 100;
-  }
-  return cost;
-}
 /**
  * 유닛 생김새 가격. **`game/src/units.ts` 의 `UNIT_KIND_META` 와 같아야 한다.**
  * 어긋나면 "상점에는 보이는데 못 입는" 또는 그 반대가 된다.
@@ -418,7 +384,6 @@ function defaultAccount(account) {
     wins: 0,
     losses: 0,
     draws: 0,
-    speedLevel: 0,
     ownedUnits: [],
     // `units.ts` 의 DEFAULT_UNIT_KIND 와 같아야 한다. 어긋나면 접속하는 순간
     // 서버 값이 클라이언트를 덮어써서(§-10) 상점에서 고른 것이 되돌아간 것처럼 보인다.
@@ -462,7 +427,6 @@ function normalizeAccount(raw, account) {
     wins: num(raw.wins),
     losses: num(raw.losses),
     draws: num(raw.draws),
-    speedLevel: clampSpeedLevel(raw.speedLevel),
     ownedUnits: owned,
     // 안 가진 것이 착용돼 있으면 기본으로 되돌린다.
     unitKind: UNIT_PRICES[kind] === 0 || owned.includes(kind) || entitlements.includes(kind)
@@ -573,25 +537,6 @@ class Server {
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();
       return await this.#saveAccount({ ...a, wins: 0, losses: 0, draws: 0 });
-    });
-  }
-
-  /**
-   * 강화 한 단계 구매.
-   *
-   * **가격과 잔액 검사가 여기 있다.** 클라이언트의 같은 함수는 버튼을 회색으로
-   * 만드는 용도일 뿐이고, 실제로 깎는 것은 이쪽이다.
-   */
-  async buyUpgrade(kind) {
-    return await $lock(`acct:${$sender.account}`, async () => {
-      const a = await this.#loadAccount();
-      if (kind !== 'speed') throw new Error('그런 강화가 없습니다');
-      const level = a.speedLevel;
-      // **만렙이 없다** (2026-08-04). 표를 넘어선 단계는 `speedCostAt` 이 값을 이어 만든다 —
-      // 가격이 단계마다 1.5배씩 뛰므로 제동은 경제 쪽에서 걸린다.
-      const cost = speedCostAt(level);
-      if (a.coins < cost) throw new Error('코인이 모자랍니다');
-      return await this.#saveAccount({ ...a, coins: a.coins - cost, speedLevel: level + 1 });
     });
   }
 
@@ -848,14 +793,12 @@ class Server {
   /**
    * 준비 토글. 양쪽이 준비되면 다음 `$roomTick` 이 판을 시작한다.
    *
-   * `speedLevel` 은 그 사람의 상점 강화 단계다. **서버를 거치는 이유가 두 가지다:**
+   * **판에 영향을 주는 값은 전부 서버 계정에서 읽어 방 상태에 박는다** (유닛 종류·배속).
+   * 클라이언트가 각자 자기 계정을 읽어 쓰면 두 쪽이 서로 다른 보정으로 시뮬레이션해
+   * 첫 틱부터 갈라지고, 클라이언트가 값을 보내면 안 산 것을 자칭할 수 있다.
    *
-   * 1. **결정론.** 클라이언트가 각자 자기 계정 값을 읽어 쓰면 두 쪽이 서로 다른 보정으로
-   *    시뮬레이션한다 — 첫 틱부터 갈라진다. 서버가 정한 값을 양쪽이 똑같이 읽어야 한다
-   * 2. 정수 범위를 여기서 자른다
-   *
-   * **아직 위조를 막지는 못한다.** 클라이언트가 보낸 숫자를 그대로 믿는다.
-   * 제대로 막으려면 계정을 Verse8 글로벌 유저 상태로 옮겨 서버가 직접 읽어야 한다.
+   * (공속 강화 단계 `speedLevel` 이 여기 있었는데, 2026-08-06에 강화를 없애면서 뺐다.
+   * 생산속도를 타워 외형이 이어받으면 그 종류 이름이 유닛 종류 옆에 들어온다.)
    */
   async setReady(ready) {
     const state = (await $room.getRoomState()) || {};
@@ -864,7 +807,6 @@ class Server {
     await $room.updateRoomState({
       players: this.#patchPlayer(state, $sender.account, {
         ready: !!ready,
-        speedLevel: me.speedLevel,
         // 유닛 종류도 서버 계정에서 읽는다. 2026-07-31부터 종류가 유닛의 힘을 정하므로
         // (`units.ts` 의 `power`) 클라이언트가 보내면 안 산 유닛의 힘을 자칭할 수 있다.
         // `#loadAccount` 가 소유 검사까지 마친 값이라 여기서 더 볼 것이 없다.
@@ -1183,7 +1125,6 @@ class Server {
     if (Math.random() < 0.5) order.reverse();
 
     const slots = {};
-    const levels = {};
     const names = {};
     const profiles = {};
     const kinds = {};
@@ -1195,7 +1136,6 @@ class Server {
       profiles[slot] = cleanProfile((players[account] || {}).profile);
       // 강화 단계와 닉네임을 슬롯 번호로 옮겨 담는다. 양쪽 클라이언트가 계정 주소를
       // 몰라도 "P1은 몇 단계·누구, P2는 몇 단계·누구"만 보고 같은 판을 만들 수 있어야 한다.
-      levels[slot] = clampSpeedLevel((players[account] || {}).speedLevel);
       names[slot] = cleanName((players[account] || {}).name);
       kinds[slot] = cleanUnitKind((players[account] || {}).unitKind);
       // 점수 변동 계산의 기준값이다. **판 도중 점수가 바뀌어도 이 스냅샷은 안 바뀐다** —
@@ -1211,7 +1151,6 @@ class Server {
     await $global.updateRoomState(roomId, {
       phase: PHASE_PLAYING,
       solo: false,
-      levels,
       names,
       profiles,
       kinds,
@@ -1257,7 +1196,6 @@ class Server {
       // 내려주면 그 결정이 무너진다.
       names: { 1: mine },
       profiles: { 1: cleanProfile(((state.players || {})[account] || {}).profile) },
-      levels: { 1: clampSpeedLevel(((state.players || {})[account] || {}).speedLevel) },
       startedAt: Date.now(),
       winner: null,
       winnerSlot: 0,

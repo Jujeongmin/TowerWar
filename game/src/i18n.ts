@@ -78,13 +78,10 @@ export interface Strings {
   connectionRefused: string;
   roomClosed: (reason: string) => string;
   // 상점
-  shopUpgrades: string;
-  shopSpeed: string;
   shopUnits: string;
   shopVx: string;
   vxNotListed: string;
   vxOpenFailed: string;
-  maxed: string;
   equipped: string;
   equip: string;
   buyWithVx: string;
@@ -198,13 +195,10 @@ const en: Strings = {
   couldNotJoin: 'Could not join',
   connectionRefused: 'Connection refused',
   roomClosed: (reason) => `Room closed (${reason})`,
-  shopUpgrades: 'Permanent Upgrades',
-  shopSpeed: 'Production Speed',
   shopUnits: 'Units — pricier means more health and attack',
   shopVx: 'VX — Real-money',
   vxNotListed: 'This item is not on sale yet.',
   vxOpenFailed: "Couldn't open the store. Tap again.",
-  maxed: 'Max',
   equipped: 'Equipped',
   equip: 'Equip',
   buyWithVx: 'Buy with VX',
@@ -336,13 +330,10 @@ const ko: Strings = {
   couldNotJoin: '들어가지 못했습니다',
   connectionRefused: '연결이 거부되었습니다',
   roomClosed: (reason) => `방이 닫혔습니다 (${reason})`,
-  shopUpgrades: '영구 강화',
-  shopSpeed: '생산 속도',
   shopUnits: '유닛 — 비쌀수록 체력과 공격력이 높다',
   shopVx: 'VX — 현금 결제',
   vxNotListed: '결제 상품이 아직 등록되지 않았습니다.',
   vxOpenFailed: '결제 창을 열지 못했습니다. 다시 눌러 주세요.',
-  maxed: '최대',
   equipped: '착용 중',
   equip: '착용하기',
   buyWithVx: 'VX로 구매',
@@ -476,13 +467,10 @@ const zh: Strings = {
   couldNotJoin: '无法加入',
   connectionRefused: '连接被拒绝',
   roomClosed: (reason) => `房间已关闭（${reason}）`,
-  shopUpgrades: '永久强化',
-  shopSpeed: '生产速度',
   shopUnits: '单位 — 越贵，生命与攻击越高',
   shopVx: 'VX — 现金付费',
   vxNotListed: '该商品尚未上架。',
   vxOpenFailed: '无法打开支付窗口，请再次点击。',
-  maxed: '已满级',
   equipped: '装备中',
   equip: '装备',
   buyWithVx: '用 VX 购买',

@@ -21,7 +21,6 @@ import type { UnitKind } from '../units';
 import {
   applyReward,
   buyUnitKind,
-  buyUpgrade,
   ownsUnitKind,
   cleanName,
   fromRemote,
@@ -31,7 +30,6 @@ import {
   selectUnitKind,
   type Account,
   type Reward,
-  type UpgradeKind,
 } from './account';
 
 /** 한 판으로 점수가 어떻게 움직였는가. 결과 화면이 그대로 보여준다. */
@@ -183,14 +181,6 @@ export class AccountStore {
     await this.mutate(
       () => this.net!.resetRecord(),
       () => resetRecord(this.account),
-    );
-  }
-
-  /** 강화 구매. 못 사면 조용히 아무 일도 안 일어난다 — 버튼이 이미 비활성이다. */
-  async buyUpgrade(kind: UpgradeKind): Promise<void> {
-    await this.mutate(
-      () => this.net!.buyUpgrade(kind),
-      () => buyUpgrade(this.account, kind),
     );
   }
 

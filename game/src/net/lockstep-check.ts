@@ -18,7 +18,7 @@
 import { DEFAULT_RATING } from '../account/account';
 import { DEFAULT_PROFILE } from '../profiles';
 import { DEFAULT_UNIT_KIND, unitPowerOf, type UnitKind } from '../units';
-import { TICK_DT, speedMulFor } from '../sim/config';
+import { TICK_DT } from '../sim/config';
 import { generateMap } from '../sim/maps';
 import { createMatch, step } from '../sim/sim';
 import type { Command, MatchState, PlayerId } from '../sim/types';
@@ -40,8 +40,8 @@ class FakeClient {
     // **`MatchScene.restart` 의 PVP 갈래와 같은 식이어야 한다.** 둘이 어긋나면
     // 이 검증은 실제로 도는 코드가 아니라 하네스를 검사하게 된다.
     this.state = createMatch(generateMap(setup.seed), {
-      1: { speedMul: speedMulFor(setup.levels[1]), unitPower: unitPowerOf(setup.kinds[1]) },
-      2: { speedMul: speedMulFor(setup.levels[2]), unitPower: unitPowerOf(setup.kinds[2]) },
+      1: { speedMul: 1, unitPower: unitPowerOf(setup.kinds[1]) },
+      2: { speedMul: 1, unitPower: unitPowerOf(setup.kinds[2]) },
     });
     this.ls = new Lockstep({ ...setup, local }, transport);
     this.local = local;
@@ -106,7 +106,6 @@ export function runCase(seed: number, latencyMs: number, inputDelayTicks: number
     seed,
     inputDelayTicks,
     desyncCheckTicks: 30,
-    levels: { 1: 0, 2: 0 },
     // 종류를 서로 다르게 준다. 힘이 갈린 상태에서도 락스텝이 어긋나지 않는지 봐야 한다 —
     // 양쪽 다 기본값이면 `unitPower` 경로가 한 번도 안 밟힌다.
     kinds: { 1: DEFAULT_UNIT_KIND, 2: 'beergang_purple' as UnitKind },

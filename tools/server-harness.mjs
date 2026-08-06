@@ -178,7 +178,7 @@ const DEFAULT_UNIT_KIND = 'beergang';
 /** 계정 스텁을 손으로 세팅할 때 쓰는 최소 골격. */
 const defaultsFor = (account) => ({
   account, coins: 0, wins: 0, losses: 0, draws: 0,
-  speedLevel: 0, ownedUnits: [], unitKind: DEFAULT_UNIT_KIND,
+  ownedUnits: [], unitKind: DEFAULT_UNIT_KIND,
   soloWins: 0, soloLosses: 0, soloDraws: 0,
 });
 $global.getUserStateOf = async (a) => userStates.get(a) ?? null;
@@ -522,41 +522,9 @@ await server.$roomTick(300, host3.roomId);
 check('빈 코드 방은 닫힌다', (await $global.getRoomState(host3.roomId)).phase === 'finished');
 check('닫히면 코드가 회수된다', globalState.codes[host3.code] === undefined, globalState.codes);
 
-// 23) 상점 강화 단계를 서버가 잘라 슬롯 번호로 내려준다
-as(A); await server.leaveMatch();
-as(B); await server.leaveMatch();
-as(C); await server.leaveMatch().catch(() => {});
-userStates.set('0xAAA', { ...defaultsFor('0xAAA'), speedLevel: 3 });
-userStates.set('0xBBB', { ...defaultsFor('0xBBB'), speedLevel: 99 }); // 상한을 넘겨 저장돼 있다
-as(A);
-const lv = await server.createRoom();
-await server.setReady(true);
-as(B);
-await server.joinRoomByCode(lv.code);
-await server.setReady(true);
-await server.$roomTick(300, lv.roomId);
-const lvState = await $global.getRoomState(lv.roomId);
-check('시작 시 levels 가 내려온다', lvState.levels != null, lvState);
-check('A의 3단계가 A 슬롯으로 내려온다', lvState.levels[lvState.slots['0xAAA']] === 3, lvState.levels);
-// 상한이 없어졌다(2026-08-04). 높은 단계도 그대로 내려간다 — 양쪽이 같은 값을 봐야
-// 같은 판을 돈다는 것이 이 검사의 핵심이고, 자르는 것은 그 목적이 아니었다.
-check('B의 99단계가 그대로 내려온다', lvState.levels[lvState.slots['0xBBB']] === 99, lvState.levels);
-
-// 24) 음수·문자열도 0으로 떨어진다
-as(A); await server.leaveMatch();
-as(B); await server.leaveMatch();
-userStates.set('0xAAA', { ...defaultsFor('0xAAA'), speedLevel: -4 });
-userStates.set('0xBBB', { ...defaultsFor('0xBBB'), speedLevel: 'hax' });
-as(A);
-const lv2 = await server.createRoom();
-await server.setReady(true);
-as(B);
-await server.joinRoomByCode(lv2.code);
-await server.setReady(true);
-await server.$roomTick(300, lv2.roomId);
-const s2 = await $global.getRoomState(lv2.roomId);
-check('음수는 0', s2.levels[1] === 0, s2.levels);
-check('문자열은 0', s2.levels[2] === 0, s2.levels);
+// 23·24) 상점 공속 강화(`speedLevel`) 검사는 2026-08-06에 통째로 뺐다 — 강화 자체를
+// 없앴다(사용자 지시). 생산속도를 타워 외형이 이어받으면 그 종류 이름을 유닛 종류와
+// 같은 방식으로 검사할 것 (바로 아래 24.5 가 그 본보기다).
 
 // 24.5) 유닛 종류도 슬롯 번호로 내려온다
 //
@@ -603,39 +571,12 @@ check('상속 키도 기본값', uks2.kinds[2] === 'beergang', uks2.kinds);
 const D = { account: '0xDDD', roomId: null };
 as(D);
 let acct = await server.getAccount();
-check('처음 부르면 기본 계정이 생긴다', acct.coins === 0 && acct.speedLevel === 0 && acct.unitKind === DEFAULT_UNIT_KIND, acct);
-
-// 26) 코인이 모자라면 못 산다
+check('처음 부르면 기본 계정이 생긴다', acct.coins === 0 && acct.unitKind === DEFAULT_UNIT_KIND, acct);
+check('없앤 강화는 함수 자체가 없다', typeof server.buyUpgrade !== 'function');
 let e2 = null;
-try { await server.buyUpgrade('speed'); } catch (e) { e2 = e.message; }
-check('코인 없으면 강화 거부', e2 === '코인이 모자랍니다', e2);
 
-// 27) 코인을 넣고 사면 서버가 깎는다
-userStates.set('0xDDD', { ...acct, coins: 1000 });
-acct = await server.buyUpgrade('speed');
-check('강화 1단계 구매: 1000 - 300', acct.coins === 700 && acct.speedLevel === 1, acct);
-acct = await server.buyUpgrade('speed');
-check('강화 2단계 구매: 700 - 700', acct.coins === 0 && acct.speedLevel === 2, acct);
-e2 = null;
-try { await server.buyUpgrade('speed'); } catch (e) { e2 = e.message; }
-check('잔액 0이면 거부', e2 === '코인이 모자랍니다', e2);
-
-// 27.5) 강화에 상한이 없다 (2026-08-04 사용자 지시)
-//
-// 표(5칸)를 넘어서도 계속 살 수 있어야 하고, 가격은 1.5배씩 이어져야 한다.
-// 클라이언트의 `speedCostAt` 과 같은 계산이어야 "보이는 값과 깎이는 값"이 안 갈린다.
-userStates.set('0xDDD', { ...defaultsFor('0xDDD'), speedLevel: 5, coins: 100000 });
-const past1 = await server.buyUpgrade('speed');
-check('5단계에서 또 산다 (만렙 없음)', past1.speedLevel === 6, past1.speedLevel);
-check('표 다음 가격은 3500*1.5 = 5300', past1.coins === 100000 - 5300, past1.coins);
-const past2 = await server.buyUpgrade('speed');
-check('그 다음은 5300*1.5 = 8000', past2.coins === 100000 - 5300 - 8000, past2.coins);
-check('단계가 계속 오른다', past2.speedLevel === 7, past2.speedLevel);
-// 아주 높은 단계에서도 던지지 않는다 (무한 루프·NaN 없음)
-userStates.set('0xDDD', { ...defaultsFor('0xDDD'), speedLevel: 40, coins: 10 });
-let farErr = null;
-try { await server.buyUpgrade('speed'); } catch (e) { farErr = e.message; }
-check('40단계에서도 가격 계산이 되고 잔액으로만 막힌다', farErr === '코인이 모자랍니다', farErr);
+// 26·27·27.5) 공속 강화 구매 검사도 통째로 뺐다 (강화를 없앴다, 2026-08-06).
+// 코인 잔액·락·가격 검사는 유닛 구매(28절)가 같은 경로로 덮는다.
 
 // 28) 유닛 구매/착용
 //
@@ -683,8 +624,6 @@ userStates.set('0xDDD', {
 });
 acct = await server.getAccount();
 check('음수 코인은 0', acct.coins === 0, acct);
-// 상한이 없어져 99도 그대로 산다. 음수·NaN 만 막는다.
-check('높은 강화 단계도 그대로 산다', acct.speedLevel === 99, acct);
 check('모르는 유닛 착용은 기본으로', acct.unitKind === DEFAULT_UNIT_KIND, acct);
 check(
   '소유 목록에서 중복·카탈로그에 없는 값 제거',
@@ -695,18 +634,23 @@ check(
 // 30) setReady 가 클라이언트 값을 안 믿고 서버 계정을 읽는다
 as(A); await server.leaveMatch().catch(() => {});
 as(B); await server.leaveMatch().catch(() => {});
-userStates.set('0xAAA', { ...defaultsFor('0xAAA'), speedLevel: 4 });
-userStates.set('0xBBB', { ...defaultsFor('0xBBB'), speedLevel: 1 });
+// 공속 강화가 사라진 뒤로 이 자리를 지키는 값은 **유닛 종류**다 — 종류가 힘을 정하므로
+// 클라이언트가 보낸 값을 믿으면 안 산 유닛의 힘을 자칭할 수 있다.
+userStates.set('0xAAA', {
+  ...defaultsFor('0xAAA'),
+  ownedUnits: ['beergang_purple'], unitKind: 'beergang_purple',
+});
+userStates.set('0xBBB', { ...defaultsFor('0xBBB') });
 as(A);
 const forge = await server.createRoom();
-await server.setReady(true, 5); // 클라이언트가 5를 자칭한다
+await server.setReady(true, 'beergang_gold'); // 클라이언트가 안 산 금색을 자칭한다
 as(B);
 await server.joinRoomByCode(forge.code);
-await server.setReady(true, 5);
+await server.setReady(true, 'beergang_gold');
 await server.$roomTick(300, forge.roomId);
 const fs = await $global.getRoomState(forge.roomId);
-check('위조한 강화 단계가 안 먹는다 (A=4)', fs.levels[fs.slots['0xAAA']] === 4, fs.levels);
-check('상대도 서버 값 (B=1)', fs.levels[fs.slots['0xBBB']] === 1, fs.levels);
+check('위조한 종류가 안 먹는다 (A=보라)', fs.kinds[fs.slots['0xAAA']] === 'beergang_purple', fs.kinds);
+check('상대도 서버 값 (B=기본)', fs.kinds[fs.slots['0xBBB']] === DEFAULT_UNIT_KIND, fs.kinds);
 
 // 31) 보상은 서버가 준다. 양쪽 다 받고, 두 번은 안 준다
 const coinsBefore = (await $global.getUserStateOf('0xAAA')).coins;
@@ -740,11 +684,11 @@ userStates.set('0xCCC', {
   ...defaultsFor('0xCCC'),
   wins: 5, losses: 3, draws: 2,
   soloWins: 4, soloLosses: 1,
-  rating: 1234, coins: 777, speedLevel: 2,
+  rating: 1234, coins: 777,
 });
 const rr = await server.resetRecord();
 check('전적 초기화: 승/패/무가 0', rr.wins === 0 && rr.losses === 0 && rr.draws === 0, rr);
-check('전적 초기화: 점수·코인·강화는 유지', rr.rating === 1234 && rr.coins === 777 && rr.speedLevel === 2, rr);
+check('전적 초기화: 점수·코인은 유지', rr.rating === 1234 && rr.coins === 777, rr);
 check('전적 초기화: solo 통계는 안 지운다', rr.soloWins === 4 && rr.soloLosses === 1, rr);
 const rrSaved = await $global.getUserStateOf('0xCCC');
 check('전적 초기화가 서버에 저장된다', rrSaved.wins === 0 && rrSaved.rating === 1234, rrSaved);

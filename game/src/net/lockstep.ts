@@ -46,6 +46,7 @@ export class Lockstep {
   private readonly lastPlaced: Record<PlayerId, number> = { 1: -1, 2: -1 };
   /** 다음 배치에 실릴 내 명령. */
   private outgoing: Command[] = [];
+  /** 마지막으로 보낸 배치의 실행 틱. `state.tick` 이 아니라 **execTick** 기준이다. */
   private lastSentFor = -1;
   private readonly stop: () => void;
 
@@ -101,13 +102,25 @@ export class Lockstep {
    * @param state    해시를 뜨기 위한 현재 상태
    */
   pump(nextTick: number, state: MatchState): void {
-    if (nextTick <= this.lastSentFor) return;
-    if (nextTick % BATCH_TICKS !== 0) return;
-    this.lastSentFor = nextTick;
+    // **`state.tick` 이 멈춰도 배치를 계속 보내야 한다.**
+    //
+    // 상대 배치가 늦게 와서(`commandsFor` → `stalled`) 시뮬레이션이 멈추면
+    // `state.tick` 이 그 자리에 고정된다. 그런데 `execTick` 을 `state.tick` 에서
+    // 계산하면 그 값도 고정이라, `nextTick % BATCH_TICKS !== 0` 인 틱에 멈추면
+    // 배치를 **영원히 안 보낸다** — 상대는 내 배치를 기다리고 나는 상대를 기다리는
+    // 교착이 된다. 실제로 났다: PVP에서 "상대를 기다리는중"이 뜨고 영원히 멈췄다.
+    //
+    // 그래서 `lastSentFor` 를 `state.tick` 이 아니라 **마지막으로 보낸 배치의
+    // execTick** 으로 두고, 그보다 앞선 execTick 으로 계속 예약한다. 시뮬레이션이
+    // 멈춰 있어도 빈 배치(`commands: []`)는 상대의 `ackTick` 을 올려 상대가
+    // 진행하게 하고, 상대도 같은 규칙으로 배치를 보내므로 내 쪽도 풀린다.
+    let execTick = nextTick + this.setup.inputDelayTicks;
+    if (execTick <= this.lastSentFor) execTick = this.lastSentFor + BATCH_TICKS;
+    this.lastSentFor = execTick;
 
     const batch: InputBatch = {
       player: this.setup.local,
-      execTick: nextTick + this.setup.inputDelayTicks,
+      execTick,
       commands: this.outgoing,
     };
     this.outgoing = [];

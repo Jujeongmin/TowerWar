@@ -4,6 +4,55 @@
 
 ---
 
+## -65. PVP 교착 — "상대를 기다리는중"에서 영원히 멈추던 버그 (2026-08-04, 사용자 신고)
+
+### 증상
+
+**"PVP로 매칭이 잡혔는데 아무것도 클릭이 안 되고 상대를 기다리는중 텍스트가 떴어"**.
+시뮬레이션이 멈추고 클릭도 안 먹는다.
+
+### 원인 — `Lockstep.pump` 가 state.tick 에 묶여 교착
+
+`pump()` 의 배치 전송 조건이 **시뮬레이션 진행 틱(`state.tick`)** 에 붙어 있었다:
+
+```
+if (nextTick <= this.lastSentFor) return;
+if (nextTick % BATCH_TICKS !== 0) return;
+execTick = nextTick + inputDelayTicks;
+```
+
+상대 배치가 네트워크로 늦게 오면 `commandsFor()` 가 `stalled=true`, `null` 을
+돌려주고 `state.tick` 이 그 자리에 **고정**된다. 그러면:
+- `pump(state.tick)` 의 `execTick` 도 고정되고
+- `nextTick % BATCH_TICKS !== 0` 인 틱에 멈추면 **배치를 영원히 안 보낸다**
+- 상대는 내 배치를 기다리고, 나는 상대를 기다린다 → **교착**
+
+클릭도 안 먹는 이유: `stalled` 면 `MatchScene.frame` 이 `commands === null` 에서
+`break` 해 시뮬레이션이 전진하지 않고, 드래그를 해도 명령이 적용될 틱이 오지 않는다.
+
+### 고침 (`net/lockstep.ts`)
+
+`lastSentFor` 를 `state.tick` 이 아니라 **마지막으로 보낸 배치의 execTick** 으로
+두고, 그보다 앞선 execTick 으로 계속 예약한다:
+
+```
+let execTick = nextTick + inputDelayTicks;
+if (execTick <= lastSentFor) execTick = lastSentFor + BATCH_TICKS;
+lastSentFor = execTick;
+```
+
+시뮬레이션이 멈춰 있어도 빈 배치(`commands: []`)가 계속 나가 상대의 `ackTick`
+을 올리고, 상대도 같은 규칙으로 배치를 보내므로 양쪽 다 풀린다.
+
+### 검증
+
+- 락스텝 검증(`lockstep-check.ts`, tsx 로 헤드리스 실행) **10/10 통과**.
+  특히 지연 500ms(stall 4프레임)·1000ms(stall 38프레임) 케이스에서 고치기 전엔
+  멈춤 경로였는데 이제 끝까지 진행·복구됨
+- `npm run verify` → **158/158**, tsc 0, 빌드 성공
+
+---
+
 ## -64. 봇전 점수가 안 오르던 버그 — 방 조기 abandon (2026-08-04, 사용자 신고)
 
 **"AI랑 점수 추가가 안 된다. 나보다 점수 높으면 안 되나?"** 두 질문에 답하면서 진짜

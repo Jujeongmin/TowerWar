@@ -101,8 +101,33 @@ export interface RoomSnapshot {
 const CALL_TIMEOUT_MS = 8000;
 /** Creating a private room also acquires a distributed lock and persists its code. */
 const ROOM_CALL_TIMEOUT_MS = 20000;
-/** 광고 보상 청구. 서버가 ads-verifier 를 최대 3번 왕복한 뒤 계정을 잠그고 저장한다. */
-const AD_CALL_TIMEOUT_MS = 15000;
+/**
+ * 첫 매칭 호출. **`server.js` 의 `SOLO_FALLBACK_MS` 와 같은 12초다.**
+ *
+ * 기본 8초였는데, 그러면 서버가 굼뜰 때 **8초에 조용히 봇전으로 떨어졌다** —
+ * `pvp-scene` 의 `search()` 가 `silentFallback` 으로 부르기 때문에 이 호출이 던지면
+ * 그 자리에서 `startBot()` 으로 넘어간다. 사람이 붙을 확률이 가장 높은 10~12초
+ * 무제한 대역 구간(`RATING_BAND_STEPS`)을 통째로 못 쓰고 버리는 셈이었다
+ * (2026-08-07: 콘솔에 `매칭 응답이 없습니다 (8초)` 가 실제로 찍혔다).
+ *
+ * **더 늘려도 대기가 길어지지는 않는다.** `pvp-scene.frame()` 이 이 호출과 무관하게
+ * 돌면서 12.5초에 로컬 봇 폴백을 켠다 — 바닥은 거기서 받친다.
+ *
+ * `requestSoloFallback` 은 그대로 8초다. 그쪽은 4초에 미리 쏴서 8초 타임아웃이 12초
+ * 무렵 끝나도록 맞춰 둔 것이라 건드리면 그 계산이 깨진다.
+ */
+const MATCH_CALL_TIMEOUT_MS = 12000;
+/**
+ * **코인을 계정에 써넣는 호출.** 기본값(8초)보다 길게 잡는다.
+ *
+ * 이 경로들은 계정 자물쇠(`$lock`)를 잡고 읽고 쓰기까지 한다 — 읽기만 하는 보통 호출과
+ * 무게가 다르다. 광고 보상은 거기에 `ads-verifier` 왕복까지 최대 3번 얹는다.
+ *
+ * **팔로우 보상도 여기다.** 전에는 기본 8초였는데, 그 안에 안 끝나면 화면이 "서버에
+ * 닿지 못했습니다"를 띄웠다 (2026-08-07 사용자 신고). 자물쇠까지 잡는 호출을 읽기와
+ * 같은 시간에 묶어 둘 이유가 없다.
+ */
+const COIN_CALL_TIMEOUT_MS = 15000;
 
 function withTimeout<T>(p: Promise<T>, what: string, timeoutMs = CALL_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -167,7 +192,11 @@ export class Agent8Client {
 
   /** 무작위 매칭. 빈 방을 찾거나 새로 판다. 서버가 `roomId` 를 정한다. */
   async findMatch(): Promise<string> {
-    const res = await withTimeout(this.server.remoteFunction('findMatch', [0, false]), '매칭');
+    const res = await withTimeout(
+      this.server.remoteFunction('findMatch', [0, false]),
+      '매칭',
+      MATCH_CALL_TIMEOUT_MS,
+    );
     this.roomId = res.roomId;
     return res.roomId;
   }
@@ -429,7 +458,7 @@ export class Agent8Client {
     return await withTimeout(
       this.server.remoteFunction('claimAdCoins', [requestId]),
       '광고 보상',
-      AD_CALL_TIMEOUT_MS,
+      COIN_CALL_TIMEOUT_MS,
     );
   }
 
@@ -442,7 +471,11 @@ export class Agent8Client {
    * 실패는 그대로 던진다: `not_following`(아직 팔로우 안 함) / `already_claimed`(이미 받음).
    */
   async claimFollowReward(): Promise<RemoteAccount> {
-    return await withTimeout(this.server.remoteFunction('claimFollowReward', []), '팔로우 보상');
+    return await withTimeout(
+      this.server.remoteFunction('claimFollowReward', []),
+      '팔로우 보상',
+      COIN_CALL_TIMEOUT_MS,
+    );
   }
 
   /**
@@ -460,7 +493,7 @@ export class Agent8Client {
     return await withTimeout(
       this.server.remoteFunction('claimDoubleReward', [requestId]),
       '두 배 보상',
-      AD_CALL_TIMEOUT_MS,
+      COIN_CALL_TIMEOUT_MS,
     );
   }
 

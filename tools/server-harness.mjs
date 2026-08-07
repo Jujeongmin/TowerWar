@@ -607,6 +607,16 @@ check('유료 타워는 코인으로 못 산다', te === '코인으로 살 수 �
 te = null;
 try { await server.buyTowerKind('castle'); } catch (e) { te = e.message; }
 check('카탈로그에 없는 타워 거부', te === '그런 타워가 없습니다', te);
+// `Object.prototype` 상속 키(`toString` 등)는 `TOWER_PRICES[kind]` 가 함수를
+// 돌려줘 `undefined`/`0`/`NaN` 비교를 전부 피해 간다 — 코인이 그대로 새어 나가면
+// 안 된다 (최종 코드 리뷰 Important #2).
+for (const bad of ['toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
+  te = null;
+  const coinsBefore = (await server.getAccount()).coins;
+  try { await server.buyTowerKind(bad); } catch (e) { te = e.message; }
+  check(`상속 키 타워 구매 거부: ${bad}`, te === '그런 타워가 없습니다', te);
+  check(`상속 키 타워 구매가 코인을 안 건드린다: ${bad}`, (await server.getAccount()).coins === coinsBefore, await server.getAccount());
+}
 const bought = await server.buyTowerKind('tower_house');
 check('타워 구매: 1000 - 400', bought.coins === 600, bought.coins);
 check('사면 바로 착용된다', bought.towerKind === 'tower_house', bought);
@@ -644,6 +654,18 @@ check('카탈로그에 없는 유닛 구매 거부', e2 === '그런 유닛이 �
 e2 = null;
 try { await server.selectUnitKind('lancer'); } catch (e) { e2 = e.message; }
 check('카탈로그에 없는 유닛 착용 거부', e2 === '그런 유닛이 없습니다', e2);
+// `Object.prototype` 상속 키는 `UNIT_PRICES[kind]` 가 함수를 돌려줘 가격 검사를
+// 전부 피해 간다 — `buyUnitKind`/`selectUnitKind` 양쪽 다 (최종 코드 리뷰 Important #2).
+for (const bad of ['toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
+  e2 = null;
+  const coinsBefore = (await server.getAccount()).coins;
+  try { await server.buyUnitKind(bad); } catch (e) { e2 = e.message; }
+  check(`상속 키 유닛 구매 거부: ${bad}`, e2 === '그런 유닛이 없습니다', e2);
+  check(`상속 키 유닛 구매가 코인을 안 건드린다: ${bad}`, (await server.getAccount()).coins === coinsBefore, await server.getAccount());
+  e2 = null;
+  try { await server.selectUnitKind(bad); } catch (e) { e2 = e.message; }
+  check(`상속 키 유닛 착용 거부: ${bad}`, e2 === '그런 유닛이 없습니다', e2);
+}
 acct = await server.selectUnitKind(DEFAULT_UNIT_KIND);
 check('기본 유닛은 언제나 착용 가능', acct.unitKind === DEFAULT_UNIT_KIND, acct);
 

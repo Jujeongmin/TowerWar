@@ -454,13 +454,16 @@ function defaultAccount(account) {
 function normalizeAccount(raw, account) {
   const d = defaultAccount(account);
   if (!raw || typeof raw !== 'object') return d;
+  // `in` 이 아니라 hasOwnProperty 다 — `'toString'` 같은 상속 키가 통과하면 안 된다
+  // (`cleanUnitKind` 의 같은 주석 참고).
   const owned = Array.isArray(raw.ownedUnits)
-    ? [...new Set(raw.ownedUnits.filter((k) => k in UNIT_PRICES))]
+    ? [...new Set(raw.ownedUnits.filter((k) => Object.prototype.hasOwnProperty.call(UNIT_PRICES, k)))]
     : [];
   const entitlements = cleanEntitlements(raw.entitlements);
   const kind = isKnownUnit(raw.unitKind) ? raw.unitKind : DEFAULT_UNIT_KIND;
+  // 위 ownedUnits 와 같은 이유로 hasOwnProperty 다.
   const ownedTowers = Array.isArray(raw.ownedTowers)
-    ? [...new Set(raw.ownedTowers.filter((k) => k in TOWER_PRICES))]
+    ? [...new Set(raw.ownedTowers.filter((k) => Object.prototype.hasOwnProperty.call(TOWER_PRICES, k)))]
     : [];
   const tkind = isKnownTower(raw.towerKind) ? raw.towerKind : DEFAULT_TOWER_KIND;
   return {
@@ -593,6 +596,10 @@ class Server {
   async buyUnitKind(kind) {
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();
+      // 상속 키(`toString` 등)는 `UNIT_PRICES[kind]` 가 `Object.prototype` 의 함수를
+      // 돌려줘 아래 `undefined`/`0`/코인 비교를 전부 피해 간다 — 먼저 막는다
+      // (`isKnownUnit` 은 hasOwnProperty 기준).
+      if (!isKnownUnit(kind)) throw new Error('그런 유닛이 없습니다');
       // 유료 종류는 코인으로 못 산다. 여기서 안 막으면 `UNIT_PRICES[kind]` 가
       // `undefined` 라 '그런 유닛이 없습니다' 로 새어 나가 이유가 안 읽힌다.
       if (PREMIUM_UNITS.includes(kind)) throw new Error('코인으로 살 수 없습니다');
@@ -692,8 +699,10 @@ class Server {
   /** 가진 것만 착용할 수 있다. */
   async selectUnitKind(kind) {
     const a = await this.#loadAccount();
+    // 상속 키가 `UNIT_PRICES[kind]` 를 함수로 돌려줘 아래 검사를 피해 가지 않도록
+    // 먼저 막는다 (`isKnownUnit` 은 hasOwnProperty 기준).
+    if (!isKnownUnit(kind)) throw new Error('그런 유닛이 없습니다');
     if (DEBUG_UNLOCK_ALL) {
-      if (!isKnownUnit(kind)) throw new Error('그런 유닛이 없습니다');
       return await this.#saveAccount({ ...a, unitKind: kind });
     }
     if (PREMIUM_UNITS.includes(kind)) {
@@ -715,6 +724,9 @@ class Server {
   async buyTowerKind(kind) {
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();
+      // 상속 키는 `TOWER_PRICES[kind]` 가 함수를 돌려줘 아래 `undefined`/`0`/코인
+      // 비교를 전부 피해 간다 — 먼저 막는다 (`isKnownTower` 는 hasOwnProperty 기준).
+      if (!isKnownTower(kind)) throw new Error('그런 타워가 없습니다');
       if (PREMIUM_TOWERS.includes(kind)) throw new Error('코인으로 살 수 없습니다');
       const price = TOWER_PRICES[kind];
       if (price === undefined) throw new Error('그런 타워가 없습니다');

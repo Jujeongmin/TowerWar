@@ -322,7 +322,10 @@ export class ShopScene implements Scene {
       set(el, 'name', towerLabelOf(kind));
       set(el, 'stats', t().towerStats(meta.speed));
       set(el, 'blurb', towerBlurbOf(kind));
-      el.classList.toggle('is-worn', equipped);
+      // 유닛 카드와 같은 규칙(`.unit-card.is-equipped`/`.is-owned`, 상태 칸의
+      // `.locked`) — 시트에 없는 `.is-worn` 을 쓰면 착용 강조도 가격 흐림도 안 뜬다.
+      el.classList.toggle('is-equipped', equipped);
+      el.classList.toggle('is-owned', owned);
 
       if (isPremiumTower(kind)) {
         // 유료 칸. **`vxPrice(...) === null` 로 "준비 중"을 판정하면 안 된다** —
@@ -333,11 +336,13 @@ export class ShopScene implements Scene {
         // 를 봐야 한다 — 유닛 유료 카드·배속 카드와 같은 규칙이다.
         const sellable = isPurchasable(kind as PremiumItem);
         set(el, 'state', equipped ? t().equipped : owned ? t().equip : sellable ? t().buyWithVx : t().comingSoon);
+        el.querySelector('[data-role="state"]')?.classList.toggle('locked', !owned && !sellable);
         // 착용 중이거나(유닛과 같은 규칙), 안 가졌는데 아직 못 사는 상품이면 잠근다.
         el.disabled = equipped || (!owned && !sellable);
       } else {
         const affordable = owned || a.coins >= meta.price;
         set(el, 'state', equipped ? t().equipped : owned ? t().equip : `◈ ${meta.price.toLocaleString()}`);
+        el.querySelector('[data-role="state"]')?.classList.toggle('locked', !affordable);
         // 착용 중인 카드는 누를 이유가 없다 (유닛 카드와 같은 규칙). 못 사는 카드도 잠근다.
         el.disabled = equipped || !affordable;
       }

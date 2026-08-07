@@ -145,6 +145,8 @@ export interface Strings {
   followClaimed: string;
   followNotYet: string;
   followHowTo: string;
+  /** 통신 오류 등으로 청구가 실패했다. 다시 눌러 보라는 뜻. */
+  followFailed: string;
   volMaster: string;
   volSfx: string;
   volBgm: string;
@@ -304,6 +306,7 @@ const en: Strings = {
   followClaimed: 'Claimed',
   followNotYet: "We can't see a follow yet. Follow on the game page, then tap Claim.",
   followHowTo: 'Follow from the game page on Verse8, then come back and tap Claim.',
+  followFailed: "Couldn't reach the server. Tap again.",
   volMaster: 'Overall',
   volSfx: 'Effects',
   volBgm: 'Music',
@@ -463,6 +466,7 @@ const ko: Strings = {
   followClaimed: '받음',
   followNotYet: '아직 팔로우가 확인되지 않았습니다. 게임 페이지에서 팔로우한 뒤 눌러 주세요.',
   followHowTo: 'Verse8 게임 페이지에서 팔로우한 뒤 돌아와 눌러 주세요.',
+  followFailed: '서버에 닿지 못했습니다. 다시 눌러 주세요.',
   volMaster: '전체',
   volSfx: '효과음',
   volBgm: '배경음',
@@ -625,6 +629,7 @@ const zh: Strings = {
   followClaimed: '已领取',
   followNotYet: '尚未确认关注。请在游戏页面关注后再点击。',
   followHowTo: '在 Verse8 游戏页面关注后返回并点击领取。',
+  followFailed: '无法连接服务器。请再试一次。',
   volMaster: '总音量',
   volSfx: '音效',
   volBgm: '音乐',

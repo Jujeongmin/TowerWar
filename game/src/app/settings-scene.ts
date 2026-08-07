@@ -26,6 +26,24 @@ const VOL_ROWS = [
  */
 const FOLLOW_REWARD_COINS = 500;
 
+/**
+ * 팔로우 보상 실패 코드 → 화면 문구.
+ *
+ * **`includes` 로 본다.** 서버가 던진 `not_following` 이 remote function 을 거치면서
+ * 감싸져 오기 때문에 `===` 로 비교하면 절대 안 맞는다 — 실제로 그 버그를 냈다
+ * (2026-08-07: 실패해도 안내가 안 바뀌어 눌러도 아무 일이 없어 보였다).
+ * 상점의 `adMessage` 가 같은 이유로 같은 규칙을 쓴다.
+ */
+function followMessage(err: string): string {
+  if (err === 'ok') return '';
+  if (err.includes('not_following')) return t().followNotYet;
+  if (err.includes('already_claimed')) return t().followClaimed;
+  if (err === 'offline') return t().adUnavailable;
+  // 남은 것은 통신 오류다. **여기서도 문구를 바꾼다** — 안 바꾸면 눌러도 아무 일이
+  // 안 일어난 것으로 보인다.
+  return t().followFailed;
+}
+
 /** 각 언어를 **그 언어로** 적는다. 한국어 화면에서 'Korean' 은 아무 도움이 안 된다. */
 const ENDONYM: Record<Lang, string> = {
   en: 'English',
@@ -127,6 +145,8 @@ export class SettingsScene implements Scene {
     // 화면을 다시 열면 확인·완료 상태는 초기로 되돌린다.
     this.clearConfirm();
     this.justReset = false;
+    // 지난번에 실패한 문구를 들고 다시 뜨면 안 된다. 그 사이에 팔로우하고 왔을 수도 있다.
+    this.claimResult = null;
     this.paint();
     this.root.hidden = false;
   }
@@ -204,12 +224,12 @@ export class SettingsScene implements Scene {
       this.followNote.textContent = t().followReward(FOLLOW_REWARD_COINS);
       return;
     }
-    // 아직 팔로우가 안 잡혔을 때만 "어떻게 하는지"로 바꾼다. 그 외 실패(오프라인·
-    // 통신 오류)는 평소 안내를 그대로 둔다 — 사용자가 할 수 있는 일이 같다.
+    // **누른 뒤에는 반드시 문구가 바뀌어야 한다.** 실패했는데 안내가 그대로면 눌러도
+    // 아무 일이 안 일어난 것처럼 보인다 (2026-08-07 사용자 신고 — 실제로 그랬다).
     this.followNote.textContent =
-      this.claimResult === 'not_following'
-        ? t().followNotYet
-        : `${t().followReward(FOLLOW_REWARD_COINS)} ${t().followHowTo}`;
+      this.claimResult === null
+        ? `${t().followReward(FOLLOW_REWARD_COINS)} ${t().followHowTo}`
+        : followMessage(this.claimResult);
   }
 
   private async onFollowClick(): Promise<void> {

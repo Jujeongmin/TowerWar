@@ -140,6 +140,39 @@ const UNIT_PRICES = {
 };
 
 /**
+ * 타워 외형 가격. **`game/src/towers.ts` 의 `TOWER_KIND_META.price` 와 같아야 한다.**
+ * 어긋나면 "상점에는 보이는데 못 사는" 또는 그 반대가 된다.
+ *
+ * **속도 값은 여기 없다.** 서버는 이름만 내려주고 이름 → 배수 변환은 클라이언트가
+ * 한다 — 공식을 양쪽에 복사하면 언젠가 어긋나고, 어긋나면 두 클라이언트가 다른 판을 돈다.
+ */
+const TOWER_PRICES = {
+  tower_hut: 0,
+  tower_house: 400,
+  tower_barracks: 900,
+  tower_keep: 1500,
+  tower_citadel: 2400,
+};
+
+/** 코인으로 못 사는 타워. `UNIT_PRICES`/`PREMIUM_UNITS` 와 같은 이유로 갈라 둔다. */
+const PREMIUM_TOWERS = ['tower_prime'];
+
+/** `game/src/towers.ts` 의 `DEFAULT_TOWER_KIND` 와 같아야 한다. */
+const DEFAULT_TOWER_KIND = 'tower_hut';
+
+function isKnownTower(v) {
+  return (
+    typeof v === 'string' &&
+    (Object.prototype.hasOwnProperty.call(TOWER_PRICES, v) || PREMIUM_TOWERS.includes(v))
+  );
+}
+
+/** 모르는 값은 기본 외형으로 떨어뜨린다. 여기서 던지면 판이 안 열린다. */
+function cleanTowerKind(v) {
+  return isKnownTower(v) ? v : DEFAULT_TOWER_KIND;
+}
+
+/**
  * 코인으로 못 사는 유료 종류. 사는 곳은 Verse8 CrossRamp 상점이다.
  *
  * `UNIT_PRICES` 와 갈라 두는 이유: `cleanUnitKind` 가 `UNIT_PRICES` 로 "아는 종류인가"를
@@ -392,6 +425,8 @@ function defaultAccount(account) {
     // `units.ts` 의 DEFAULT_UNIT_KIND 와 같아야 한다. 어긋나면 접속하는 순간
     // 서버 값이 클라이언트를 덮어써서(§-10) 상점에서 고른 것이 되돌아간 것처럼 보인다.
     unitKind: DEFAULT_UNIT_KIND,
+    ownedTowers: [],
+    towerKind: DEFAULT_TOWER_KIND,
     // 봇 대체는 화면에 안 알리지만(§-7) 전적은 갈라 둔다.
     // 안 그러면 나중에 밸런스를 볼 때 표본이 뭐였는지 알 수 없다.
     soloWins: 0,
@@ -423,6 +458,10 @@ function normalizeAccount(raw, account) {
     : [];
   const entitlements = cleanEntitlements(raw.entitlements);
   const kind = isKnownUnit(raw.unitKind) ? raw.unitKind : DEFAULT_UNIT_KIND;
+  const ownedTowers = Array.isArray(raw.ownedTowers)
+    ? [...new Set(raw.ownedTowers.filter((k) => k in TOWER_PRICES))]
+    : [];
+  const tkind = isKnownTower(raw.towerKind) ? raw.towerKind : DEFAULT_TOWER_KIND;
   return {
     account,
     name: cleanName(raw.name),
@@ -436,6 +475,11 @@ function normalizeAccount(raw, account) {
     unitKind: UNIT_PRICES[kind] === 0 || owned.includes(kind) || entitlements.includes(kind)
       ? kind
       : DEFAULT_UNIT_KIND,
+    ownedTowers,
+    // 안 가진 것이 착용돼 있으면 기본으로 되돌린다. 유닛과 같은 규칙이다.
+    towerKind: TOWER_PRICES[tkind] === 0 || ownedTowers.includes(tkind) || entitlements.includes(tkind)
+      ? tkind
+      : DEFAULT_TOWER_KIND,
     soloWins: num(raw.soloWins),
     soloLosses: num(raw.soloLosses),
     soloDraws: num(raw.soloDraws),
@@ -662,6 +706,48 @@ class Server {
   }
 
   /**
+   * 타워 외형 구매. 사면 바로 착용한다.
+   *
+   * **순수 외형이 아니다** — 착용한 것이 생산속도를 정한다. 그래서 소유 판정이
+   * 유닛과 똑같이 서버에 있어야 한다.
+   */
+  async buyTowerKind(kind) {
+    return await $lock(`acct:${$sender.account}`, async () => {
+      const a = await this.#loadAccount();
+      if (PREMIUM_TOWERS.includes(kind)) throw new Error('코인으로 살 수 없습니다');
+      const price = TOWER_PRICES[kind];
+      if (price === undefined) throw new Error('그런 타워가 없습니다');
+      if (price === 0 || a.ownedTowers.includes(kind)) throw new Error('이미 가지고 있습니다');
+      if (a.coins < price) throw new Error('코인이 모자랍니다');
+      return await this.#saveAccount({
+        ...a,
+        coins: a.coins - price,
+        ownedTowers: [...a.ownedTowers, kind],
+        towerKind: kind,
+      });
+    });
+  }
+
+  /** 가진 외형만 착용할 수 있다. 유료 외형은 `entitlements` 가 소유를 든다. */
+  async selectTowerKind(kind) {
+    return await $lock(`acct:${$sender.account}`, async () => {
+      const a = await this.#loadAccount();
+      if (DEBUG_UNLOCK_ALL) {
+        if (!isKnownTower(kind)) throw new Error('그런 타워가 없습니다');
+        return await this.#saveAccount({ ...a, towerKind: kind });
+      }
+      if (PREMIUM_TOWERS.includes(kind)) {
+        if (!a.entitlements.includes(kind)) throw new Error('가지고 있지 않습니다');
+        return await this.#saveAccount({ ...a, towerKind: kind });
+      }
+      const price = TOWER_PRICES[kind];
+      if (price === undefined) throw new Error('그런 타워가 없습니다');
+      if (price !== 0 && !a.ownedTowers.includes(kind)) throw new Error('가지고 있지 않습니다');
+      return await this.#saveAccount({ ...a, towerKind: kind });
+    });
+  }
+
+  /**
    * 무작위 매칭. 대기 중이고 자리가 남은 방에 들어가거나, 없으면 새로 판다.
    *
    * `countRoomUsers` 는 **Promise를 돌려준다.** await 없이 비교하면 항상 false가 되어
@@ -815,6 +901,9 @@ class Server {
         // (`units.ts` 의 `power`) 클라이언트가 보내면 안 산 유닛의 힘을 자칭할 수 있다.
         // `#loadAccount` 가 소유 검사까지 마친 값이라 여기서 더 볼 것이 없다.
         unitKind: me.unitKind,
+        // 타워 외형도 서버 계정에서 읽는다. 외형이 생산속도를 정하므로(towers.ts)
+        // 클라이언트가 보내면 안 산 속도를 자칭할 수 있다.
+        towerKind: me.towerKind,
         // 닉네임·아바타도 서버 계정에서 읽는다. 클라이언트가 보내면 남의 것을 자칭할 수 있다.
         name: me.name,
         profile: me.profile,
@@ -1132,6 +1221,7 @@ class Server {
     const names = {};
     const profiles = {};
     const kinds = {};
+    const towerKinds = {};
     const ratings = {};
     const tempo = {};
     order.forEach((account, i) => {
@@ -1142,6 +1232,7 @@ class Server {
       // 몰라도 "P1은 몇 단계·누구, P2는 몇 단계·누구"만 보고 같은 판을 만들 수 있어야 한다.
       names[slot] = cleanName((players[account] || {}).name);
       kinds[slot] = cleanUnitKind((players[account] || {}).unitKind);
+      towerKinds[slot] = cleanTowerKind((players[account] || {}).towerKind);
       // 점수 변동 계산의 기준값이다. **판 도중 점수가 바뀌어도 이 스냅샷은 안 바뀐다** —
       // `reportResult` 가 매 판 정확히 같은 두 숫자로 Elo를 계산해야 하기 때문이다.
       ratings[slot] = numOr((players[account] || {}).rating, DEFAULT_RATING);
@@ -1158,6 +1249,7 @@ class Server {
       names,
       profiles,
       kinds,
+      towerKinds,
       ratings,
       tempo,
       // maps.ts 의 generateMap 이 16비트 시드를 받는다.
@@ -1200,6 +1292,9 @@ class Server {
       // 내려주면 그 결정이 무너진다.
       names: { 1: mine },
       profiles: { 1: cleanProfile(((state.players || {})[account] || {}).profile) },
+      // 봇전도 생산속도를 정하는 값이라 방 상태에 실어야 한다(§-24.7). PVP와 같은 필드
+      // 이름을 써서 클라이언트가 solo·PVP를 가리지 않고 같은 경로로 읽게 한다.
+      towerKinds: { 1: cleanTowerKind(((state.players || {})[account] || {}).towerKind) },
       startedAt: Date.now(),
       winner: null,
       winnerSlot: 0,

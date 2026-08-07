@@ -567,6 +567,58 @@ const uks2 = await $global.getRoomState(uk2.roomId);
 check('모르는 종류는 기본값', uks2.kinds[1] === 'beergang', uks2.kinds);
 check('상속 키도 기본값', uks2.kinds[2] === 'beergang', uks2.kinds);
 
+// 24.7) 타워 외형도 슬롯 번호로 내려온다 — 유닛 종류와 같은 규칙이다.
+// 외형이 생산속도를 정하므로(towers.ts) 클라이언트가 보낸 값을 믿으면 안 산 속도를
+// 자칭할 수 있다. 서버 계정에서 읽는지, 안 가진 것은 기본으로 떨어지는지 본다.
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', {
+  ...defaultsFor('0xAAA'),
+  ownedTowers: ['tower_keep'], towerKind: 'tower_keep',
+});
+userStates.set('0xBBB', {
+  ...defaultsFor('0xBBB'),
+  ownedTowers: [], towerKind: 'tower_citadel', // 안 산 것이 착용돼 있다
+});
+as(A);
+const tw = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(tw.code);
+await server.setReady(true);
+await server.$roomTick(300, tw.roomId);
+const twState = await $global.getRoomState(tw.roomId);
+check('시작 시 towerKinds 가 내려온다', twState.towerKinds != null, twState);
+check('A가 산 석탑이 A 슬롯으로', twState.towerKinds[twState.slots['0xAAA']] === 'tower_keep', twState.towerKinds);
+check('B의 안 산 성채는 기본으로', twState.towerKinds[twState.slots['0xBBB']] === 'tower_hut', twState.towerKinds);
+
+// 24.8) 타워 구매·착용
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+const T = { account: '0xTTT', roomId: null };
+as(T);
+userStates.set('0xTTT', { ...defaultsFor('0xTTT'), coins: 1000 });
+let te = null;
+try { await server.buyTowerKind('tower_hut'); } catch (e) { te = e.message; }
+check('기본 타워는 이미 가진 것', te === '이미 가지고 있습니다', te);
+te = null;
+try { await server.buyTowerKind('tower_prime'); } catch (e) { te = e.message; }
+check('유료 타워는 코인으로 못 산다', te === '코인으로 살 수 없습니다', te);
+te = null;
+try { await server.buyTowerKind('castle'); } catch (e) { te = e.message; }
+check('카탈로그에 없는 타워 거부', te === '그런 타워가 없습니다', te);
+const bought = await server.buyTowerKind('tower_house');
+check('타워 구매: 1000 - 400', bought.coins === 600, bought.coins);
+check('사면 바로 착용된다', bought.towerKind === 'tower_house', bought);
+te = null;
+try { await server.buyTowerKind('tower_citadel'); } catch (e) { te = e.message; }
+check('코인 모자라면 거부', te === '코인이 모자랍니다', te);
+te = null;
+try { await server.selectTowerKind('tower_citadel'); } catch (e) { te = e.message; }
+check('안 산 타워는 착용 거부', te === '가지고 있지 않습니다', te);
+const worn = await server.selectTowerKind('tower_hut');
+check('가진 것은 착용된다', worn.towerKind === 'tower_hut', worn);
+
 // 25) 계정이 서버에 산다 — 앞 테스트에 안 쓰인 새 계정으로 본다
 const D = { account: '0xDDD', roomId: null };
 as(D);

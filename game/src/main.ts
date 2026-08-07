@@ -23,6 +23,7 @@ import { buyVxItem, initVxShop, watchVxShop, type PremiumItem } from './net/vx';
 import { applyStaticText, getLang, setLang } from './i18n';
 import { Renderer } from './render/renderer';
 import type { UnitKind } from './units';
+import type { TowerKind } from './towers';
 
 function need<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -68,6 +69,14 @@ async function openVxShop(item: PremiumItem): Promise<boolean> {
 /** 안 가진 생김새면 사고, 가진 것이면 착용한다. 둘 다 못 하면 아무 일도 안 일어난다. */
 function pickUnit(kind: UnitKind): void {
   void store.pickUnit(kind).then(() => {
+    audio.play('purchase');
+    shop.refresh();
+  });
+}
+
+/** 안 가진 타워면 사고, 가진 것이면 착용한다. 둘 다 못 하면 아무 일도 안 일어난다. */
+function pickTower(kind: TowerKind): void {
+  void store.pickTower(kind).then(() => {
     audio.play('purchase');
     shop.refresh();
   });
@@ -126,6 +135,7 @@ const shop = new ShopScene(
   need('shop'),
   () => store.current,
   pickUnit,
+  pickTower,
   openVxShop,
   () => store.watchAdForCoins(),
   () => switchTo(lobby),

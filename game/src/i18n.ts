@@ -78,6 +78,7 @@ export interface Strings {
   connectionRefused: string;
   roomClosed: (reason: string) => string;
   // 상점
+  shopTowers: string;
   shopUnits: string;
   shopVx: string;
   vxNotListed: string;
@@ -87,6 +88,7 @@ export interface Strings {
   buyWithVx: string;
   comingSoon: string;
   unitStats: (power: number) => string;
+  towerStats: (speed: number) => string;
   // 순위
   boardTitle: string;
   boardLoading: string;
@@ -198,6 +200,7 @@ const en: Strings = {
   couldNotJoin: 'Could not join',
   connectionRefused: 'Connection refused',
   roomClosed: (reason) => `Room closed (${reason})`,
+  shopTowers: 'Towers — pricier means faster production',
   shopUnits: 'Units — pricier means more health and attack',
   shopVx: 'VX — Real-money',
   vxNotListed: 'This item is not on sale yet.',
@@ -207,6 +210,7 @@ const en: Strings = {
   buyWithVx: 'Buy with VX',
   comingSoon: 'Coming soon',
   unitStats: (power) => `Health ${power} · Attack ${power}`,
+  towerStats: (speed) => `Production ×${speed.toFixed(2)}`,
   boardTitle: 'Ranking — Top 10 by score',
   boardLoading: 'Loading…',
   boardOffline: 'Not connected, so the ranking is unavailable',
@@ -349,6 +353,7 @@ const ko: Strings = {
   couldNotJoin: '들어가지 못했습니다',
   connectionRefused: '연결이 거부되었습니다',
   roomClosed: (reason) => `방이 닫혔습니다 (${reason})`,
+  shopTowers: '타워 — 비쌀수록 생산이 빠르다',
   shopUnits: '유닛 — 비쌀수록 체력과 공격력이 높다',
   shopVx: 'VX — 현금 결제',
   vxNotListed: '결제 상품이 아직 등록되지 않았습니다.',
@@ -358,6 +363,7 @@ const ko: Strings = {
   buyWithVx: 'VX로 구매',
   comingSoon: '준비 중',
   unitStats: (power) => `체력 ${power} · 공격력 ${power}`,
+  towerStats: (speed) => `생산 ×${speed.toFixed(2)}`,
   boardTitle: '순위 — 점수 상위 10명',
   boardLoading: '불러오는 중…',
   boardOffline: '서버에 연결되지 않아 순위를 볼 수 없습니다',
@@ -502,6 +508,7 @@ const zh: Strings = {
   couldNotJoin: '无法加入',
   connectionRefused: '连接被拒绝',
   roomClosed: (reason) => `房间已关闭（${reason}）`,
+  shopTowers: '塔 — 越贵产量越快',
   shopUnits: '单位 — 越贵，生命与攻击越高',
   shopVx: 'VX — 现金付费',
   vxNotListed: '该商品尚未上架。',
@@ -511,6 +518,7 @@ const zh: Strings = {
   buyWithVx: '用 VX 购买',
   comingSoon: '敬请期待',
   unitStats: (power) => `生命 ${power} · 攻击 ${power}`,
+  towerStats: (speed) => `产量 ×${speed.toFixed(2)}`,
   boardTitle: '排行榜 — 积分前 10 名',
   boardLoading: '加载中…',
   boardOffline: '未连接服务器，无法查看排行榜',

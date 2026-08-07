@@ -1,6 +1,67 @@
 # TowerWar — 인수인계
 
-최종 갱신: 2026-08-06
+최종 갱신: 2026-08-07
+
+---
+
+## -74. 상점에 타워 카드를 붙인다 — "타워 외형이 생산속도를 정한다" 마지막 과제 (2026-08-07)
+
+타워 외형·생산속도 기능의 **일곱 번째이자 마지막 과제**. 카탈로그(Task 1)·계정(Task 2)·
+서버 판정(Task 3)·네트워크 경계+매치 배선·봇(Task 4+5)·렌더링(Task 6, 커밋 `6fc3bdd`)까지
+끝나 있었고 **살 수 있는 곳만 없었다.** 이번에 상점에 타워 카드를 붙여 기능을 완성했다.
+
+### 무엇을 했는가
+
+- `game/index.html`: 유닛 격자(`#unit-grid`) **위**에 타워 구역(`#tower-grid`) 추가
+- `game/src/i18n.ts`: `shopTowers`·`towerStats` 문자열, 세 언어(en/ko/zh) 모두
+- `game/src/app/shop-scene.ts`: `buildTowerCard` 를 유닛 카드(`buildUnitCard`)와 같은
+  class 로 만들어 격자 규격을 공유했다. 미리보기 그림은 **판에서 쓰는 것과 같은 파일**
+  (P1·파랑 기준) — 상점에서만 다른 그림을 쓰면 산 뒤에 "이게 아닌데"가 된다. 크기는
+  종류와 무관하게 같다(타워 반경은 병력 수가 정하는 게임 규칙이라서). 코인 타워 5종은
+  `#tower-grid`, 유료 타워(왕성)는 유닛 유료 격자(`#premium-grid`)에 같이 넣었다 —
+  결제 흐름이 한 곳에 모여야 한다는 기존 패턴을 그대로 따랐다
+- `game/src/main.ts`: `pickTower` 함수(안 가진 타워면 사고, 가진 것이면 착용) 추가,
+  `ShopScene` 생성자에 `pickUnit` 다음 자리로 배선
+
+### 밸런스 손잡이는 한 줄이다
+
+`towers.ts` 의 `TOWER_KIND_META[kind].speed`. 상점 표시(`t().towerStats`)·서버 배수
+변환(→ sim 의 `PlayerMods.speedMul`)·렌더 아우라 진하기까지 전부 이 값을 따라간다.
+**코인 가격을 바꾸려면 `towers.ts` 와 `server.js` 의 `TOWER_PRICES` 둘 다 고쳐야 한다** —
+어긋나면 "상점에는 보이는데 못 사는" 버그가 난다.
+
+### ⚠ Task 7 브리프가 빠뜨렸던 VX 배관 — 세 곳을 이었다
+
+브리프는 상점 UI만 다뤘는데, `tower_prime`(왕성, 유료)이 결제 배관에 안 붙어 있었다
+(`server.js` 는 이미 `PREMIUM_TOWERS` 상수를 갖고 있었지만 아무도 안 썼다). 세 곳을 고쳤다:
+
+1. `game/src/net/vx.ts`: `PremiumItem` 유니언에 `TowerKind` 를 더했다
+   (`UnitKind | TowerKind | 'tempo_boost'`) — 유닛과 같은 구조라 나란히 넣었다
+2. 같은 파일 `VX_PRODUCTS` 에 `tower_prime: { price: 500 }` 추가 — `beergang_rainbow` 와
+   같은 500으로 맞췄다. **대시보드가 진짜이고 이 값은 로딩 전 폴백일 뿐**이라는 기존
+   주석 그대로다 — 가격을 새로 정한 것이 아니다
+3. `server.js` 의 `PREMIUM_ITEMS` 가 `PREMIUM_TOWERS` 를 안 합치고 있었다. 이 배열이
+   결제 지급(`$onItemPurchased`)과 `entitlements` 정리(`cleanEntitlements`)를 판정하므로,
+   안 넣으면 **실제 결제가 들어와도 서버가 "모르는 상품"이라며 거절한다**
+
+**Verse8 대시보드에 `tower_prime` 상품이 아직 등록 안 됐다** — 그래서 지금은 상점에
+"준비 중"으로 뜬다. `tempo_boost` 가 지금 같은 상태이고, **그게 맞는 동작이다.** 상품
+등록은 사람이 할 일.
+
+### 배포 과도기 데싱크 위험
+
+**서버(`server.js`)와 클라이언트를 반드시 같이 배포해야 한다.** 서버가 `towerKinds` 를
+안 내려주면 클라이언트는 전부 기본값(1.0)으로 떨어진다 — 판이 갈라지지는 않지만 기능이
+없는 것과 같다. 배포 직후 짧은 시간 옛 클라이언트와 섞이면 데싱크가 날 수 있다(설계
+문서의 "배포 과도기" 절 참고). 서버가 `desync` 필드에 기록하므로 실제로 났는지는 방
+상태로 확인할 수 있다. 에디터에서 `.deployed` 를 지우고 Launch 할 것.
+
+### 검증
+
+`npm run verify` — tsc 0, 하네스 **162/162**, 빌드 성공. 하네스 수는 이전 과제(Task 3)
+때 이미 늘어나 있었다 — 이번은 순수 UI/배관 과제라 서버 로직 자체는 안 바뀌었고, 기존
+"유료 목록에 없는 상품은 지급하지 않는다" 류 하네스가 `PREMIUM_ITEMS` 확장을 그대로
+커버한다.
 
 ---
 

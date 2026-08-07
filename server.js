@@ -188,7 +188,9 @@ const PREMIUM_UNITS = ['beergang_rainbow'];
  * 여기 값을 그쪽에 넣으면 `tempo_boost` 가 입을 수 있는 유닛이 된다.
  */
 const TEMPO_ITEM = 'tempo_boost';
-const PREMIUM_ITEMS = [...PREMIUM_UNITS, TEMPO_ITEM];
+// `PREMIUM_TOWERS` 도 결제 지급(`$onItemPurchased`) 대상이다 — 안 넣으면 유료 타워를
+// 사도 서버가 모르는 상품이라며 지급을 거절한다.
+const PREMIUM_ITEMS = [...PREMIUM_UNITS, ...PREMIUM_TOWERS, TEMPO_ITEM];
 
 /**
  * **디버그: 소유 판정을 통째로 연다** (2026-08-03 사용자 지시).

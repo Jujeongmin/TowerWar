@@ -15,7 +15,9 @@
 import {
   AD_COOLDOWN_MS,
   canUseTempo,
+  ownsTowerKind,
   ownsUnitKind,
+  towerKindOf,
   unitKindOf,
   type Account,
 } from '../account/account';
@@ -38,10 +40,28 @@ import {
   tierOf,
   type UnitKind,
 } from '../units';
+import {
+  SHOP_PREMIUM_TOWER_ORDER,
+  SHOP_TOWER_ORDER,
+  TOWER_KIND_META,
+  isPremiumTower,
+  towerBlurbOf,
+  towerLabelOf,
+  towerSpriteKindOf,
+  type TowerKind,
+} from '../towers';
 import { isAdReady } from '../net/ads';
 import { isPurchasable, TEMPO_ITEM, vxPrice, type PremiumItem } from '../net/vx';
 import { t } from '../i18n';
 import type { Scene } from './scene';
+
+/** 상점 카드의 타워 그림 높이(px). `.unit-art` 상자(56px)보다 낮아야 안 잘린다. */
+const TOWER_ART_H = 48;
+
+/** 미리보기 이미지. 판에서 쓰는 것과 같은 파일이다 — P1(파랑) 기준. */
+function towerPreviewSrc(kind: TowerKind): string {
+  return `/assets/tower/p1/${TOWER_KIND_META[towerSpriteKindOf(kind)].art}.png`;
+}
 
 /**
  * 가장 약한 유닛의 미리보기 높이(px). 여기에 `sizeFactorOf` 를 곱한다.
@@ -60,6 +80,8 @@ export class ShopScene implements Scene {
   private readonly coins: HTMLElement;
   private readonly unitCards: { kind: UnitKind; el: HTMLButtonElement }[];
   private readonly premiumCards: { kind: UnitKind; el: HTMLButtonElement }[];
+  private readonly towerCards: { kind: TowerKind; el: HTMLButtonElement }[];
+  private readonly premiumTowerCards: { kind: TowerKind; el: HTMLButtonElement }[];
   private readonly vxNote: HTMLElement;
   private readonly adNote: HTMLElement;
   private readonly adCard: HTMLButtonElement;
@@ -74,6 +96,8 @@ export class ShopScene implements Scene {
     private readonly getAccount: () => Account,
     /** 안 가진 것이면 사고, 가진 것이면 착용한다. 판정은 계정 쪽에 있다. */
     private readonly pickUnit: (kind: UnitKind) => void,
+    /** 유닛과 같은 규칙이지만 타워 외형을 사고/착용한다. */
+    private readonly pickTower: (kind: TowerKind) => void,
     /**
      * 유료 항목을 사러 간다. **결제 창은 Verse8 쪽 페이지다** — 우리는 주소만 받아
      * 새 탭으로 연다 (`net/vx.ts`). 열 수 없으면 `false` 를 돌려준다.
@@ -85,12 +109,13 @@ export class ShopScene implements Scene {
   ) {
     const coins = root.querySelector<HTMLElement>('#shop-coins');
     const grid = root.querySelector<HTMLElement>('#unit-grid');
+    const tgrid = root.querySelector<HTMLElement>('#tower-grid');
     const pgrid = root.querySelector<HTMLElement>('#premium-grid');
     const vxNote = root.querySelector<HTMLElement>('#vx-note');
     const pitems = root.querySelector<HTMLElement>('#premium-items');
     const adNote = root.querySelector<HTMLElement>('#ad-note');
     const backBtn = root.querySelector<HTMLButtonElement>('#btn-shop-back');
-    if (!coins || !grid || !pgrid || !vxNote || !pitems || !adNote || !backBtn) {
+    if (!coins || !grid || !tgrid || !pgrid || !vxNote || !pitems || !adNote || !backBtn) {
       throw new Error('상점 DOM이 예상과 다릅니다');
     }
     this.vxNote = vxNote;
@@ -148,6 +173,32 @@ export class ShopScene implements Scene {
     this.adCard = ad;
     this.coins = coins;
     backBtn.addEventListener('click', back);
+
+    this.towerCards = SHOP_TOWER_ORDER.map((kind) => {
+      const el = this.buildTowerCard(kind);
+      el.addEventListener('click', () => {
+        this.pickTower(kind);
+        this.render();
+      });
+      tgrid.appendChild(el);
+      return { kind, el };
+    });
+    // 유료 타워는 유닛 유료 격자에 같이 넣는다 — 결제 흐름이 한 곳에 모여야 한다.
+    this.premiumTowerCards = SHOP_PREMIUM_TOWER_ORDER.map((kind) => {
+      const el = this.buildTowerCard(kind);
+      el.addEventListener('click', () => {
+        if (ownsTowerKind(this.getAccount(), kind)) {
+          this.pickTower(kind);
+          this.render();
+          return;
+        }
+        void this.openVxShop(kind as PremiumItem).then((ok) => {
+          if (!ok) this.vxNote.textContent = t().vxOpenFailed;
+        });
+      });
+      pgrid.appendChild(el);
+      return { kind, el };
+    });
 
     this.unitCards = SHOP_UNIT_ORDER.map((kind) => {
       const el = this.buildUnitCard(kind);
@@ -239,9 +290,46 @@ export class ShopScene implements Scene {
     return el;
   }
 
+  private buildTowerCard(kind: TowerKind): HTMLButtonElement {
+    const el = document.createElement('button');
+    el.className = isPremiumTower(kind) ? 'unit-card unit-card-premium' : 'unit-card';
+    el.id = `tower-${kind}`;
+    // **그림을 판에서 쓰는 것과 같은 파일로 보여 준다.** 상점에서만 다른 그림을 쓰면
+    // 산 뒤에 "이게 아닌데"가 된다. 크기는 종류와 무관하게 같다 — 판에서도 같기 때문이다
+    // (`towers.ts` 의 크기 주석).
+    el.innerHTML = `
+      <span class="unit-art"><img alt="" src="${towerPreviewSrc(kind)}" height="${TOWER_ART_H}"></span>
+      <span class="unit-name" data-role="name"></span>
+      <span class="unit-tier"></span>
+      <span class="unit-power" data-role="stats"></span>
+      <span class="unit-blurb" data-role="blurb"></span>
+      <span class="unit-state" data-role="state"></span>
+    `;
+    return el;
+  }
+
   private render(): void {
     const a = this.getAccount();
     this.coins.textContent = a.coins.toLocaleString();
+
+    // 타워 카드. 유닛과 갈라 둔 이유: 이름표(`data-role="tier"`)가 없고(레벨 표시가 없다),
+    // 가격 칸 판정이 다르다(유료 타워는 코인 가격이 없다).
+    const wornTower = towerKindOf(a);
+    for (const { kind, el } of [...this.towerCards, ...this.premiumTowerCards]) {
+      const meta = TOWER_KIND_META[kind];
+      const owned = ownsTowerKind(a, kind);
+      set(el, 'name', towerLabelOf(kind));
+      set(el, 'stats', t().towerStats(meta.speed));
+      set(el, 'blurb', towerBlurbOf(kind));
+      // 유료는 코인 가격이 없다. VX 값은 대시보드가 진짜라 못 읽으면 "준비 중"이다.
+      const price = isPremiumTower(kind)
+        ? (vxPrice(kind as PremiumItem) === null ? t().comingSoon : t().buyWithVx)
+        : `◈ ${meta.price.toLocaleString()}`;
+      set(el, 'state', kind === wornTower ? t().equipped : owned ? t().equip : price);
+      el.classList.toggle('is-worn', kind === wornTower);
+      // 못 사는 카드는 회색. 가진 것은 언제나 누를 수 있다 (착용).
+      el.disabled = !owned && !isPremiumTower(kind) && a.coins < meta.price;
+    }
 
     // **이름·스탯·설명은 매번 다시 쓴다.** 카드는 생성자에서 한 번만 만들어지므로
     // 여기서 안 채우면 언어를 바꿔도 처음 언어가 그대로 남는다 — 실제로 그 버그를 냈다.

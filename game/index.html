@@ -183,6 +183,13 @@
         <span id="shop-coins" class="coins">0</span>
       </div>
 
+      <!-- 타워 카드는 카탈로그(src/towers.ts)에서 만들어 넣는다. 유닛 격자 위에 둔다
+           (2026-08-06 사용자 지시) — 타워 외형이 생산속도를 정하므로 유닛보다 먼저 보인다. -->
+      <div class="shop">
+        <p class="shop-title" data-i18n="shopTowers">Towers — pricier means faster production</p>
+        <div class="unit-grid" id="tower-grid"></div>
+      </div>
+
       <!-- 유닛 카드는 카탈로그(src/units.ts)에서 만들어 넣는다. 종류가 늘면 여기는 안 고친다. -->
       <div class="shop">
         <p class="shop-title" data-i18n="shopUnits">Units — pricier means more health and attack</p>

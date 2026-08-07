@@ -118,6 +118,20 @@ const ROOM_CALL_TIMEOUT_MS = 20000;
  */
 const MATCH_CALL_TIMEOUT_MS = 12000;
 /**
+ * 주기 매칭 재훑기. **여기는 반대로 기본값보다 짧다 (3초).**
+ *
+ * 재시도는 1.5초마다 도는데 `rematchInFlight` 로 한 번에 하나만 나간다. 8초를 다 먹으면
+ * 그동안 재시도 5번을 통째로 잃는다 — 12초 창에서 8번 훑으라고 간격을 2초에서 1.5초로
+ * 줄여 놓은 것이 그 한 번에 무너진다 (`REMATCH_INTERVAL_MS` 주석).
+ *
+ * **끊어도 잃는 것이 없다.** 실패는 `pvp-scene` 이 경고만 찍고 삼키며, 원래 대기와 봇
+ * 폴백은 그대로 굴러간다. 굼뜬 한 번을 붙들고 있느니 버리고 다음 기회를 잡는 편이 낫다.
+ *
+ * 첫 호출(`MATCH_CALL_TIMEOUT_MS`)과 정반대인 이유: 그쪽은 던지면 봇전이 확정되지만
+ * 이쪽은 던져도 아무 일이 안 일어난다.
+ */
+const REMATCH_CALL_TIMEOUT_MS = 3000;
+/**
  * **코인을 계정에 써넣는 호출.** 기본값(8초)보다 길게 잡는다.
  *
  * 이 경로들은 계정 자물쇠(`$lock`)를 잡고 읽고 쓰기까지 한다 — 읽기만 하는 보통 호출과
@@ -215,6 +229,7 @@ export class Agent8Client {
     const res = await withTimeout(
       this.server.remoteFunction('findMatch', [Math.floor(waitedMs), true]),
       '매칭 재시도',
+      REMATCH_CALL_TIMEOUT_MS,
     );
     if (!res || typeof res.roomId !== 'string') return null;
     this.roomId = res.roomId;

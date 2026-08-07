@@ -192,6 +192,28 @@ export class AccountStore {
     }
   }
 
+  /**
+   * 팔로우 상태를 물어본다. **버튼 모양을 정하는 데만 쓴다** — 로컬 계정을 안 건드린다.
+   *
+   * `'unknown'` 은 "모르겠다"이지 "팔로우 안 했다"가 아니다. 이 둘을 뭉개면 서버가
+   * 아직 배포 안 됐거나 회선이 끊겼을 때 **이미 팔로우한 사람을 팔로우 페이지로**
+   * 보내게 되고, 그 사람은 눌러 봐야 아무 일도 안 일어나는 막다른 길에 갇힌다.
+   * 모를 때는 청구를 시도하게 두는 쪽이 낫다 (`settings-scene.ts` 의 상태표).
+   */
+  async fetchFollowState(): Promise<'following' | 'not_following' | 'rewarded' | 'unknown'> {
+    if (!this.net) return 'unknown';
+    try {
+      const s = await this.net.getFollowState();
+      if (s.followRewarded) return 'rewarded';
+      return s.isFollower ? 'following' : 'not_following';
+    } catch (e) {
+      // 배포 안 된 서버·끊긴 회선이 여기로 온다. 화면에는 안 띄우지만 콘솔에는 남긴다 —
+      // 이유를 못 봐서 한참 헤맸던 적이 있다 (2026-08-07, `claimFollowReward` 와 같은 이유).
+      console.warn('[account] 팔로우 상태 조회 실패:', String((e as Error)?.message ?? e));
+      return 'unknown';
+    }
+  }
+
   /** 판이 끝난 뒤 광고를 보고 보상을 한 번 더. 금액은 서버가 정한다. */
   async watchAdForDouble(): Promise<string | null> {
     if (!this.net) return 'offline';

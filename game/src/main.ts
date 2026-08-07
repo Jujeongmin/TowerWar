@@ -113,6 +113,9 @@ const settings = new SettingsScene(
   // 팔로우 보상. 판정도 지급도 서버가 한다 — 여기는 결과만 화면에 옮긴다.
   () => store.claimFollowReward(),
   () => store.current.followRewarded,
+  // 팔로우 여부는 서버만 안다(`$sender.isFollower`). 버튼을 '팔로우하러 가기'로 할지
+  // '받기'로 할지 정하려고 묻는다 — 실패하면 `'unknown'` 이 오고, 그때는 청구를 시도한다.
+  () => store.fetchFollowState(),
 );
 const board = new BoardScene(
   need('board'),

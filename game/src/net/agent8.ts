@@ -445,6 +445,16 @@ export class Agent8Client {
     return await withTimeout(this.server.remoteFunction('claimFollowReward', []), '팔로우 보상');
   }
 
+  /**
+   * 팔로우 상태만 물어본다. **아무것도 안 바꾼다** — 버튼에 뭘 쓸지 정하는 데만 쓴다.
+   *
+   * 계정 전체(`RemoteAccount`)를 안 받는 이유: 이 응답으로 로컬 계정을 덮으면
+   * 코인·전적까지 이 호출을 따라 흔들린다. 필요한 두 값만 받는다.
+   */
+  async getFollowState(): Promise<FollowState> {
+    return await withTimeout(this.server.remoteFunction('getFollowState', []), '팔로우 상태');
+  }
+
   /** 판이 끝난 뒤 보상을 한 번 더. 금액은 서버가 지불한 값 그대로다. `requestId` 는 위와 같다. */
   async claimDoubleReward(requestId: string): Promise<RemoteAccount> {
     return await withTimeout(
@@ -548,5 +558,13 @@ export interface RemoteAccount {
   /** 마지막 광고 코인 수령 시각(ms). 상점이 쿨다운 남은 시간 표시에 쓴다. */
   adAt: number;
   /** 제작자 팔로우 보상을 이미 받았는가. 계정당 한 번의 자물쇠다. */
+  followRewarded: boolean;
+}
+
+/** `getFollowState` 의 응답. 설정 화면이 버튼 모양을 정하는 데만 쓴다. */
+export interface FollowState {
+  /** **지금** 제작자를 팔로우하고 있는가. 서버가 `$sender.isFollower` 로 직접 읽는다. */
+  isFollower: boolean;
+  /** 보상을 이미 받았는가. 팔로우를 끊어도 이 값은 참으로 남는다. */
   followRewarded: boolean;
 }

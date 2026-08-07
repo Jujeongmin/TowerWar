@@ -27,6 +27,18 @@ const VOL_ROWS = [
 const FOLLOW_REWARD_COINS = 500;
 
 /**
+ * 제작자 페이지. 아직 팔로우 안 한 사람을 여기로 보낸다.
+ *
+ * **새 탭으로 연다.** 게임은 Verse8 iframe 안에서 돌고 있어서 같은 탭을 이 주소로
+ * 옮기면 판이 통째로 사라진다. `@verse8/platform` 2.1.0 에 팔로우 다이얼로그를 여는
+ * 부모 프레임 메시지가 아직 없어서(`OPEN_VX_SHOP_DIALOG` 뿐) 평범한 링크로 간다.
+ */
+const FOLLOW_URL = 'https://verse8.io/@jjm';
+
+/** 팔로우 칸이 지금 무엇을 보여줄지. 서버에 물어봐야 정해진다. */
+type FollowState = 'following' | 'not_following' | 'rewarded' | 'unknown';
+
+/**
  * 팔로우 보상 실패 코드 → 화면 문구.
  *
  * **`includes` 로 본다.** 서버가 던진 `not_following` 이 remote function 을 거치면서
@@ -63,6 +75,16 @@ export class SettingsScene implements Scene {
   private claiming = false;
   /** 방금 청구한 결과. `null` 이면 아직 안 눌렀다는 뜻이고, 안내 문구를 바꾼다. */
   private claimResult: 'ok' | string | null = null;
+  /**
+   * 서버가 말한 팔로우 상태. `null` 이면 아직 안 물어봤다.
+   *
+   * `'unknown'`(조회 실패)을 `'not_following'` 과 갈라 두는 것이 요점이다 — 뭉개면
+   * 서버가 안 떠 있을 때 **이미 팔로우한 사람을 팔로우 페이지로** 보내게 되고,
+   * 그 사람은 눌러도 아무 일이 안 일어나는 막다른 길에 갇힌다.
+   */
+  private followState: FollowState | null = null;
+  /** 상태 조회가 도는 중. **화면을 안 건드린다** — 뒤에서 조용히 다녀오는 것이다. */
+  private checkingFollow = false;
   /** 초기화 버튼이 지금 "한 번 더 누르면" 확인 상태인가. */
   private confirming = false;
   /** 확인 상태를 자동으로 되돌리는 타이머. */
@@ -83,6 +105,8 @@ export class SettingsScene implements Scene {
     private readonly onClaimFollow: () => Promise<string | null>,
     /** 이미 받았는가. 받았으면 버튼이 잠긴다. */
     private readonly hasFollowReward: () => boolean,
+    /** 팔로우 상태를 서버에 묻는다. 실패는 `'unknown'` 으로 온다. */
+    private readonly onFetchFollowState: () => Promise<FollowState>,
   ) {
     const row = root.querySelector<HTMLElement>('#lang-row');
     const vols = root.querySelector<HTMLElement>('#vol-rows');
@@ -100,6 +124,13 @@ export class SettingsScene implements Scene {
     this.followBtn = followBtn;
     this.followNote = followNote;
     followBtn.addEventListener('click', () => void this.onFollowClick());
+    // **팔로우하고 돌아오면 저절로 '받기'가 돼야 한다.** 팔로우 페이지를 새 탭으로 열기
+    // 때문에 이 화면은 살아 있는 채로 가려질 뿐이다 — `enter()` 가 다시 안 불린다.
+    // 이 씬은 앱이 사는 동안 계속 있으므로 리스너를 떼지 않는다. 대신 설정이 실제로
+    // 떠 있을 때만 일하도록 `refreshFollowState` 안에서 걸러 낸다.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void this.refreshFollowState();
+    });
 
     for (const { key, field } of VOL_ROWS) {
       const line = document.createElement('label');
@@ -150,6 +181,9 @@ export class SettingsScene implements Scene {
     this.claimResult = null;
     this.paint();
     this.root.hidden = false;
+    // 화면을 먼저 띄우고 나서 묻는다. 응답을 기다렸다가 그리면 서버가 느릴 때
+    // 설정이 통째로 늦게 뜬다 — 언어·음량은 팔로우와 아무 상관이 없다.
+    void this.refreshFollowState();
   }
 
   /**
@@ -211,14 +245,33 @@ export class SettingsScene implements Scene {
   }
 
   /**
+   * 버튼이 지금 무엇을 하는가. 딱 둘이다: 팔로우하러 보내거나(`'go'`), 보상을
+   * 청구하거나(`'claim'`).
+   *
+   * **`'go'` 는 서버가 "지금 팔로워가 아니다"라고 말했을 때만 나온다.** 모를 때
+   * (`'unknown'`·아직 안 물어봄) 청구 쪽으로 두는 이유는 `followState` 주석에 있다.
+   */
+  private get followMode(): 'go' | 'claim' {
+    return this.followState === 'not_following' ? 'go' : 'claim';
+  }
+
+  /**
    * 팔로우 보상 칸.
    *
-   * 상태가 넷이다: 이미 받음 / 청구 중 / 방금 실패 / 평소. **서버가 준 실패 코드를
-   * 그대로 화면에 쓰지 않는다** — `not_following` 은 사람이 읽을 글이 아니다 (§-40).
+   * **서버가 준 실패 코드를 그대로 화면에 쓰지 않는다** — `not_following` 은 사람이
+   * 읽을 글이 아니다 (§-40).
    */
   private paintFollow(): void {
-    const claimed = this.hasFollowReward();
-    this.followBtn.textContent = claimed ? t().followClaimed : t().followClaim;
+    const claimed = this.hasFollowReward() || this.followState === 'rewarded';
+    const go = !claimed && this.followMode === 'go';
+
+    this.followBtn.textContent = claimed
+      ? t().followClaimed
+      : go
+        ? t().followGo
+        : t().followClaim;
+    // **`'go'` 일 때는 안 잠근다.** 팔로우하러 가는 것은 서버를 안 부르므로 기다릴
+    // 것이 없다. `claiming` 은 청구가 도는 중일 때만 걸린다.
     this.followBtn.disabled = claimed || this.claiming;
 
     if (claimed) {
@@ -234,19 +287,63 @@ export class SettingsScene implements Scene {
       this.followNote.textContent = t().followClaiming;
       return;
     }
-    // 끝난 뒤에도 반드시 바뀐다. 실패했는데 안내가 그대로면 같은 증상이 된다.
-    this.followNote.textContent =
-      this.claimResult === null
-        ? `${t().followReward(FOLLOW_REWARD_COINS)} ${t().followHowTo}`
-        : followMessage(this.claimResult);
+    // 방금 청구해서 실패했으면 그 이유가 먼저다. 끝난 뒤에도 반드시 문구가 바뀐다.
+    if (this.claimResult !== null) {
+      this.followNote.textContent = followMessage(this.claimResult);
+      return;
+    }
+    this.followNote.textContent = go
+      ? `${t().followReward(FOLLOW_REWARD_COINS)} ${t().followGoNote}`
+      : `${t().followReward(FOLLOW_REWARD_COINS)} ${t().followHowTo}`;
+  }
+
+  /**
+   * 팔로우 상태를 서버에 묻는다. **화면을 안 건드리고 다녀온다** — 설정을 열 때마다
+   * "확인 중"이 번쩍이면 언어·음량 보러 온 사람에게는 잡음일 뿐이다. 답이 오면
+   * 그때 버튼 모양만 조용히 바뀐다.
+   */
+  private async refreshFollowState(): Promise<void> {
+    // 안 떠 있으면 물을 이유가 없다. 리스너를 안 떼는 대신 여기서 거른다.
+    if (this.root.hidden) return;
+    // 이미 받았으면 더 볼 것이 없다. 팔로우를 끊었든 말든 '받음'으로 잠긴다.
+    if (this.hasFollowReward()) return;
+    // 청구가 도는 중이면 비켜 준다. 그쪽이 끝나면서 어차피 다시 그린다.
+    if (this.checkingFollow || this.claiming) return;
+
+    this.checkingFollow = true;
+    const state = await this.onFetchFollowState();
+    this.checkingFollow = false;
+    // 기다리는 사이에 사용자가 눌렀을 수 있다. 그러면 그쪽 결과가 더 새것이다.
+    if (this.claiming) return;
+    this.followState = state;
+    // 팔로우하고 돌아왔다면 아까의 `not_following` 문구는 낡았다. 지워야 버튼이
+    // '받기'로 바뀐 것과 안내가 어긋나지 않는다.
+    if (state === 'following' && this.claimResult !== null) this.claimResult = null;
+    this.paintFollow();
   }
 
   private async onFollowClick(): Promise<void> {
     if (this.claiming || this.hasFollowReward()) return;
+
+    // 아직 팔로우 안 했다 — 청구해 봐야 서버가 거절한다. 팔로우할 곳으로 보낸다.
+    // 돌아오면 `visibilitychange` 가 상태를 다시 물어 버튼을 '받기'로 바꾼다.
+    if (this.followMode === 'go') {
+      audio.play('tap');
+      // `noopener` 는 새 탭이 `window.opener` 로 이 창을 만지지 못하게 한다.
+      window.open(FOLLOW_URL, '_blank', 'noopener');
+      // 실패 문구를 들고 있었으면 지운다 — 이제 안내는 "팔로우하고 오라"는 것이다.
+      this.claimResult = null;
+      this.paintFollow();
+      return;
+    }
+
     this.claiming = true;
     this.paintFollow();
     const err = await this.onClaimFollow();
     this.claiming = false;
+    // 서버가 "팔로워가 아니다"라고 했으면 버튼을 팔로우하러 가기로 바꾼다. 같은 버튼을
+    // 또 누르게 두면 실패만 반복된다.
+    if (err !== null && err.includes('not_following')) this.followState = 'not_following';
     this.claimResult = err ?? 'ok';
     if (err === null) audio.play('purchase');
     this.paintFollow();

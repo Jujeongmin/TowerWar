@@ -144,6 +144,10 @@ export interface Strings {
   followClaim: string;
   followClaimed: string;
   followClaiming: string;
+  /** 아직 팔로우 안 한 사람에게 띄우는 버튼. 누르면 제작자 페이지가 새 탭으로 열린다. */
+  followGo: string;
+  /** 팔로우하러 보낸 뒤의 안내. 돌아오면 버튼이 저절로 '받기'가 된다는 말이다. */
+  followGoNote: string;
   followNotYet: string;
   followHowTo: string;
   /** 통신 오류 등으로 청구가 실패했다. 다시 눌러 보라는 뜻. */
@@ -306,6 +310,8 @@ const en: Strings = {
   followClaim: 'Claim',
   followClaimed: 'Claimed',
   followClaiming: 'Checking with the server…',
+  followGo: 'Follow the creator',
+  followGoNote: 'Opens the creator page in a new tab. Follow there, then come back — this turns into Claim.',
   followNotYet: "We can't see a follow yet. Follow on the game page, then tap Claim.",
   followHowTo: 'Follow from the game page on Verse8, then come back and tap Claim.',
   followFailed: "Couldn't reach the server. Tap again.",
@@ -467,6 +473,8 @@ const ko: Strings = {
   followClaim: '받기',
   followClaimed: '받음',
   followClaiming: '서버에 확인하는 중…',
+  followGo: '제작자 팔로우하러 가기',
+  followGoNote: '새 탭으로 제작자 페이지가 열립니다. 거기서 팔로우한 뒤 돌아오면 이 버튼이 받기로 바뀝니다.',
   followNotYet: '아직 팔로우가 확인되지 않았습니다. 게임 페이지에서 팔로우한 뒤 눌러 주세요.',
   followHowTo: 'Verse8 게임 페이지에서 팔로우한 뒤 돌아와 눌러 주세요.',
   followFailed: '서버에 닿지 못했습니다. 다시 눌러 주세요.',
@@ -631,6 +639,8 @@ const zh: Strings = {
   followClaim: '领取',
   followClaimed: '已领取',
   followClaiming: '正在向服务器确认…',
+  followGo: '去关注创作者',
+  followGoNote: '将在新标签页打开创作者页面。在那里关注后返回，此按钮会变成领取。',
   followNotYet: '尚未确认关注。请在游戏页面关注后再点击。',
   followHowTo: '在 Verse8 游戏页面关注后返回并点击领取。',
   followFailed: '无法连接服务器。请再试一次。',
@@ -800,6 +810,8 @@ const vi: Strings = {
   followClaim: 'Nhận',
   followClaimed: 'Đã nhận',
   followClaiming: 'Đang kiểm tra với máy chủ…',
+  followGo: 'Đi theo dõi nhà phát triển',
+  followGoNote: 'Trang của nhà phát triển sẽ mở ở tab mới. Hãy theo dõi ở đó rồi quay lại — nút này sẽ đổi thành Nhận.',
   followNotYet: 'Chưa xác nhận được lượt theo dõi. Hãy theo dõi ở trang trò chơi rồi chạm Nhận.',
   followHowTo: 'Hãy theo dõi ở trang trò chơi trên Verse8, rồi quay lại và chạm Nhận.',
   followFailed: 'Không kết nối được máy chủ. Hãy chạm lại.',

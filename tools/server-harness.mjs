@@ -1147,11 +1147,27 @@ try { await server.claimFollowReward(); } catch (e) { ferr = e.message; }
 check('팔로우 안 했으면 거절', ferr === 'not_following', ferr);
 check('거절이 코인을 안 건드린다', (await server.getAccount()).coins === 100);
 
+// 55) 팔로우 상태 조회 — **화면 그리기 전용이다.**
+//
+// 클라이언트가 팔로우 여부를 알 방법이 없어서 버튼에 뭘 쓸지 정할 수가 없었다.
+// 이 함수가 그걸 알려 준다. **락을 안 쓴다** — 읽기뿐이고, 값이 조금 낡아도
+// 손해가 없다. 실제 지급은 `claimFollowReward` 가 자기 락 안에서 `$sender.isFollower`
+// 를 다시 읽으므로, 여기가 틀려도 코인이 새지 않는다.
+const st0 = await server.getFollowState();
+check('조회: 팔로우 안 했고 안 받음', st0.isFollower === false && st0.followRewarded === false, st0);
+
 // 팔로우하고 왔다.
 F.isFollower = true;
+const st1 = await server.getFollowState();
+check('조회: 팔로우했지만 아직 안 받음', st1.isFollower === true && st1.followRewarded === false, st1);
+check('조회가 코인을 안 건드린다', (await server.getAccount()).coins === 100);
+
 const followed = await server.claimFollowReward();
 check('팔로우 보상 = 100 + 500', followed.coins === 600, followed.coins);
 check('받았다는 표시가 남는다', followed.followRewarded === true, followed.followRewarded);
+
+const st2 = await server.getFollowState();
+check('조회: 받은 뒤에는 followRewarded 가 참', st2.followRewarded === true, st2);
 
 ferr = null;
 try { await server.claimFollowReward(); } catch (e) { ferr = e.message; }
@@ -1162,6 +1178,10 @@ check('두 번째가 코인을 안 건드린다', (await server.getAccount()).co
 // 회수하면 '받았다 뺏겼다'가 되어 더 나쁘다.
 F.isFollower = false;
 check('팔로우를 끊어도 코인은 그대로', (await server.getAccount()).coins === 600);
+// 조회는 지금 팔로워가 아니라고 정직하게 말한다. 화면은 `followRewarded` 를 먼저 보므로
+// '받음'으로 잠긴 채 남고, 팔로우하러 가라고 다시 보내지 않는다.
+const st3 = await server.getFollowState();
+check('조회: 끊으면 isFollower 는 거짓, 받은 표시는 유지', st3.isFollower === false && st3.followRewarded === true, st3);
 check('기본 계정은 아직 안 받은 상태', defaultsFor('0xZZZ').followRewarded === undefined);
 
 // 락 안에서 돈다 (코인을 건드리는 경로는 전부 그래야 한다).

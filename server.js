@@ -701,6 +701,25 @@ class Server {
     });
   }
 
+  /**
+   * 팔로우 상태. **화면이 버튼에 뭘 쓸지 정하려고 묻는 것이다.**
+   *
+   * 전에는 이걸 알 방법이 없어서 버튼이 항상 '받기'였고, 팔로우 안 한 사람은 눌러 봐야
+   * `not_following` 만 받았다. 게임 안에서 팔로우하러 갈 길도 없었다 — 이제 화면이
+   * `isFollower` 가 거짓이면 팔로우 페이지로 보내고, 참이면 '받기'를 띄운다.
+   *
+   * **락을 안 쓴다.** 읽기뿐이고, 값이 조금 낡아도 손해가 없다. 실제 지급은
+   * `claimFollowReward` 가 자기 락 안에서 `$sender.isFollower` 를 **다시** 읽으므로
+   * 여기가 틀려도 코인이 새지 않는다. 이 함수는 그림을 그리는 데만 쓰인다.
+   *
+   * **`followRewarded` 를 같이 준다.** 이미 받았으면 팔로우를 끊었더라도 '받음'으로
+   * 잠긴 채 둬야 한다 — 회수하지 않기로 한 결정(`claimFollowReward`)과 짝이다.
+   */
+  async getFollowState() {
+    const a = await this.#loadAccount();
+    return { isFollower: $sender.isFollower === true, followRewarded: a.followRewarded === true };
+  }
+
   async claimAdCoins() {
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();

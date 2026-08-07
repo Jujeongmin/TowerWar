@@ -1561,12 +1561,24 @@ export class Renderer {
     const y = -h / 2 - s * 1.8;
     const x0 = -((tier - 1) * gap) / 2;
 
+    // **무지개 종류는 표식도 무지개다** (2026-08-06 사용자 지시). 전에는 `accent`
+    // 하나로 다섯 칸을 다 칠해 흰 마름모 줄이었다 — 아우라만 돌고 표식은 안 돌아서
+    // "무지개"라는 말이 반만 지켜졌다.
+    //
+    // 칸마다 색상을 어긋내 **줄 자체가 무지개로 읽히게** 한다. 아우라와 같은 시간
+    // (`this.time`)에서 뽑으므로 둘이 함께 돈다 — 위상이 갈리면 한 유닛에서 두 색이
+    // 따로 노는 것처럼 보인다.
+    const rainbow = meta.aura === 'rainbow';
+    const hue0 = rainbow ? ((this.time * 0.5) % 1) * 360 : 0;
+
     ctx.save();
     ctx.strokeStyle = 'rgba(8,12,18,0.85)';
     ctx.lineWidth = Math.max(0.6, s * 0.5);
-    ctx.fillStyle = meta.accent;
     for (let i = 0; i < tier; i++) {
       const x = x0 + i * gap;
+      ctx.fillStyle = rainbow
+        ? `hsl(${Math.floor(hue0 + i * 42) % 360}, 92%, 64%)`
+        : meta.accent;
       ctx.beginPath();
       ctx.moveTo(x, y - s);
       ctx.lineTo(x + s, y);

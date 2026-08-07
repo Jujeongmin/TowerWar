@@ -41,3 +41,6 @@ assets-src/
 .DS_Store
 Thumbs.db
 *.swp
+
+# SDD 작업 흔적. 기록은 git 히스토리에 남는다.
+.superpowers/

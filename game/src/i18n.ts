@@ -22,7 +22,7 @@
  * 낱말 목록도 여기 있다.
  */
 
-export const LANGS = ['en', 'ko', 'zh'] as const;
+export const LANGS = ['en', 'ko', 'zh', 'vi'] as const;
 export type Lang = (typeof LANGS)[number];
 
 /** 기본 언어. 사용자 지시로 영어다. */
@@ -143,6 +143,7 @@ export interface Strings {
   followReward: (coins: number) => string;
   followClaim: string;
   followClaimed: string;
+  followClaiming: string;
   followNotYet: string;
   followHowTo: string;
   /** 통신 오류 등으로 청구가 실패했다. 다시 눌러 보라는 뜻. */
@@ -304,6 +305,7 @@ const en: Strings = {
   followReward: (coins) => `Follow the creator for ${coins} coins — once per account.`,
   followClaim: 'Claim',
   followClaimed: 'Claimed',
+  followClaiming: 'Checking with the server…',
   followNotYet: "We can't see a follow yet. Follow on the game page, then tap Claim.",
   followHowTo: 'Follow from the game page on Verse8, then come back and tap Claim.',
   followFailed: "Couldn't reach the server. Tap again.",
@@ -464,6 +466,7 @@ const ko: Strings = {
   followReward: (coins) => `제작자를 팔로우하면 ${coins}코인. 계정당 한 번입니다.`,
   followClaim: '받기',
   followClaimed: '받음',
+  followClaiming: '서버에 확인하는 중…',
   followNotYet: '아직 팔로우가 확인되지 않았습니다. 게임 페이지에서 팔로우한 뒤 눌러 주세요.',
   followHowTo: 'Verse8 게임 페이지에서 팔로우한 뒤 돌아와 눌러 주세요.',
   followFailed: '서버에 닿지 못했습니다. 다시 눌러 주세요.',
@@ -627,6 +630,7 @@ const zh: Strings = {
   followReward: (coins) => `关注创作者可获得 ${coins} 金币。每个账号一次。`,
   followClaim: '领取',
   followClaimed: '已领取',
+  followClaiming: '正在向服务器确认…',
   followNotYet: '尚未确认关注。请在游戏页面关注后再点击。',
   followHowTo: '在 Verse8 游戏页面关注后返回并点击领取。',
   followFailed: '无法连接服务器。请再试一次。',
@@ -649,7 +653,176 @@ const zh: Strings = {
   adCooldown: '请稍后再试',
 };
 
-const TABLE: Record<Lang, Strings> = { en, ko, zh };
+/**
+ * 베트남어.
+ *
+ * **`botJoin` 만 순서가 다르다.** 베트남어는 수식어가 명사 뒤에 오므로 `head`(수식어) 를
+ * 뒤에 붙인다 — 다른 언어처럼 `${head}${tail}` 로 쓰면 `ĐenSói` 같은 말이 안 되는 이름이
+ * 나온다. 낱말 목록의 뜻(머리=수식어, 꼬리=명사)은 그대로 두고 붙이는 순서만 뒤집었다.
+ */
+const vi: Strings = {
+  tagline: 'Vẽ tuyến tiếp tế. Đẩy lùi chiến tuyến.',
+  autoMatch: 'Đấu nhanh',
+  playFriend: 'Đấu với bạn bè',
+  shop: 'Cửa hàng',
+  ranking: 'Bảng xếp hạng',
+  tutorial: 'Cách chơi',
+  tutorialTitle: 'Sổ tay chiến trường',
+  tutorialIntro: 'Dựng tuyến tiếp tế, chiếm tháp và đẩy lùi chiến tuyến.',
+  tutorialRouteTitle: 'Mở tuyến đường',
+  tutorialRouteBody: 'Kéo từ một tháp của bạn sang tháp khác. Tháp nguồn sẽ liên tục gửi quân khi tuyến còn mở.',
+  tutorialCutTitle: 'Cắt tuyến của bạn',
+  tutorialCutBody: 'Vuốt từ khoảng trống ngang qua tuyến của chính bạn để đóng nó. Không thể cắt trực tiếp tuyến của đối thủ.',
+  tutorialCaptureTitle: 'Chiếm tháp',
+  tutorialCaptureBody: 'Gửi quân vào tháp trung lập hoặc tháp địch. Hạ quân phòng thủ về 0 để chiếm; quân đến tháp đồng minh thì tăng viện cho tháp đó.',
+  tutorialStockTitle: 'Quân dự trữ và số tuyến',
+  tutorialStockBody: 'Tháp không có tuyến đi ra sẽ tích quân. Dự trữ 1 / 10 / 20 mở khóa 1 / 2 / 3 tuyến cùng lúc.',
+  tutorialRelayTitle: 'Dùng tháp đầy',
+  tutorialRelayBody: 'Ở mức 60 quân, vòng chân tháp chuyển sang trắng và tháp trở thành trạm trung chuyển. Quân đồng minh đến đây sẽ đi tiếp theo các tuyến ra của nó.',
+  tutorialWinTitle: 'Giành chiến tuyến',
+  tutorialWinBody: 'Tiêu diệt toàn bộ quân địch, hoặc giữ nhiều tháp hơn khi hết giờ. Nếu hòa, tổng lực lượng còn lại sẽ quyết định.',
+  gotIt: 'Đã hiểu',
+  settings: 'Cài đặt',
+  nameTitle: 'Tên và ảnh đại diện',
+  namePlaceholder: 'Nhập tên của bạn',
+  start: 'Bắt đầu',
+  nameRequired: (max) => `Hãy nhập tên (tối đa ${max} ký tự)`,
+  back: 'Quay lại',
+  pvpTitleAuto: 'Trận đấu',
+  pvpTitleFriend: 'Đấu với bạn bè',
+  searching: 'Đang tìm đối thủ…',
+  matchingFallbackHint: 'Nếu không tìm được đối thủ trong 12 giây, bạn sẽ đấu với AI.',
+  creatingRoom: 'Đang tạo mã phòng…',
+  startingSoon: 'Sắp bắt đầu',
+  waitingFriend: 'Đang chờ bạn bè…',
+  joiningRoom: 'Đang vào phòng…',
+  makeRoomOrCode: 'Tạo phòng hoặc nhập mã',
+  roomCodePlaceholder: 'Mã phòng',
+  join: 'Vào phòng',
+  hostRoom: 'Tạo phòng',
+  couldNotJoin: 'Không vào được',
+  connectionRefused: 'Kết nối bị từ chối',
+  roomClosed: (reason) => `Phòng đã đóng (${reason})`,
+  shopTowers: 'Tháp — càng đắt càng sản xuất nhanh',
+  shopUnits: 'Quân — càng đắt thì máu và sát thương càng cao',
+  shopVx: 'VX — Tiền thật',
+  vxNotListed: 'Vật phẩm này chưa được mở bán.',
+  vxOpenFailed: 'Không mở được cửa hàng. Hãy chạm lại.',
+  equipped: 'Đang dùng',
+  equip: 'Trang bị',
+  buyWithVx: 'Mua bằng VX',
+  comingSoon: 'Sắp có',
+  unitStats: (power) => `Máu ${power} · Sát thương ${power}`,
+  towerStats: (speed) => `Sản xuất ×${speed.toFixed(2)}`,
+  boardTitle: 'Bảng xếp hạng — Top 10 theo điểm',
+  boardLoading: 'Đang tải…',
+  boardOffline: 'Chưa kết nối nên không xem được bảng xếp hạng',
+  boardEmpty: 'Chưa có ai lên bảng xếp hạng',
+  points: (n) => `${n} điểm`,
+  playAgain: 'Tìm trận',
+  toLobby: 'Sảnh chờ',
+  resign: 'Đầu hàng',
+  victory: 'Chiến thắng',
+  defeat: 'Thất bại',
+  draw: 'Hòa',
+  resigned: 'Đã đầu hàng',
+  resignNoReward: 'Đã đầu hàng — không có thưởng',
+  disconnected: 'Mất kết nối',
+  disconnectedNote: 'Đã mất kết nối với đối thủ. Điểm và phần thưởng không thay đổi.',
+  rewardLine: (total, base, towers, bonus) =>
+    `+${total}  (cơ bản ${base} · ${towers} tháp ${bonus})`,
+  ratingLine: (before, after, sign, diff) => `Điểm ${before} → ${after}  (${sign}${diff})`,
+  hint: 'Kéo: mở/đóng tuyến  ·  Vuốt chỗ trống: cắt tuyến',
+  waitingPeer: 'Đang chờ đối thủ',
+  record: (w, l) => `${w} thắng ${l} thua`,
+  unitLabels: {
+    beergang: 'Beergang',
+    beergang_white: 'Beergang Trắng',
+    beergang_gold: 'Beergang Vàng',
+    beergang_green: 'Beergang Xanh Lá',
+    beergang_purple: 'Beergang Tím',
+    beergang_rainbow: 'Beergang Cầu Vồng',
+  },
+  unitBlurbs: {
+    beergang: 'Khởi đầu',
+    beergang_white: 'Quần trắng',
+    beergang_gold: 'Quần vàng',
+    beergang_green: 'Quần xanh lá',
+    beergang_purple: 'Quần tím',
+    beergang_rainbow: 'Chỉ có ở VX · mạnh nhất',
+  },
+  towerLabels: {
+    tower_hut: 'Lều',
+    tower_house: 'Nhà',
+    tower_barracks: 'Doanh trại',
+    tower_keep: 'Pháo đài',
+    tower_citadel: 'Thành trì',
+    tower_prime: 'Thành Vương',
+  },
+  towerBlurbs: {
+    tower_hut: 'Tháp mà ai cũng bắt đầu với nó.',
+    tower_house: 'Rộng hơn một chút, sản lượng nhiều hơn một chút.',
+    tower_barracks: 'Dựng lên để quân đi liên tục.',
+    tower_keep: 'Tường đá, tiếp tế đều đặn.',
+    tower_citadel: 'Tháp nhanh nhất mà tiền xu mua được.',
+    tower_prime: 'Nhanh nhất. Chỉ có ở VX.',
+  },
+  profileNames: {
+    slate: 'Xám',
+    blue: 'Xanh Dương',
+    cyan: 'Xanh Ngọc',
+    green: 'Xanh Lá',
+    gold: 'Vàng Kim',
+    orange: 'Cam',
+    red: 'Đỏ',
+    purple: 'Tím',
+    pink: 'Hồng',
+  },
+  botHead: [
+    'Đen', 'Xanh', 'Đỏ', 'Lặng', 'Nhanh', 'Muộn', 'Nhỏ', 'Lớn',
+    'Cô Độc', 'Giận Dữ', 'Thong Dong', 'Lạnh', 'Nóng', 'Xám',
+  ],
+  botTail: [
+    'Hiệp Sĩ', 'Sói', 'Quạ', 'Khiên', 'Giáo', 'Gió', 'Hoàng Hôn', 'Sương Giá',
+    'Búa', 'Cáo', 'Bắc Phong', 'Đèn Lồng', 'Cát', 'Sóng',
+  ],
+  // 수식어가 뒤로 간다 (이 표 머리말).
+  botJoin: (head, tail, tag) => `${tail}${head}${tag}`,
+  language: 'Ngôn ngữ',
+  sound: 'Âm thanh',
+  recordSection: 'Thành tích',
+  resetRecord: 'Xóa thành tích',
+  resetRecordConfirm: 'Chạm lần nữa để xóa',
+  resetRecordDone: 'Đã xóa thành tích',
+  resetRecordNote: (w, l) => `Hiện tại ${w} thắng ${l} thua · điểm được giữ nguyên`,
+  followSection: 'Ủng hộ nhà phát triển',
+  followReward: (coins) => `Theo dõi nhà phát triển để nhận ${coins} xu. Mỗi tài khoản một lần.`,
+  followClaim: 'Nhận',
+  followClaimed: 'Đã nhận',
+  followClaiming: 'Đang kiểm tra với máy chủ…',
+  followNotYet: 'Chưa xác nhận được lượt theo dõi. Hãy theo dõi ở trang trò chơi rồi chạm Nhận.',
+  followHowTo: 'Hãy theo dõi ở trang trò chơi trên Verse8, rồi quay lại và chạm Nhận.',
+  followFailed: 'Không kết nối được máy chủ. Hãy chạm lại.',
+  volMaster: 'Tổng',
+  volSfx: 'Hiệu ứng',
+  volBgm: 'Nhạc nền',
+  tempoItem: 'Tăng tốc',
+  opponentTempo: (scale) => `Đối thủ tăng tốc · ${scale}×`,
+  tempoItemBlurb: 'Tăng tốc cả trận đấu',
+  tempoItemDesc:
+    'Một nút sẽ hiện ra trong trận. Bật lên thì cả trận chạy ở tốc độ 1.5× cho CẢ HAI bên, không riêng bạn. Nếu đối thủ cũng có và cùng bật, tốc độ thành 2×.',
+  adCard: 'Thưởng quảng cáo',
+  adCardAction: 'Xem',
+  owned: 'Đã sở hữu',
+  adWatch: (coins) => `Xem quảng cáo · +${coins}`,
+  adDouble: 'Xem quảng cáo — nhân đôi',
+  adUnavailable: 'Hiện chưa có quảng cáo nào',
+  adFailed: 'Chưa xem hết quảng cáo nên không có thưởng',
+  adLimit: 'Bạn đã nhận hết quảng cáo hôm nay',
+  adCooldown: 'Hãy thử lại sau giây lát',
+};
+
+const TABLE: Record<Lang, Strings> = { en, ko, zh, vi };
 
 function isLang(v: unknown): v is Lang {
   return typeof v === 'string' && (LANGS as readonly string[]).includes(v);

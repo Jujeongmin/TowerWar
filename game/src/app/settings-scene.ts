@@ -49,6 +49,7 @@ const ENDONYM: Record<Lang, string> = {
   en: 'English',
   ko: '한국어',
   zh: '中文',
+  vi: 'Tiếng Việt',
 };
 
 export class SettingsScene implements Scene {
@@ -224,8 +225,16 @@ export class SettingsScene implements Scene {
       this.followNote.textContent = t().followReward(FOLLOW_REWARD_COINS);
       return;
     }
-    // **누른 뒤에는 반드시 문구가 바뀌어야 한다.** 실패했는데 안내가 그대로면 눌러도
-    // 아무 일이 안 일어난 것처럼 보인다 (2026-08-07 사용자 신고 — 실제로 그랬다).
+    // **누르는 즉시 문구가 바뀌어야 한다.** 서버 호출이 최대 8초(`CALL_TIMEOUT_MS`)를
+    // 기다리는데 그동안 화면이 그대로면 누른 것 자체가 안 먹은 것처럼 보인다 —
+    // 사용자는 그 사이 또 누르고(`claiming` 이라 무시된다), 한참 뒤에 뜬 실패 문구를
+    // "두 번째로 눌러서 나온 것"으로 읽는다 (2026-08-07 사용자 신고 — 실제로 그랬다).
+    // 버튼이 잠기는 것만으로는 부족하다. 눌린 버튼은 원래도 눌려 보인다.
+    if (this.claiming) {
+      this.followNote.textContent = t().followClaiming;
+      return;
+    }
+    // 끝난 뒤에도 반드시 바뀐다. 실패했는데 안내가 그대로면 같은 증상이 된다.
     this.followNote.textContent =
       this.claimResult === null
         ? `${t().followReward(FOLLOW_REWARD_COINS)} ${t().followHowTo}`

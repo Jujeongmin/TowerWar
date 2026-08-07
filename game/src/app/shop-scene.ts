@@ -297,8 +297,15 @@ export class ShopScene implements Scene {
     // **그림을 판에서 쓰는 것과 같은 파일로 보여 준다.** 상점에서만 다른 그림을 쓰면
     // 산 뒤에 "이게 아닌데"가 된다. 크기는 종류와 무관하게 같다 — 판에서도 같기 때문이다
     // (`towers.ts` 의 크기 주석).
+    // **최상위 외형은 카드에서도 왕관을 쓴다** (2026-08-07 사용자 지시). 판에서 왕관과
+    // 아우라로 구분되는데(`renderer.drawRegalia`) 카드가 성채와 똑같으면 무엇을 사는
+    // 것인지 안 읽힌다. 무지개 아우라는 유닛 유료 카드가 쓰는 class 를 그대로 빌린다 —
+    // 두 곳에 같은 그라디언트를 복사하면 언젠가 색이 갈린다.
+    const meta = TOWER_KIND_META[kind];
+    const artClass = meta.aura === 'rainbow' ? 'unit-art aura-rainbow' : 'unit-art';
+    const crown = meta.regal ? '<span class="tower-crown" aria-hidden="true">♛</span>' : '';
     el.innerHTML = `
-      <span class="unit-art"><img alt="" src="${towerPreviewSrc(kind)}" height="${TOWER_ART_H}"></span>
+      <span class="${artClass}">${crown}<img alt="" src="${towerPreviewSrc(kind)}" height="${TOWER_ART_H}"></span>
       <span class="unit-name" data-role="name"></span>
       <span class="unit-tier"></span>
       <span class="unit-power" data-role="stats"></span>

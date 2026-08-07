@@ -870,6 +870,9 @@ export class Renderer {
     // 건물은 소유자의 외형을 그린다 (§6, 2026-08-07 — 타워 외형이 생산속도를 정한다).
     // 스프라이트가 아직 안 떴으면 원으로 폴백한다 — 첫 프레임과 헤드리스 검증에서
     // 화면이 비지 않아야 하기 때문이다.
+    // 그림의 실제 윗변. 왕관을 여기에 맞춰 얹는다 — 상한 공식으로 어림하면 폭에 걸린
+    // 경우(성채가 그렇다) 지붕에서 한참 뜬다. 그림이 없으면 원 폴백이라 반경으로 잡는다.
+    let artTop = t.y - r;
     const art = this.sprites.tower(t.owner, this.towerKinds[t.owner === 2 ? 2 : 1]);
     if (art) {
       // 높이·폭 두 상한 중 빡빡한 쪽에 맞추고 바닥을 발치에 댄다.
@@ -880,6 +883,7 @@ export class Renderer {
       const w = art.w * k;
       const h = art.h * k;
       ctx.drawImage(art.canvas, t.x - w / 2, foot - h, w, h);
+      artTop = foot - h;
     } else {
       ctx.fillStyle = c.fill;
       ctx.strokeStyle = c.main;
@@ -905,6 +909,10 @@ export class Renderer {
       );
       ctx.restore();
     }
+
+    // 최상위 외형은 왕관과 궤도 반짝임까지 얹는다. 아우라만으로는 성채와 거의 같아
+    // 보였다 — 그림을 빌려 쓰기 때문이다 (`towers.ts` 의 `regal` 주석).
+    if (t.owner !== 0 && tmeta?.regal) this.drawRegalia(t.x, t.y, artTop, r);
 
     // 재고 숫자는 건물 발치에 배지로 얹는다. 건물 그림 위에 그냥 쓰면 벽돌 무늬에
     // 묻히므로 뒤에 어두운 원을 깔아 대비를 만든다.
@@ -1035,6 +1043,92 @@ export class Renderer {
    * 레벨이 사라진 뒤로 **타워에서 변하는 것은 이 게이지와 소유자 색뿐이다.**
    * 타원이 한 바퀴 다 차면 그게 곧 상한(60) 도달이고, 그 타워는 중계기가 된다.
    */
+  /**
+   * 최상위 외형의 왕관과 궤도 반짝임.
+   *
+   * **스프라이트를 물들이지 않는다** — 타워 그림의 색이 "누구 편인가"의 신호라
+   * (`p1`/`p2` 폴더가 다른 색이다) 금색으로 덮으면 진영 구분이 죽는다. 건물 **위에**
+   * 얹기만 해서 원래 색을 그대로 남긴다.
+   *
+   * 왕관을 고른 이유: 26px 짜리 건물 위에서도 실루엣 하나로 "제일 높은 것"이 읽히는
+   * 몇 안 되는 모양이다. 별·트로피는 그 크기에서 점으로 뭉갠다.
+   *
+   * 반짝임은 **아우라와 같은 시간(`this.time`)에서 색을 뽑는다** — 위상이 갈리면 한
+   * 타워에서 두 무지개가 따로 노는 것처럼 보인다 (`drawTierPips` 와 같은 규칙).
+   */
+  private drawRegalia(x: number, y: number, artTop: number, r: number): void {
+    const ctx = this.ctx;
+    const hue = ((this.time * 0.5) % 1) * 360;
+
+    // ── 궤도 반짝임 ──────────────────────────────────────────────
+    //
+    // 건물 뒤로 돌아갈 때는 안 그린다. 앞뒤를 다 그리면 마름모가 지붕을 뚫고 지나가
+    // 건물이 종이처럼 보인다. `sin` 이 양수인 절반만 그려 "뒤로 돌아갔다"로 읽힌다.
+    const orbitRx = r * 1.55;
+    const orbitRy = r * GROUND_SQUASH * 1.5;
+    const cy = y - r * 0.25;
+    for (let i = 0; i < 3; i++) {
+      const a = this.time * 1.6 + (i * Math.PI * 2) / 3;
+      const depth = Math.sin(a);
+      if (depth < 0) continue;
+      const s = r * (0.11 + depth * 0.05);
+      const px = x + Math.cos(a) * orbitRx;
+      const py = cy + depth * orbitRy;
+      ctx.fillStyle = `hsla(${Math.floor(hue + i * 42) % 360}, 92%, 68%, ${0.55 + depth * 0.4})`;
+      ctx.beginPath();
+      ctx.moveTo(px, py - s);
+      ctx.lineTo(px + s, py);
+      ctx.lineTo(px, py + s);
+      ctx.lineTo(px - s, py);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // ── 왕관 ────────────────────────────────────────────────────
+    //
+    // 지붕 위로 띄운다. 위아래로 살짝 떠서 정지 화면에서도 눈에 든다 — 시작 제스처의
+    // `bob` 과 같은 수법이다.
+    const bob = Math.sin(this.time * 2.2) * (r * 0.06);
+    const cw = r * 0.9;
+    const ch = r * 0.5;
+    const cxg = x;
+    const cyg = artTop - r * 0.34 + bob;
+
+    ctx.save();
+    // 발광을 먼저 깔아야 어두운 배경에서도 금색이 안 묻힌다.
+    const glow = ctx.createRadialGradient(cxg, cyg, 0, cxg, cyg, cw * 1.5);
+    glow.addColorStop(0, 'rgba(255,214,102,0.45)');
+    glow.addColorStop(1, 'rgba(255,214,102,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cxg, cyg, cw * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 뿔 셋에 아래가 평평한 관. 좌우 뿔을 가운데보다 낮춰 가운데가 솟아 보이게 한다.
+    ctx.beginPath();
+    ctx.moveTo(cxg - cw / 2, cyg + ch / 2);
+    ctx.lineTo(cxg - cw / 2, cyg - ch * 0.15);
+    ctx.lineTo(cxg - cw * 0.25, cyg + ch * 0.12);
+    ctx.lineTo(cxg, cyg - ch / 2);
+    ctx.lineTo(cxg + cw * 0.25, cyg + ch * 0.12);
+    ctx.lineTo(cxg + cw / 2, cyg - ch * 0.15);
+    ctx.lineTo(cxg + cw / 2, cyg + ch / 2);
+    ctx.closePath();
+    ctx.fillStyle = '#ffd666';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(8,12,18,0.85)';
+    ctx.lineWidth = Math.max(1, r * 0.06);
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // 가운데 보석. 아우라와 같은 시간에서 색을 뽑아 함께 돈다.
+    ctx.fillStyle = `hsl(${Math.floor(hue) % 360}, 92%, 66%)`;
+    ctx.beginPath();
+    ctx.arc(cxg, cyg + ch * 0.1, Math.max(1, r * 0.1), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   private drawStockRing(t: Tower, r: number, foot: number, color: string): void {
     const ctx = this.ctx;
     // 건물이 발치에서 위로 서 있으므로 정원으로 두르면 링이 몸체를 관통한다.

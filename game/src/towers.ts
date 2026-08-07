@@ -58,6 +58,16 @@ export interface TowerKindMeta {
   spriteOf?: TowerKind;
   /** 코드로 그리는 아우라. 유료 종류를 그림 없이 구분하는 수단이다. */
   aura?: 'rainbow';
+  /**
+   * 왕관과 궤도 반짝임을 얹는가. **최상위 하나를 "누가 봐도 제일 좋은 것"으로 만든다**
+   * (2026-08-07 사용자 지시).
+   *
+   * 그림을 새로 굽지 않고 코드로 꾸미는 이유: 최상위는 성채 그림을 빌려 쓰므로
+   * (`spriteOf`) 아우라만으로는 성채와 거의 같아 보였다. **스프라이트를 물들이지는
+   * 않는다** — 타워 그림의 색이 "누구 편인가"의 신호라(p1/p2 폴더가 다른 색이다)
+   * 금색으로 덮으면 진영 구분이 죽는다. 그래서 건물 위에 **얹기만** 한다.
+   */
+  regal?: true;
   /** 상점 카드 강조색. 진영색(파랑 `#3fbdf1`·빨강 `#f2555f`)을 피한다. */
   accent?: string;
 }
@@ -81,6 +91,7 @@ export const TOWER_KIND_META: Record<TowerKind, TowerKindMeta> = {
     premium: true,
     spriteOf: 'tower_citadel',
     aura: 'rainbow',
+    regal: true,
     accent: '#f2f7fb',
   },
 };

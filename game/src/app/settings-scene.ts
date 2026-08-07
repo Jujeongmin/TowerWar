@@ -27,13 +27,23 @@ const VOL_ROWS = [
 const FOLLOW_REWARD_COINS = 500;
 
 /**
- * 제작자 페이지. 아직 팔로우 안 한 사람을 여기로 보낸다.
+ * 제작자 페이지. **폴백이다** — Verse8 밖에서 열렸을 때만 여기로 보낸다.
  *
- * **새 탭으로 연다.** 게임은 Verse8 iframe 안에서 돌고 있어서 같은 탭을 이 주소로
- * 옮기면 판이 통째로 사라진다. `@verse8/platform` 2.1.0 에 팔로우 다이얼로그를 여는
- * 부모 프레임 메시지가 아직 없어서(`OPEN_VX_SHOP_DIALOG` 뿐) 평범한 링크로 간다.
+ * 안에서는 부모 프레임에 `OPEN_FOLLOW_DIALOG` 를 보내는 쪽이 맞다 (`openFollow`).
  */
 const FOLLOW_URL = 'https://verse8.io/@jjm';
+
+/**
+ * 부모 프레임(Verse8 셸)에 팔로우 다이얼로그를 열라고 보내는 메시지.
+ *
+ * **`@verse8/platform` 에 타입이 없다.** 문서에도 없어서 한동안 존재하지 않는 줄 알고
+ * 새 탭만 열었다 — 다른 Verse8 게임이 쓰고 있는 것을 보고 알았다 (2026-08-07).
+ * `OPEN_VX_SHOP_DIALOG` 와 같은 평면의 메시지다.
+ */
+const OPEN_FOLLOW_DIALOG = 'OPEN_FOLLOW_DIALOG';
+
+/** 다이얼로그가 닫히면 부모가 이걸 돌려준다. `payload.isFollowing` 이 결과다. */
+const FOLLOW_DIALOG_CLOSED = 'FOLLOW_DIALOG_CLOSED';
 
 /** 팔로우 칸이 지금 무엇을 보여줄지. 서버에 물어봐야 정해진다. */
 type FollowState = 'following' | 'not_following' | 'rewarded' | 'unknown';
@@ -131,6 +141,9 @@ export class SettingsScene implements Scene {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') void this.refreshFollowState();
     });
+    // **다이얼로그 경로에서는 `visibilitychange` 가 안 터진다.** 부모가 오버레이를
+    // 띄우는 것이라 이 탭은 계속 보이는 상태다 — 그래서 닫힘 메시지를 따로 받는다.
+    window.addEventListener('message', (e: MessageEvent) => this.onParentMessage(e));
 
     for (const { key, field } of VOL_ROWS) {
       const line = document.createElement('label');
@@ -298,6 +311,49 @@ export class SettingsScene implements Scene {
   }
 
   /**
+   * 팔로우하러 보낸다.
+   *
+   * **Verse8 안에서는 부모가 다이얼로그를 띄운다.** 게임을 벗어나지 않으므로 판·매칭이
+   * 살아 있고, 모바일 앱 WebView 처럼 새 탭이 안 열리는 곳에서도 된다.
+   *
+   * `auth` 질의 문자열이 안에서 열렸다는 표시다. 없으면(로컬 개발·직접 연 주소) 부모가
+   * 없거나 이 메시지를 모르므로 **평범한 새 탭**으로 떨어진다. 같은 탭을 옮기면 판이
+   * 통째로 사라진다.
+   */
+  private openFollow(): void {
+    const inside = new URLSearchParams(window.location.search).get('auth') !== null;
+    if (inside) {
+      window.parent.postMessage({ type: OPEN_FOLLOW_DIALOG }, '*');
+      return;
+    }
+    // `noopener` 는 새 탭이 `window.opener` 로 이 창을 만지지 못하게 한다.
+    window.open(FOLLOW_URL, '_blank', 'noopener');
+  }
+
+  /**
+   * 부모 셸이 보낸 메시지. 지금 받는 것은 팔로우 다이얼로그가 닫혔다는 것 하나다.
+   *
+   * **보낸 곳을 안 가린다.** 가릴 수가 없다 — 부모 오리진이 웹 셸이냐 모바일
+   * WebView 냐에 따라 다르고 문서에도 없다. 그래도 되는 이유는 **이 값이 그림만
+   * 바꾸기 때문이다.** 누가 위조해 봐야 버튼이 '받기'로 보일 뿐이고, 눌러도 서버가
+   * 자기 락 안에서 `$sender.isFollower` 를 다시 읽어 거절한다. 코인이 새지 않는다.
+   */
+  private onParentMessage(e: MessageEvent): void {
+    const data = e.data as { type?: unknown; payload?: { isFollowing?: unknown } } | null;
+    if (!data || typeof data !== 'object' || data.type !== FOLLOW_DIALOG_CLOSED) return;
+    if (this.root.hidden) return;
+    // 팔로우 안 하고 닫았을 수도 있다. 그때는 '팔로우하러 가기'로 그냥 둔다.
+    if (data.payload?.isFollowing !== true) return;
+    this.followState = 'following';
+    // 아까의 `not_following` 문구는 낡았다.
+    this.claimResult = null;
+    this.paintFollow();
+    // 부모 말은 그림용이다. 서버에도 확인해 둔다 — 이미 받은 계정이면 '받음'으로
+    // 잠겨야 하는데 그 사실은 부모가 모른다.
+    void this.refreshFollowState();
+  }
+
+  /**
    * 팔로우 상태를 서버에 묻는다. **화면을 안 건드리고 다녀온다** — 설정을 열 때마다
    * "확인 중"이 번쩍이면 언어·음량 보러 온 사람에게는 잡음일 뿐이다. 답이 오면
    * 그때 버튼 모양만 조용히 바뀐다.
@@ -326,11 +382,9 @@ export class SettingsScene implements Scene {
     if (this.claiming || this.hasFollowReward()) return;
 
     // 아직 팔로우 안 했다 — 청구해 봐야 서버가 거절한다. 팔로우할 곳으로 보낸다.
-    // 돌아오면 `visibilitychange` 가 상태를 다시 물어 버튼을 '받기'로 바꾼다.
     if (this.followMode === 'go') {
       audio.play('tap');
-      // `noopener` 는 새 탭이 `window.opener` 로 이 창을 만지지 못하게 한다.
-      window.open(FOLLOW_URL, '_blank', 'noopener');
+      this.openFollow();
       // 실패 문구를 들고 있었으면 지운다 — 이제 안내는 "팔로우하고 오라"는 것이다.
       this.claimResult = null;
       this.paintFollow();

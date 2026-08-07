@@ -179,9 +179,16 @@ export class AccountStore {
       this.setLocal(fromRemote(await this.net.claimFollowReward()));
       return null;
     } catch (e) {
+      const msg = String((e as Error)?.message ?? 'failed');
+      // **원문을 콘솔에 남긴다.** 화면 문구는 셋뿐이라(`followMessage`) 그 밖의 이유는
+      // 전부 "서버에 닿지 못했습니다"로 뭉개진다 — 서버가 아직 배포 안 됐다거나 하는
+      // 진짜 이유를 그때 알 방법이 없었다 (2026-08-07 실기).
+      if (!msg.includes('not_following') && !msg.includes('already_claimed')) {
+        console.warn('[account] 팔로우 보상 청구 실패:', msg);
+      }
       // 서버가 기계용 코드로 던진다 (`not_following` / `already_claimed`).
       // 문구는 화면이 고른다 — 언어마다 달라야 한다.
-      return String((e as Error)?.message ?? 'failed');
+      return msg;
     }
   }
 

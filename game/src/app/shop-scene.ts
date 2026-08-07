@@ -249,13 +249,31 @@ export class ShopScene implements Scene {
       set(el, 'name', unitLabelOf(kind));
       set(el, 'stats', t().unitStats(UNIT_KIND_META[kind].power));
       set(el, 'blurb', unitBlurbOf(kind));
-      // 판에서 머리 위에 찍히는 표식과 **개수가 같다** — 상점과 화면이 다른 말을 하면
-      // 무엇을 산 것인지 알 수가 없다 (`renderer.drawTierPips`).
+      // 판에서 머리 위에 찍히는 표식과 **개수도 색도 같다** — 상점과 화면이 다른 말을
+      // 하면 무엇을 산 것인지 알 수가 없다 (`renderer.drawTierPips`).
       const tier = tierOf(kind);
       const pips = el.querySelector<HTMLElement>('[data-role="tier"]');
       if (pips) {
-        pips.textContent = '◆'.repeat(tier);
-        pips.style.color = UNIT_KIND_META[kind].accent ?? 'transparent';
+        const meta = UNIT_KIND_META[kind];
+        const rainbow = meta.aura === 'rainbow';
+        pips.classList.toggle('is-rainbow', rainbow);
+        if (rainbow) {
+          // **칸마다 색을 달리하려면 칸을 쪼개야 한다.** 텍스트 한 덩어리에는 색을
+          // 하나밖에 못 준다. 칸 간격 42도는 판에서 쓰는 값과 같다 — 두 화면의
+          // 무지개가 다르게 보이면 같은 물건으로 안 읽힌다.
+          // 도는 것은 CSS 가 맡는다 (`.unit-tier.is-rainbow`).
+          pips.replaceChildren(
+            ...Array.from({ length: tier }, (_, i) => {
+              const s = document.createElement('span');
+              s.textContent = '◆';
+              s.style.color = `hsl(${(i * 42) % 360}, 92%, 64%)`;
+              return s;
+            }),
+          );
+        } else {
+          pips.textContent = '◆'.repeat(tier);
+          pips.style.color = meta.accent ?? 'transparent';
+        }
       }
     }
 

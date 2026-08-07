@@ -25,7 +25,13 @@ import { type Vec } from '../sim/geometry';
 import { routeBlockedBy, towerCount, unitPosition, unitProgressRate } from '../sim/sim';
 import type { MatchState, Owner, PlayerId, Route, TickEvents, Tower } from '../sim/types';
 import { DEFAULT_PROFILE, profileBg, type ProfileId } from '../profiles';
-import { DEFAULT_TOWER_KIND, type TowerKind } from '../towers';
+import {
+  DEFAULT_TOWER_KIND,
+  MAX_TOWER_TIER,
+  TOWER_KIND_META,
+  towerTierOf,
+  type TowerKind,
+} from '../towers';
 import {
   DEFAULT_UNIT_KIND,
   MAX_TIER,
@@ -268,14 +274,8 @@ export class Renderer {
     1: DEFAULT_UNIT_KIND,
     2: DEFAULT_UNIT_KIND,
   };
-  /**
-   * 플레이어별 타워 외형. 중립은 카탈로그 기본값으로 그린다.
-   *
-   * **`private` 가 아니다.** 그림을 바꾸는 것은 다음 과제라 이 파일 안에서는 아직 아무도
-   * 안 읽는다 — `private` 로 두면 `noUnusedLocals` 가 "안 읽는 private 필드"로 잡아
-   * 빌드가 깨진다. 다음 과제가 draw 경로에서 읽기 시작하면 그때 `private` 로 좁혀도 된다.
-   */
-  towerKinds: Record<PlayerId, TowerKind> = {
+  /** 플레이어별 타워 외형. 중립은 카탈로그 기본값으로 그린다. */
+  private towerKinds: Record<PlayerId, TowerKind> = {
     1: DEFAULT_TOWER_KIND,
     2: DEFAULT_TOWER_KIND,
   };
@@ -410,6 +410,11 @@ export class Renderer {
    */
   setTowerKinds(kinds: Record<PlayerId, TowerKind>): void {
     this.towerKinds = { ...kinds };
+    // **여기서 불러오기가 시작된다** (`setUnitKinds` 와 같은 자리). 이 판에 쓸 세 장만
+    // 받는다 — 내 외형·상대 외형·중립(항상 기본값, `Sprites.loadTower` 가 강제한다).
+    this.sprites.loadTower(1, this.towerKinds[1]);
+    this.sprites.loadTower(2, this.towerKinds[2]);
+    this.sprites.loadTower(0, DEFAULT_TOWER_KIND);
   }
 
   /** 화면 좌표 → 논리 좌표. 입력 처리에서 쓴다. */
@@ -862,18 +867,19 @@ export class Renderer {
 
     this.drawStockRing(t, r, foot, c.main);
 
-    // 건물은 소유자 색만 다르고 전부 같은 모양이다 (레벨 제거, 2026-07-30).
+    // 건물은 소유자의 외형을 그린다 (§6, 2026-08-07 — 타워 외형이 생산속도를 정한다).
     // 스프라이트가 아직 안 떴으면 원으로 폴백한다 — 첫 프레임과 헤드리스 검증에서
     // 화면이 비지 않아야 하기 때문이다.
-    const body = this.sprites.tower(t.owner);
-    if (body) {
+    const art = this.sprites.tower(t.owner, this.towerKinds[t.owner === 2 ? 2 : 1]);
+    if (art) {
       // 높이·폭 두 상한 중 빡빡한 쪽에 맞추고 바닥을 발치에 댄다.
       // 높이만 맞추면 성채(312×208)가 지름의 2.8배까지 벌어져 경로를 덮는다.
+      // **크기는 종류로 안 바꾼다** — 반경은 병력 수가 정하는 게임 규칙이다 (towers.ts).
       const d = r * 2;
-      const k = Math.min((d * TOWER_SPRITE_H) / body.h, (d * TOWER_SPRITE_W) / body.w);
-      const w = body.w * k;
-      const h = body.h * k;
-      ctx.drawImage(body.canvas, t.x - w / 2, foot - h, w, h);
+      const k = Math.min((d * TOWER_SPRITE_H) / art.h, (d * TOWER_SPRITE_W) / art.w);
+      const w = art.w * k;
+      const h = art.h * k;
+      ctx.drawImage(art.canvas, t.x - w / 2, foot - h, w, h);
     } else {
       ctx.fillStyle = c.fill;
       ctx.strokeStyle = c.main;
@@ -882,6 +888,22 @@ export class Renderer {
       ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+    }
+
+    // 유료 외형은 그림을 빌려 쓰므로(`towerSpriteKindOf`) 아우라가 유일한 구분이다.
+    // 중립(owner 0)은 항상 기본 외형이라 등급이 0 — `drawTierAura` 가 알아서 안 그린다.
+    const tmeta = TOWER_KIND_META[this.towerKinds[t.owner === 2 ? 2 : 1]];
+    if (t.owner !== 0 && tmeta) {
+      ctx.save();
+      ctx.translate(t.x, foot);
+      this.drawTierAura(
+        towerTierOf(this.towerKinds[t.owner === 2 ? 2 : 1]),
+        MAX_TOWER_TIER,
+        tmeta.accent,
+        tmeta.aura === 'rainbow',
+        r * 2,
+      );
+      ctx.restore();
     }
 
     // 재고 숫자는 건물 발치에 배지로 얹는다. 건물 그림 위에 그냥 쓰면 벽돌 무늬에
@@ -1119,7 +1141,7 @@ export class Renderer {
         ctx.translate(p.x, p.y);
         // 아우라는 뒤집기 **전에** 그린다. 원이라 뒤집어도 같지만, 뒤집힌 좌표계에서
         // 그리면 나중에 색 순서를 바꿀 때 좌우가 반대가 된다.
-        this.drawTierAura(kind, h);
+        this.drawTierAura(tierOf(kind), MAX_TIER, meta.accent, meta.aura === 'rainbow', h);
         if (facingLeft) ctx.scale(-1, 1);
         ctx.drawImage(sprite.canvas, -w / 2, -h / 2, w, h);
         // 표식은 **뒤집기를 되돌리고** 그린다. 뒤집힌 채로 그리면 왼쪽으로 가는 유닛의
@@ -1512,37 +1534,47 @@ export class Renderer {
   }
 
   /**
-   * 등급 아우라. **캐릭터 뒤에 깐다** — 위에 얹으면 재킷 색을 덮는데 그게 "누구
-   * 편인가"의 유일한 신호다 (`units.ts` 의 변형색 주석).
+   * 등급 아우라. **카탈로그를 안 읽는다** — 유닛도 타워도 이 함수를 쓰기 때문이다.
+   * 부르는 쪽이 자기 카탈로그에서 뽑은 값을 넘긴다.
    *
-   * 다섯 종이 같은 캐릭터를 하의 색만 바꿔 구운 것이라 **그림 자체에 세기가 없다.**
-   * 크기 사다리(`sizeFactorOf`)는 폭이 1.0~1.2라 나란히 놓아야 읽힌다 — 아우라가
-   * 실전에서 읽히는 쪽을 맡는다 (2026-08-03 사용자 지시).
+   * 유닛은 **캐릭터 뒤에 깐다** — 위에 얹으면 재킷 색을 덮는데 그게 "누구
+   * 편인가"의 유일한 신호다 (`units.ts` 의 변형색 주석). 타워는 그림을 그린 **뒤에**
+   * 발치에 깐다 — 유료 외형이 그림을 빌려 쓰므로(`towerSpriteKindOf`) 아우라가
+   * 유일한 구분이기 때문이다.
    *
-   * **기본 등급은 안 그린다.** 가장 흔한 유닛이 제일 깨끗해야 화면이 안 시끄럽다.
+   * **기본 등급은 안 그린다.** 가장 흔한 것이 제일 깨끗해야 화면이 안 시끄럽다.
    * 무지개만 색이 돈다 — 정지색으로 두면 다른 등급과 같은 물건으로 보인다.
+   *
+   * @param tier    등급. 0이면 안 그린다 — 가장 흔한 것이 제일 깨끗해야 화면이 안 시끄럽다
+   * @param maxTier 등급 사다리의 끝. 넓이·진하기의 분모다
+   * @param accent  강조색. 없으면 안 그린다
+   * @param rainbow 무지개로 돌릴 것인가
    */
-  private drawTierAura(kind: UnitKind, h: number): void {
-    const meta = UNIT_KIND_META[kind];
-    const tier = tierOf(kind);
-    if (tier <= 0 || !meta.accent) return;
+  private drawTierAura(
+    tier: number,
+    maxTier: number,
+    accent: string | undefined,
+    rainbow: boolean,
+    h: number,
+  ): void {
+    if (tier <= 0 || !accent) return;
 
     const ctx = this.ctx;
     // 등급이 높을수록 넓고 진하다. 0.28~0.46 반경, 알파 0.22~0.5.
-    const k = tier / MAX_TIER;
+    const k = maxTier > 0 ? tier / maxTier : 0;
     const r = h * (0.28 + k * 0.18);
     const alpha = 0.22 + k * 0.28;
 
     const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-    if (meta.aura === 'rainbow') {
-      // `time` 은 판 시작부터의 초. 유닛마다 위상을 안 나눈다 — 같은 종류가 같은 색으로
-      // 함께 도는 편이 "이건 특별한 부대"로 읽힌다.
+    if (rainbow) {
+      // `time` 은 판 시작부터의 초. 개체마다 위상을 안 나눈다 — 같은 종류가 같은 색으로
+      // 함께 도는 편이 "이건 특별한 것"으로 읽힌다.
       const hue = Math.floor(((this.time * 0.5) % 1) * 360);
       g.addColorStop(0, `hsla(${hue}, 90%, 65%, ${alpha})`);
       g.addColorStop(0.6, `hsla(${(hue + 120) % 360}, 90%, 60%, ${alpha * 0.5})`);
     } else {
-      g.addColorStop(0, withAlpha(meta.accent, alpha));
-      g.addColorStop(0.6, withAlpha(meta.accent, alpha * 0.45));
+      g.addColorStop(0, withAlpha(accent, alpha));
+      g.addColorStop(0.6, withAlpha(accent, alpha * 0.45));
     }
     g.addColorStop(1, 'rgba(0,0,0,0)');
 

@@ -17,21 +17,23 @@
  * 자세한 건 docs/assets-research.md.
  */
 
+import { DEFAULT_TOWER_KIND, TOWER_KIND_META, towerSpriteKindOf, type TowerKind } from '../towers';
 import { UNIT_KIND_META, type UnitKind, spriteKindOf } from '../units';
 
 const BASE = '/assets';
 
-/**
- * 모든 타워가 쓰는 건물 하나.
- *
- * 전에는 레벨 사다리(작은 집 → 큰 집 → 병영 → 석탑 → 성채)로 5장을 썼는데,
- * 2026-07-30에 레벨이 사라지면서 한 장만 남았다. `lv3` = 병영이다 —
- * 다섯 중 중간 크기이고 실루엣이 "요새"로 읽혀 작게 그려도 뭉개지지 않는다.
- * 나머지 네 장은 `game/public/assets/tower/` 에 그대로 있다. 바꾸려면 이 한 줄만 고치면 된다.
- */
-const TOWER_ART = 'lv3';
-
 type FactionSlug = 'p1' | 'p2' | 'neutral';
+
+/**
+ * 타워 그림 키. 진영 × 외형 종류다.
+ *
+ * **전부 미리 안 받는다.** 종류가 6개라 진영까지 곱하면 11장이 되는데, 한 판에 실제로
+ * 쓰이는 것은 **3장뿐**이다 (내 외형·상대 외형·중립). 아바타(`Profiles`)와 같은 방식으로
+ * 판이 시작될 때 필요한 것만 받는다.
+ */
+function towerKey(slug: FactionSlug, kind: TowerKind): string {
+  return `tower_${slug}_${kind}`;
+}
 
 function factionOf(owner: 0 | 1 | 2): FactionSlug {
   return owner === 1 ? 'p1' : owner === 2 ? 'p2' : 'neutral';
@@ -52,11 +54,6 @@ function factionOf(owner: 0 | 1 | 2): FactionSlug {
 export type UnitDir = 'run' | 'up' | 'down';
 export const UNIT_DIRS: readonly UnitDir[] = ['run', 'up', 'down'];
 
-const TOWER_PATHS: Record<string, string> = {};
-for (const slug of ['p1', 'p2', 'neutral'] as FactionSlug[]) {
-  TOWER_PATHS[`tower_${slug}`] = `${BASE}/tower/${slug}/${TOWER_ART}.png`;
-}
-
 const unitKey = (slug: FactionSlug, kind: UnitKind, dir: UnitDir, i: number) =>
   `unit_${slug}_${kind}_${dir}_${i}`;
 
@@ -73,8 +70,7 @@ export class Sprites {
   private requested = new Set<string>();
 
   constructor() {
-    // 건물은 세 장뿐이라 그냥 미리 받는다.
-    for (const [key, src] of Object.entries(TOWER_PATHS)) this.fetch(key, src);
+    // 타워는 판이 시작될 때 `loadTower` 로 필요한 것만 받는다 (아래 주석).
   }
 
   private fetch(key: string, src: string): void {
@@ -115,6 +111,21 @@ export class Sprites {
     }
   }
 
+  /**
+   * 한 판에 나올 타워만 불러온다. `Renderer.setTowerKinds` 가 부른다.
+   *
+   * 종류 6 × 진영 3 = 11장인데 한 판에 쓰는 것은 **3장뿐**이다
+   * (내 외형·상대 외형·중립). `loadUnit` 과 같은 판단이다.
+   */
+  loadTower(owner: 0 | 1 | 2, kindIn: TowerKind): void {
+    const kind = towerSpriteKindOf(owner === 0 ? DEFAULT_TOWER_KIND : kindIn);
+    const slug = factionOf(owner);
+    const key = towerKey(slug, kind);
+    if (this.requested.has(key)) return;
+    this.requested.add(key);
+    this.fetch(key, `${BASE}/tower/${slug}/${TOWER_KIND_META[kind].art}.png`);
+  }
+
   /** 지금까지 요청한 것이 다 왔는가. 헤드리스 검증에서 대기 조건으로 쓴다. */
   get ready(): boolean {
     return this.loaded.size === this.images.size;
@@ -127,9 +138,15 @@ export class Sprites {
     return { canvas: img, w: img.naturalWidth, h: img.naturalHeight };
   }
 
-  /** 소유자에 맞는 건물. 로딩 전이면 null (렌더러가 도형으로 폴백한다). */
-  tower(owner: 0 | 1 | 2): Painted | null {
-    return this.grab(`tower_${factionOf(owner)}`);
+  /**
+   * 소유자에 맞는 건물. 로딩 전이면 null (렌더러가 도형으로 폴백한다).
+   *
+   * **중립은 항상 기본 외형이다** — 가장 낮은 것을 중립에 두어야 무과금 플레이어의
+   * 타워가 주인 없는 타워보다 초라해 보이지 않는다.
+   */
+  tower(owner: 0 | 1 | 2, kind: TowerKind): Painted | null {
+    const k = towerSpriteKindOf(owner === 0 ? DEFAULT_TOWER_KIND : kind);
+    return this.grab(towerKey(factionOf(owner), k));
   }
 
   /** 러닝 사이클 한 프레임. `frame` 은 알아서 감긴다 — 종류마다 프레임 수가 다르다. */

@@ -113,6 +113,9 @@ export interface Strings {
   // 유닛 카탈로그
   unitLabels: Record<string, string>;
   unitBlurbs: Record<string, string>;
+  // 타워 카탈로그
+  towerLabels: Record<string, string>;
+  towerBlurbs: Record<string, string>;
   // 아바타
   profileNames: Record<string, string>;
   // 봇 이름 조합
@@ -240,6 +243,22 @@ const en: Strings = {
     beergang_green: 'Green pants',
     beergang_purple: 'Purple pants',
     beergang_rainbow: 'VX only · strongest',
+  },
+  towerLabels: {
+    tower_hut: 'Hut',
+    tower_house: 'House',
+    tower_barracks: 'Barracks',
+    tower_keep: 'Keep',
+    tower_citadel: 'Citadel',
+    tower_prime: 'Prime Citadel',
+  },
+  towerBlurbs: {
+    tower_hut: 'The tower everyone starts with.',
+    tower_house: 'A little more room, a little more output.',
+    tower_barracks: 'Built to keep troops moving.',
+    tower_keep: 'Stone walls, steady supply.',
+    tower_citadel: 'The fastest tower coins can buy.',
+    tower_prime: 'Fastest of all. VX only.',
   },
   profileNames: {
     slate: 'Slate',
@@ -375,6 +394,22 @@ const ko: Strings = {
     beergang_green: '초록 하의',
     beergang_purple: '보라 하의',
     beergang_rainbow: 'VX 전용 · 가장 강함',
+  },
+  towerLabels: {
+    tower_hut: '오두막',
+    tower_house: '집',
+    tower_barracks: '병영',
+    tower_keep: '석탑',
+    tower_citadel: '성채',
+    tower_prime: '왕성',
+  },
+  towerBlurbs: {
+    tower_hut: '누구나 여기서 시작한다.',
+    tower_house: '조금 넓어지고, 조금 더 나온다.',
+    tower_barracks: '병력을 계속 내보내려고 지은 것.',
+    tower_keep: '돌벽에 꾸준한 보급.',
+    tower_citadel: '코인으로 살 수 있는 가장 빠른 타워.',
+    tower_prime: '가장 빠르다. VX 전용.',
   },
   profileNames: {
     slate: '회색',
@@ -512,6 +547,22 @@ const zh: Strings = {
     beergang_green: '绿色下装',
     beergang_purple: '紫色下装',
     beergang_rainbow: 'VX 专属 · 最强',
+  },
+  towerLabels: {
+    tower_hut: '小屋',
+    tower_house: '房屋',
+    tower_barracks: '兵营',
+    tower_keep: '石塔',
+    tower_citadel: '城堡',
+    tower_prime: '王城',
+  },
+  towerBlurbs: {
+    tower_hut: '所有人的起点。',
+    tower_house: '空间大一点，产量多一点。',
+    tower_barracks: '为持续出兵而建。',
+    tower_keep: '石墙与稳定补给。',
+    tower_citadel: '金币能买到的最快塔。',
+    tower_prime: '最快的塔。仅限 VX。',
   },
   profileNames: {
     slate: '灰',

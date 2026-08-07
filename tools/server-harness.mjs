@@ -617,9 +617,14 @@ for (const bad of ['toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
   check(`상속 키 타워 구매 거부: ${bad}`, te === '그런 타워가 없습니다', te);
   check(`상속 키 타워 구매가 코인을 안 건드린다: ${bad}`, (await server.getAccount()).coins === coinsBefore, await server.getAccount());
 }
-const bought = await server.buyTowerKind('tower_house');
-check('타워 구매: 1000 - 400', bought.coins === 600, bought.coins);
-check('사면 바로 착용된다', bought.towerKind === 'tower_house', bought);
+// **가장 싼 유료 칸을 산다.** 종류 이름에 가격을 박아 두면 사다리 순서를 바꿀 때마다
+// (2026-08-07에 석탑을 2번으로 올렸다) 이 검사가 이유 없이 빨개진다. 검사의 뜻은
+// "코인이 가격만큼 깎이고 바로 착용된다"이지 "집이 400원이다"가 아니다.
+const cheapest = 'tower_keep';
+const cheapestPrice = 400;
+const bought = await server.buyTowerKind(cheapest);
+check(`타워 구매: 1000 - ${cheapestPrice}`, bought.coins === 1000 - cheapestPrice, bought.coins);
+check('사면 바로 착용된다', bought.towerKind === cheapest, bought);
 te = null;
 try { await server.buyTowerKind('tower_citadel'); } catch (e) { te = e.message; }
 check('코인 모자라면 거부', te === '코인이 모자랍니다', te);

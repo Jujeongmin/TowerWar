@@ -146,11 +146,14 @@ const UNIT_PRICES = {
  * **속도 값은 여기 없다.** 서버는 이름만 내려주고 이름 → 배수 변환은 클라이언트가
  * 한다 — 공식을 양쪽에 복사하면 언젠가 어긋나고, 어긋나면 두 클라이언트가 다른 판을 돈다.
  */
+// **`lv` 번호 순이 아니다.** 사다리가 오두막 → 석탑 → 집 → 병영 → 성채다
+// (2026-08-07 사용자 지시 — 석탑이 병영 뒤에 오면 좁아서 약해 보인다).
+// 이름은 안 옮겼으니 값만 보고 순서를 짐작하지 말 것.
 const TOWER_PRICES = {
   tower_hut: 0,
-  tower_house: 400,
-  tower_barracks: 900,
-  tower_keep: 1500,
+  tower_keep: 400,
+  tower_house: 900,
+  tower_barracks: 1500,
   tower_citadel: 2400,
 };
 

@@ -1577,7 +1577,13 @@ body {
 .tower-crown {
   position: absolute;
   top: -2px;
-  right: 6px;
+  /* **가운데 위.** 판에서도 왕관은 지붕 한가운데에 뜬다 (`renderer.drawRegalia`) —
+     카드에서만 옆으로 치우치면 같은 물건으로 안 읽힌다. 처음에 오른쪽으로 붙였다가
+     사용자 지적으로 옮겼다 (2026-08-07). */
+  left: 50%;
+  /* **가운데 정렬과 bob 을 한 `transform` 에 담는다.** 둘을 따로 쓰면 애니메이션의
+     `transform` 이 정렬을 통째로 덮어써 왕관이 왼쪽으로 튄다. */
+  transform: translate(-50%, 0);
   z-index: 2;
   font-size: 15px;
   line-height: 1;
@@ -1588,7 +1594,7 @@ body {
 
 @keyframes crown-bob {
   50% {
-    transform: translateY(-2px);
+    transform: translate(-50%, -2px);
   }
 }
 

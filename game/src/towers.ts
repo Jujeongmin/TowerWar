@@ -77,12 +77,22 @@ export interface TowerKindMeta {
  * 어긋나면 "상점에는 보이는데 못 입는"이 된다. 고칠 때 양쪽을 같이 고칠 것.
  *
  * `speed` 는 서버에 없다 — 서버는 이름만 내려주고 배수 변환은 여기서만 한다.
+ *
+ * ── 사다리는 `lv` 번호 순이 아니다 (2026-08-07 사용자 지시) ──────
+ *
+ * 옛 레벨 사다리를 그대로 쓰면 **석탑(`lv4`)이 병영(`lv3`) 뒤에 와서 약해 보인다** —
+ * 석탑은 높지만 좁고, 병영은 넓어서 화면에서 더 크게 읽힌다. 그래서 석탑을 두 번째로
+ * 올렸다: 오두막 → **석탑** → 집 → 병영 → 성채.
+ *
+ * **이름과 그림은 안 옮겼다** (석탑은 언제나 `lv4`다). 옮긴 것은 `price` 와 `speed` 뿐이다 —
+ * 사다리의 자리는 그 두 값이 정하고, `SPEED_ORDER`·`towerTierOf`·`stepDownTower` 가
+ * 전부 `speed` 에서 파생되므로 여기만 고치면 봇 보정도 등급 표시도 따라온다.
  */
 export const TOWER_KIND_META: Record<TowerKind, TowerKindMeta> = {
   tower_hut: { art: 'lv1', price: 0, speed: 1 },
-  tower_house: { art: 'lv2', price: 400, speed: 1.25, accent: '#e8eef5' },
-  tower_barracks: { art: 'lv3', price: 900, speed: 1.5, accent: '#f5c542' },
-  tower_keep: { art: 'lv4', price: 1500, speed: 1.75, accent: '#34d399' },
+  tower_keep: { art: 'lv4', price: 400, speed: 1.25, accent: '#e8eef5' },
+  tower_house: { art: 'lv2', price: 900, speed: 1.5, accent: '#f5c542' },
+  tower_barracks: { art: 'lv3', price: 1500, speed: 1.75, accent: '#34d399' },
   tower_citadel: { art: 'lv5', price: 2400, speed: 2, accent: '#a78bfa' },
   tower_prime: {
     art: 'lv5',
@@ -133,9 +143,9 @@ export function towerSpeedOf(kind: TowerKind): number {
 /** 코인으로 사는 종류. 상점 격자 순서다. */
 export const SHOP_TOWER_ORDER: readonly TowerKind[] = [
   'tower_hut',
+  'tower_keep',
   'tower_house',
   'tower_barracks',
-  'tower_keep',
   'tower_citadel',
 ];
 

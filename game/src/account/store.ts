@@ -18,15 +18,19 @@ import type { Agent8Client, BoardEntry } from '../net/agent8';
 import { watchRewardedAd } from '../net/ads';
 import type { ProfileId } from '../profiles';
 import type { UnitKind } from '../units';
+import type { TowerKind } from '../towers';
 import {
   applyReward,
+  buyTowerKind,
   buyUnitKind,
+  ownsTowerKind,
   ownsUnitKind,
   cleanName,
   fromRemote,
   loadAccount,
   resetRecord,
   saveAccount,
+  selectTowerKind,
   selectUnitKind,
   type Account,
   type Reward,
@@ -198,6 +202,19 @@ export class AccountStore {
       return;
     }
     this.setLocal(buyUnitKind(this.account, kind) ?? selectUnitKind(this.account, kind));
+  }
+
+  /** 안 가진 외형이면 사고, 가진 것이면 착용한다. `pickUnit` 과 같은 규칙이다. */
+  async pickTower(kind: TowerKind): Promise<void> {
+    if (this.net) {
+      const owned = ownsTowerKind(this.account, kind);
+      await this.mutate(
+        () => (owned ? this.net!.selectTowerKind(kind) : this.net!.buyTowerKind(kind)),
+        () => null,
+      );
+      return;
+    }
+    this.setLocal(buyTowerKind(this.account, kind) ?? selectTowerKind(this.account, kind));
   }
 
   /**

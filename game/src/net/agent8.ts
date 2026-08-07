@@ -455,6 +455,14 @@ export class Agent8Client {
     return await withTimeout(this.server.remoteFunction('selectUnitKind', [kind]), '유닛 착용');
   }
 
+  async buyTowerKind(kind: string): Promise<RemoteAccount> {
+    return await withTimeout(this.server.remoteFunction('buyTowerKind', [kind]), '타워 구매');
+  }
+
+  async selectTowerKind(kind: string): Promise<RemoteAccount> {
+    return await withTimeout(this.server.remoteFunction('selectTowerKind', [kind]), '타워 착용');
+  }
+
   /**
    * 판 결과 보고. 서버가 보상을 계산해 계정에 넣고 새 계정을 돌려준다.
    * 이미 받은 판이면 `false` 를 돌려준다 — 방당 한 사람 한 번이다.
@@ -493,6 +501,10 @@ export interface RemoteAccount {
   draws: number;
   ownedUnits: string[];
   unitKind: string;
+  /** 산 타워 외형들. 유닛과 같은 규칙이다. */
+  ownedTowers: string[];
+  /** 착용한 타워 외형. 생산속도를 정한다. */
+  towerKind: string;
   /** 봇 대체 판의 전적. 화면에는 안 드러내지만 갈라서 센다 (§-7). */
   soloWins: number;
   soloLosses: number;

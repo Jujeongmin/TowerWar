@@ -11,6 +11,14 @@
 import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
 import { DEFAULT_UNIT_KIND, UNIT_KIND_META, isPremiumKind, isUnitKind, unitPowerOf, type UnitKind } from '../units';
+import {
+  DEFAULT_TOWER_KIND,
+  TOWER_KIND_META,
+  isPremiumTower,
+  isTowerKind,
+  towerSpeedOf,
+  type TowerKind,
+} from '../towers';
 
 const STORAGE_KEY = 'towerwar.account.v1';
 
@@ -18,12 +26,12 @@ const STORAGE_KEY = 'towerwar.account.v1';
  * 저장 형식이 바뀌면 올린다.
  * v1 = 강화 없음, v2 = 전투력+공속, v3 = 공속만, v4 = 유닛 생김새,
  * v5 = 봇전 전적 분리, v6 = 닉네임, v7 = 프로필 아바타, v8 = 기본 생김새가 BeerGang,
- * v9 = PVP 점수, v10 = 유료(VX) 소유.
+ * v9 = PVP 점수, v10 = 유료(VX) 소유, v11 = 타워 외형(생산속도).
  */
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 /** 읽어서 살릴 수 있는 형식들. 여기 없는 값이면 기본값으로 되돌린다. */
-const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, SCHEMA_VERSION]);
+const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, SCHEMA_VERSION]);
 
 /** 닉네임 길이 상한. HUD에 들어가야 해서 짧다. `server.js` 의 `NAME_MAX` 와 같아야 한다. */
 export const NAME_MAX = 12;
@@ -82,6 +90,14 @@ export interface Account {
   /** 지금 판에 나갈 생김새. */
   unitKind: UnitKind;
   /**
+   * 상점에서 산 타워 외형들. 기본 외형은 여기 없어도 쓸 수 있다.
+   *
+   * **순수 외형이 아니다** — 착용한 것이 생산속도를 정한다 (`towers.ts`).
+   */
+  ownedTowers: TowerKind[];
+  /** 지금 판에 나갈 타워 외형. 내 타워 **전부**가 이 그림으로 그려진다. */
+  towerKind: TowerKind;
+  /**
    * 봇 대체 판의 전적. 화면에는 안 드러내지만(§-7) 따로 센다 —
    * 안 그러면 나중에 밸런스를 볼 때 이 표본이 사람이었는지 봇이었는지 알 수 없다.
    */
@@ -133,6 +149,8 @@ export function defaultAccount(): Account {
     draws: 0,
     ownedUnits: [],
     unitKind: DEFAULT_UNIT_KIND,
+    ownedTowers: [],
+    towerKind: DEFAULT_TOWER_KIND,
     soloWins: 0,
     soloLosses: 0,
     soloDraws: 0,
@@ -161,6 +179,7 @@ export function fromRemote(r: {
   profile?: string;
   coins: number; wins: number; losses: number; draws: number;
   ownedUnits: string[]; unitKind: string;
+  ownedTowers?: string[]; towerKind?: string;
   soloWins: number; soloLosses: number; soloDraws: number;
   rating?: number;
   entitlements?: string[];
@@ -168,6 +187,8 @@ export function fromRemote(r: {
 }): Account {
   const owned = r.ownedUnits.filter(isUnitKind);
   const kind = isUnitKind(r.unitKind) ? r.unitKind : DEFAULT_UNIT_KIND;
+  const ownedT = (r.ownedTowers ?? []).filter(isTowerKind);
+  const tkind = isTowerKind(r.towerKind) ? r.towerKind : DEFAULT_TOWER_KIND;
   const a: Account = {
     version: SCHEMA_VERSION,
     name: cleanName(r.name),
@@ -178,6 +199,8 @@ export function fromRemote(r: {
     draws: num(r.draws),
     ownedUnits: [...new Set(owned)],
     unitKind: kind,
+    ownedTowers: [...new Set(ownedT)],
+    towerKind: tkind,
     soloWins: num(r.soloWins),
     soloLosses: num(r.soloLosses),
     soloDraws: num(r.soloDraws),
@@ -185,7 +208,7 @@ export function fromRemote(r: {
     entitlements: [...new Set(r.entitlements ?? [])],
     adAt: num(r.adAt),
   };
-  return { ...a, unitKind: unitKindOf(a) };
+  return { ...a, unitKind: unitKindOf(a), towerKind: towerKindOf(a) };
 }
 
 // ── 로비 상점 ─────────────────────────────────────────────────────
@@ -194,15 +217,14 @@ export function fromRemote(r: {
  * 계정 강화를 매치가 이해하는 형태로. 이 함수가 계정과 시뮬레이션 사이의 유일한 통로다.
  * `sim/`이 계정을 모르게 유지하려면 변환이 반드시 이쪽에 있어야 한다.
  *
- * **공속 강화(`speedLevel`)는 2026-08-06에 없앴다** (사용자 지시). 생산속도를 타워
- * 외형이 이어받기로 해서, 단계 곱셈이 남아 있으면 두 축이 겹친다. `speedMul` 배관은
- * 그대로 두었다 — 외형이 그 자리에 값을 넣는다. 그때까지는 모두 1.0 이다.
+ * **두 축 다 "종류가 성능"이다.** 유닛 종류가 `unitPower` 를, 타워 외형이 `speedMul` 을
+ * 정한다. 추상적인 단계 강화(`speedLevel`)는 2026-08-06에 없앴다 (HANDOFF §-73).
  */
 export function modsFor(a: Account): PlayerMods {
   return {
-    speedMul: 1,
-    // 착용한 종류가 유닛의 힘이다. `unitKindOf` 로 읽는 이유: 저장본이 오염됐거나
-    // 안 가진 것이 착용돼 있으면 여기서 기본값으로 떨어져야 sim 에 들어가지 않는다.
+    // 착용한 외형이 생산속도다. `towerKindOf` 로 읽는 이유는 아래 유닛과 같다 —
+    // 안 가진 것이 착용돼 있으면 여기서 기본값으로 떨어져야 sim 에 안 들어간다.
+    speedMul: towerSpeedOf(towerKindOf(a)),
     unitPower: unitPowerOf(unitKindOf(a)),
   };
 }
@@ -257,6 +279,38 @@ export function unitKindOf(a: Account): UnitKind {
   return ownsUnitKind(a, a.unitKind) ? a.unitKind : DEFAULT_UNIT_KIND;
 }
 
+// ── 타워 외형 ─────────────────────────────────────────────────────
+//
+// 유닛 종류와 **정확히 같은 구조다.** 외형이 성능(`speed`)을 들고 그 값이 `modsFor` 를
+// 통해 sim 으로 간다. 카탈로그는 src/towers.ts.
+
+/** 기본 외형은 가격 0이라 사지 않아도 가지고 있다. 유료 외형은 `entitlements` 가 든다. */
+export function ownsTowerKind(a: Account, kind: TowerKind): boolean {
+  if (DEBUG_UNLOCK_ALL) return true;
+  if (isPremiumTower(kind)) return a.entitlements.includes(kind);
+  return TOWER_KIND_META[kind].price === 0 || a.ownedTowers.includes(kind);
+}
+
+/**
+ * 한 외형 구매한 새 계정. 이미 가졌거나 코인이 모자라면 null. **사면 바로 착용한다** —
+ * 한 번 더 눌러야 입는 구조면 "샀는데 왜 그대로지"가 된다.
+ */
+export function buyTowerKind(a: Account, kind: TowerKind): Account | null {
+  if (isPremiumTower(kind)) return null;
+  const price = TOWER_KIND_META[kind].price;
+  if (ownsTowerKind(a, kind) || a.coins < price) return null;
+  return { ...a, coins: a.coins - price, ownedTowers: [...a.ownedTowers, kind], towerKind: kind };
+}
+
+/** 가진 것만 착용할 수 있다. 못 고르면 원본 그대로 — 호출부가 분기하지 않게 한다. */
+export function selectTowerKind(a: Account, kind: TowerKind): Account {
+  return ownsTowerKind(a, kind) ? { ...a, towerKind: kind } : a;
+}
+
+/** 실제로 쓸 외형. 안 가진 것이 저장돼 있으면 기본으로 되돌린다. */
+export function towerKindOf(a: Account): TowerKind {
+  return ownsTowerKind(a, a.towerKind) ? a.towerKind : DEFAULT_TOWER_KIND;
+}
 
 /** 매치 하나가 끝났을 때 무엇을 얼마나 주는가. 순수 함수 — 저장소를 모른다. */
 export interface Reward {
@@ -350,6 +404,10 @@ export function loadAccount(): Account {
       // 중복이 쌓이면 소유 목록이 무한히 길어진다. 저장할 때가 아니라 읽을 때 정리한다.
       ownedUnits: [...new Set(owned)],
       unitKind: migrateUnitKind(parsed.unitKind),
+      ownedTowers: Array.isArray(parsed.ownedTowers)
+        ? parsed.ownedTowers.filter(isTowerKind)
+        : [],
+      towerKind: isTowerKind(parsed.towerKind) ? parsed.towerKind : DEFAULT_TOWER_KIND,
       soloWins: num(parsed.soloWins),
       soloLosses: num(parsed.soloLosses),
       soloDraws: num(parsed.soloDraws),
@@ -361,7 +419,7 @@ export function loadAccount(): Account {
       adAt: num(parsed.adAt),
     };
     // 안 가진 것이 착용돼 있으면(손으로 고친 저장본 등) 기본으로 되돌린다.
-    return { ...account, unitKind: unitKindOf(account) };
+    return { ...account, unitKind: unitKindOf(account), towerKind: towerKindOf(account) };
   } catch {
     return defaultAccount();
   }

@@ -318,17 +318,29 @@ export class ShopScene implements Scene {
     for (const { kind, el } of [...this.towerCards, ...this.premiumTowerCards]) {
       const meta = TOWER_KIND_META[kind];
       const owned = ownsTowerKind(a, kind);
+      const equipped = kind === wornTower;
       set(el, 'name', towerLabelOf(kind));
       set(el, 'stats', t().towerStats(meta.speed));
       set(el, 'blurb', towerBlurbOf(kind));
-      // 유료는 코인 가격이 없다. VX 값은 대시보드가 진짜라 못 읽으면 "준비 중"이다.
-      const price = isPremiumTower(kind)
-        ? (vxPrice(kind as PremiumItem) === null ? t().comingSoon : t().buyWithVx)
-        : `◈ ${meta.price.toLocaleString()}`;
-      set(el, 'state', kind === wornTower ? t().equipped : owned ? t().equip : price);
-      el.classList.toggle('is-worn', kind === wornTower);
-      // 못 사는 카드는 회색. 가진 것은 언제나 누를 수 있다 (착용).
-      el.disabled = !owned && !isPremiumTower(kind) && a.coins < meta.price;
+      el.classList.toggle('is-worn', equipped);
+
+      if (isPremiumTower(kind)) {
+        // 유료 칸. **`vxPrice(...) === null` 로 "준비 중"을 판정하면 안 된다** —
+        // `vxPrice` 는 `isPremiumItem`(로컬 폴백 표 `VX_PRODUCTS` 에 키가 있는가)만
+        // 보고 null 여부를 정하는데, `tower_prime` 이 그 표에 이미 올라 있어(가격
+        // 폴백 500원) 대시보드 미등록 상태에서도 절대 null 이 안 나왔다 — "준비 중"이
+        // 영영 안 뜨는 버그였다. **대시보드의 실시간 구매 가능 플래그**(`isPurchasable`)
+        // 를 봐야 한다 — 유닛 유료 카드·배속 카드와 같은 규칙이다.
+        const sellable = isPurchasable(kind as PremiumItem);
+        set(el, 'state', equipped ? t().equipped : owned ? t().equip : sellable ? t().buyWithVx : t().comingSoon);
+        // 착용 중이거나(유닛과 같은 규칙), 안 가졌는데 아직 못 사는 상품이면 잠근다.
+        el.disabled = equipped || (!owned && !sellable);
+      } else {
+        const affordable = owned || a.coins >= meta.price;
+        set(el, 'state', equipped ? t().equipped : owned ? t().equip : `◈ ${meta.price.toLocaleString()}`);
+        // 착용 중인 카드는 누를 이유가 없다 (유닛 카드와 같은 규칙). 못 사는 카드도 잠근다.
+        el.disabled = equipped || !affordable;
+      }
     }
 
     // **이름·스탯·설명은 매번 다시 쓴다.** 카드는 생성자에서 한 번만 만들어지므로

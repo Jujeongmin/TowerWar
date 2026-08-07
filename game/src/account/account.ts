@@ -47,10 +47,10 @@ export const NAME_MAX = 12;
  * '착용하기'를 보여 주는데 서버가 거절해서 눌러도 아무 일이 안 일어난다 —
  * 실제로 그 버그를 한 번 냈다.
  *
- * **지금 켜져 있다** (2026-08-06 사용자 지시). **출시 전에 양쪽 다 `false` 로
- * 되돌릴 것** — 켜진 채로 나가면 유료 항목이 전부 공짜가 된다.
+ * **지금 꺼져 있다** (2026-08-07 에 되돌렸다). 켜진 채로 나가면 유료 항목이 전부
+ * 공짜가 되니, 잠깐 켜서 확인했으면 **양쪽 다 `false` 로 되돌리고** 출시할 것.
  */
-export const DEBUG_UNLOCK_ALL = true;
+export const DEBUG_UNLOCK_ALL = false;
 
 /** 배속을 여는 유료 항목의 id. `server.js` 의 `PREMIUM_ITEMS` 와 같아야 한다. */
 export const TEMPO_ITEM = 'tempo_boost';

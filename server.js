@@ -201,14 +201,13 @@ const PREMIUM_ITEMS = [...PREMIUM_UNITS, TEMPO_ITEM];
  *
  * 출시 전에 양쪽 다 `false` 로 되돌릴 것.
  */
-// 검증 하네스는 이 값을 **반드시 꺼서** 돌린다 (`tools/server-harness.mjs` 가
-// `__TW_NO_DEBUG_UNLOCK` 을 세운다) — 켜 둔 채로 재면 "안 산 것을 못 입는다" 같은
-// 검사가 통째로 무의미해진다. 그래서 상수로 박지 않고 그 스위치를 본다.
-//
-// **지금 켜져 있다** (2026-08-06 사용자 지시: 무지개 비어갱을 입어 보려고). 실물에서
-// 입으려면 서버도 같이 켜져 있어야 한다 — 클라만 켜면 상점은 '착용하기'를 보여 주는데
-// 서버가 거절해서 눌러도 아무 일이 안 일어난다.
-const DEBUG_UNLOCK_ALL = typeof __TW_NO_DEBUG_UNLOCK === 'undefined';
+// **지금 꺼져 있다** (2026-08-07 에 되돌렸다). 실물에서 유료 항목을 입어 보려면
+// 여기를 `typeof __TW_NO_DEBUG_UNLOCK === 'undefined'` 로 되돌리고 클라이언트도 같이
+// 켠다 — 클라만 켜면 상점은 '착용하기'를 보여 주는데 서버가 거절해서 눌러도 아무 일이
+// 안 일어난다. 그렇게 켰을 때 검증 하네스는 `__TW_NO_DEBUG_UNLOCK` 으로 다시 끄고
+// 돌린다 (`tools/server-harness.mjs`) — 켜 둔 채로 재면 "안 산 것을 못 입는다" 같은
+// 검사가 통째로 무의미해진다.
+const DEBUG_UNLOCK_ALL = false;
 
 function isKnownUnit(v) {
   return (

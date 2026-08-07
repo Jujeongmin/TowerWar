@@ -257,6 +257,15 @@ const MAX_TOWERS = 12;
 
 /** 광고 한 번에 주는 코인. 승리 보상(100)보다 낮게 잡았다 — 판을 이기는 편이 낫다. */
 const AD_COINS = 60;
+
+/**
+ * 제작자를 팔로우하면 주는 코인. **계정당 한 번뿐이다** (`followRewarded` 가 자물쇠).
+ *
+ * 광고 코인(60)보다 훨씬 큰 이유: 광고는 30분마다 반복되지만 이건 평생 한 번이다.
+ * 유료 타워 사다리의 두 번째 칸(400)을 바로 살 수 있는 값으로 잡았다 — 팔로우 한 번에
+ * "뭔가 열렸다"가 보여야 누를 이유가 생긴다.
+ */
+const FOLLOW_REWARD_COINS = 500;
 /**
  * 광고 사이 최소 간격(ms). **30분** (2026-08-04 사용자 지시). 하루 상한을 없앤 뒤
  * 남은 유일한 게이트라, 이게 코인 총량을 정한다(30분마다 60 = 시간당 최대 120).
@@ -450,6 +459,8 @@ function defaultAccount(account) {
     // 이미 보상으로 쓴 광고 requestId. 같은 광고 시청 하나로 두 번(또는
     // claimAdCoins·claimDoubleReward 양쪽) 받는 것을 막는다. vxPurchaseIds와 같은 자물쇠.
     adRequestIds: [],
+    // 제작자 팔로우 보상을 받았는가. **계정당 한 번**의 자물쇠다 (`claimFollowReward`).
+    followRewarded: false,
   };
 }
 
@@ -503,6 +514,7 @@ function normalizeAccount(raw, account) {
     adRequestIds: Array.isArray(raw.adRequestIds)
       ? [...new Set(raw.adRequestIds.filter((id) => typeof id === 'string'))].slice(-50)
       : [],
+    followRewarded: raw.followRewarded === true,
   };
 }
 
@@ -656,6 +668,39 @@ class Server {
    *
    * `requestId` 인자는 옛 시그니처 호환으로 받기만 하고 안 쓴다.
    */
+  /**
+   * 제작자를 팔로우한 사람에게 주는 코인. **계정당 한 번.**
+   *
+   * ── 이 기능이 성립하는 이유는 `$sender.isFollower` 하나다 ──────
+   *
+   * 팔로우 여부를 **서버가 직접 읽는다.** 클라이언트가 보낼 값이 아예 없으므로 위조할
+   * 통로가 없다 — 광고 보상(`claimAdCoins`)이 "봤다"는 클라이언트 말을 믿는 것과
+   * 근본적으로 다르다. 그래서 금액을 광고(60)보다 훨씬 크게 잡을 수 있다.
+   *
+   * **팔로우를 끊어도 회수하지 않는다.** 되돌릴 근거가 없고, 회수하면 "받았다 뺏겼다"가
+   * 되어 더 나쁘다. `followRewarded` 는 "준 적이 있다"는 기록이지 "지금 팔로워다"가 아니다.
+   *
+   * **팔로우 다이얼로그를 여는 것은 클라이언트 몫이다.** 그 방법이 아직 공식 SDK에도
+   * 문서에도 없어서(2026-08-07 확인: `@verse8/platform` 2.1.0 의 부모 프레임 메시지는
+   * `OPEN_VX_SHOP_DIALOG` 뿐) 화면은 아직 안 붙였다. 서버는 그것과 무관하게 성립한다 —
+   * 플랫폼에서 팔로우하고 오기만 하면 이 함수가 준다.
+   *
+   * **기계가 읽는 코드로 던진다.** 화면 문구는 언어마다 달라야 한다 (§-40).
+   */
+  async claimFollowReward() {
+    return await $lock(`acct:${$sender.account}`, async () => {
+      const a = await this.#loadAccount();
+      if (a.followRewarded) throw new Error('already_claimed');
+      // **락 안에서 읽는다.** 밖에서 읽고 들어오면 그 사이에 값이 바뀔 수 있다.
+      if (!$sender.isFollower) throw new Error('not_following');
+      return await this.#saveAccount({
+        ...a,
+        coins: a.coins + FOLLOW_REWARD_COINS,
+        followRewarded: true,
+      });
+    });
+  }
+
   async claimAdCoins() {
     return await $lock(`acct:${$sender.account}`, async () => {
       const a = await this.#loadAccount();

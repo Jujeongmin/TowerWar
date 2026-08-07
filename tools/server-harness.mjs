@@ -1132,6 +1132,41 @@ let cerr = null;
 try { await server.claimDoubleReward('req-c'); } catch (e) { cerr = e.message; }
 check('안 끝난 판에서는 거절', cerr === 'not_finished_match', cerr);
 
+// 54) 제작자 팔로우 보상 — 계정당 한 번, 서버가 팔로우 여부를 직접 본다
+//
+// **`$sender.isFollower` 가 이 기능의 전부다.** 클라이언트가 보낼 값이 없으므로
+// 위조할 통로 자체가 없다 (광고 보상이 클라이언트를 믿는 것과 다르다).
+// `F` 는 위(§ 방 코드)에서 이미 만든 계정이다. 팔로우 상태만 얹어 쓴다.
+F.isFollower = false;
+as(F);
+await server.leaveMatch().catch(() => {});
+userStates.set('0xFFF', { ...defaultsFor('0xFFF'), coins: 100 });
+
+let ferr = null;
+try { await server.claimFollowReward(); } catch (e) { ferr = e.message; }
+check('팔로우 안 했으면 거절', ferr === 'not_following', ferr);
+check('거절이 코인을 안 건드린다', (await server.getAccount()).coins === 100);
+
+// 팔로우하고 왔다.
+F.isFollower = true;
+const followed = await server.claimFollowReward();
+check('팔로우 보상 = 100 + 500', followed.coins === 600, followed.coins);
+check('받았다는 표시가 남는다', followed.followRewarded === true, followed.followRewarded);
+
+ferr = null;
+try { await server.claimFollowReward(); } catch (e) { ferr = e.message; }
+check('두 번은 못 받는다', ferr === 'already_claimed', ferr);
+check('두 번째가 코인을 안 건드린다', (await server.getAccount()).coins === 600);
+
+// 팔로우를 끊어도 이미 받은 것은 회수하지 않는다 — 되돌릴 근거가 없고,
+// 회수하면 '받았다 뺏겼다'가 되어 더 나쁘다.
+F.isFollower = false;
+check('팔로우를 끊어도 코인은 그대로', (await server.getAccount()).coins === 600);
+check('기본 계정은 아직 안 받은 상태', defaultsFor('0xZZZ').followRewarded === undefined);
+
+// 락 안에서 돈다 (코인을 건드리는 경로는 전부 그래야 한다).
+check('팔로우 보상이 계정 락 안에서 돈다', lockCalls.includes('acct:0xFFF'), lockCalls.slice(-3));
+
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  ← ' + JSON.stringify(r.extra)}`);

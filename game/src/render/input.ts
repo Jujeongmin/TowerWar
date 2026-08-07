@@ -21,6 +21,26 @@ const CUT_SAMPLE_DIST = 7;
 /** 궤적 길이 상한. 화면을 휘저어도 메모리와 판정 비용이 폭주하지 않게 막는다. */
 const CUT_MAX_POINTS = 80;
 
+/**
+ * 타워를 **누를 때** 실제 반경(22)에 더하는 여유. 손가락이 굵어서 필요하다.
+ *
+ * **여기를 키우면 안 된다.** 빈 공간에서 시작하는 스와이프가 경로 절단이라
+ * (파일 머리말), 시작점 판정이 넓어지면 타워 옆을 긋는 것마다 드래그로 오인된다.
+ */
+const TAP_PAD = 16;
+
+/**
+ * 드래그 **목표**에 붙는 스냅 여유. 누를 때보다 넉넉하다 (2026-08-07 사용자 지시).
+ *
+ * 목표는 시작점과 사정이 다르다 — 이미 드래그 중이라 다른 제스처로 오인될 일이 없고,
+ * 손가락이 목표를 가려서 정확히 짚기 어렵다. 끌어다 **근처에 놓기만 해도** 붙어야 한다.
+ *
+ * **상한은 타워 간 거리다.** 맵이 타워를 `MIN_SPACING`(112) 이상 띄우므로 반쪽은 56 이고,
+ * 반경 22 + 34 = 56 이 딱 그 지점이다. 더 키우면 두 타워의 스냅 범위가 겹쳐, 어느 쪽을
+ * 노렸는지 알 수 없는 자리가 생긴다 (가까운 쪽이 이기지만 사람 눈엔 임의로 보인다).
+ */
+const SNAP_PAD = 34;
+
 export class InputController {
   readonly ui: UiState;
 
@@ -108,7 +128,9 @@ export class InputController {
     }
 
     if (this.ui.dragFrom !== null && this.moved) {
-      const t = this.hitTower(p);
+      // 목표는 **넓게** 잡는다 (`SNAP_PAD`). 이미 드래그 중이라 다른 제스처로 오인될
+      // 일이 없고, 손가락이 목표를 가려 정확히 짚기 어렵다.
+      const t = this.hitTower(p, SNAP_PAD);
       this.ui.dragTarget = t !== null && t !== this.ui.dragFrom ? t : null;
     }
   };
@@ -195,14 +217,13 @@ export class InputController {
 
   // ── 공통 ────────────────────────────────────────────────────────
 
-  private hitTower(p: Vec): number | null {
+  private hitTower(p: Vec, pad = TAP_PAD): number | null {
     const state = this.getState();
     let best: number | null = null;
     let bestD = Infinity;
     for (const t of state.towers) {
       const d = Math.hypot(t.x - p.x, t.y - p.y);
-      // 손가락 조작을 감안해 실제 반경보다 넉넉하게 잡는다
-      if (d <= towerRadiusOf(t) + 16 && d < bestD) {
+      if (d <= towerRadiusOf(t) + pad && d < bestD) {
         bestD = d;
         best = t.id;
       }

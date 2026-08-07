@@ -18,6 +18,7 @@ import { createMatch, step, tempoScaleOf } from '../sim/sim';
 import type { MatchState, Owner, PlayerId, PlayerMods, TickEvents } from '../sim/types';
 import { InputController } from '../render/input';
 import type { Renderer } from '../render/renderer';
+import { stepDownTower, towerSpeedOf, type TowerKind } from '../towers';
 import { stepDownKind, unitPowerOf, type UnitKind } from '../units';
 import type { ProfileId } from '../profiles';
 import { botName, botProfile, botRating } from './bot-name';
@@ -152,6 +153,8 @@ export class MatchScene implements Scene {
      * 두 값이 같은 계정에서 나오므로 어긋날 일이 없다.
      */
     private readonly getUnitKind: () => UnitKind,
+    /** 사람이 착용한 타워 외형. 봇전에서 쓴다 — PVP는 서버 값이 이걸 덮는다. */
+    private readonly getTowerKind: () => TowerKind,
     /** 내 닉네임. PVP에서는 서버가 내려준 값이 이걸 덮는다. */
     private readonly getPlayerName: () => string,
     /** 내 프로필 아바타. 이름과 같은 규칙이다. */
@@ -256,16 +259,27 @@ export class MatchScene implements Scene {
     // 화면에 그릴 종류. 아래 두 갈래가 각자 채운다 — **sim 에 들어간 힘과 반드시 같은
     // 종류여야 한다.** 색이 곧 세기라, 어긋나면 화면이 거짓말을 한다.
     let shownKinds: Record<PlayerId, UnitKind>;
+    // 화면에 그릴 타워 외형. `shownKinds` 와 같은 규칙 — sim 에 들어간 `speedMul` 과
+    // 반드시 같은 종류여야 한다. 어긋나면 그림과 생산속도가 따로 논다.
+    let shownTowers: Record<PlayerId, TowerKind>;
 
     if (plan.mode === 'pvp') {
       // **보정은 서버가 내려준 값으로만 만든다.** 각자 자기 계정을 읽으면 두 쪽이
       // 다른 배수로 시뮬레이션해 첫 틱부터 갈라진다 (net/types.ts MatchSetup 참고).
-      const { kinds } = plan.setup;
+      const { kinds, towerKinds } = plan.setup;
       this.state = createMatch(generateMap(seed), {
         // `canTempo` 도 서버가 내려준다. 각자 자기 계정을 읽으면 한쪽만 배속을 켤 수
         // 있다고 믿어 같은 명령을 다르게 처리한다 — 그 순간 갈라진다.
-        1: { speedMul: 1, unitPower: unitPowerOf(kinds[1]), canTempo: plan.setup.tempo[1] },
-        2: { speedMul: 1, unitPower: unitPowerOf(kinds[2]), canTempo: plan.setup.tempo[2] },
+        1: {
+          speedMul: towerSpeedOf(towerKinds[1]),
+          unitPower: unitPowerOf(kinds[1]),
+          canTempo: plan.setup.tempo[1],
+        },
+        2: {
+          speedMul: towerSpeedOf(towerKinds[2]),
+          unitPower: unitPowerOf(kinds[2]),
+          canTempo: plan.setup.tempo[2],
+        },
       });
       this.source = new NetSource(new Lockstep(plan.setup, plan.transport));
       // 상대가 끊기면 배치가 영영 안 온다. 그때 판을 끝낼 수 있는 유일한 길이다
@@ -275,6 +289,7 @@ export class MatchScene implements Scene {
           this.serverVerdict = slot;
         }) ?? null;
       shownKinds = { 1: kinds[1], 2: kinds[2] };
+      shownTowers = { 1: towerKinds[1], 2: towerKinds[2] };
     } else {
       // 봇도 사람의 강화 단계를 따라 세진다 (app/difficulty.ts). 안 그러면 강화를 살수록
       // 봇전이 쉬워지기만 한다.
@@ -285,11 +300,21 @@ export class MatchScene implements Scene {
       // 어긋나면 화면이 거짓말을 한다. 둘 다 `stepDownKind` 를 탄다.
       const mine = this.getUnitKind();
       shownKinds = { [local]: mine, [other]: stepDownKind(mine) } as Record<PlayerId, UnitKind>;
+      // **봇은 한 단계 아래 외형이다.** 속도(`botModsFor`)와 그림이 **같은 함수**에서
+      // 나와야 화면이 거짓말을 안 한다 — 유닛의 `stepDownKind` 와 같은 규칙이다.
+      // `plan.towerKind` 는 서버가 연 봇전 방에서 내려준 값 — 있으면 그걸 우선한다
+      // (`PvpScene.soloTowerFrom`), 없으면(로컬 폴백) 계정에서 읽는다.
+      const myTower = plan.towerKind ?? this.getTowerKind();
+      shownTowers = {
+        [local]: myTower,
+        [other]: stepDownTower(myTower),
+      } as Record<PlayerId, TowerKind>;
     }
 
-    // 종류와 이름은 매치 상태가 아니라 렌더러가 든다 — 서버 권위로 갈 때 검증 대상을
-    // 늘리지 않으려는 것이다. 힘은 위에서 이미 `PlayerMods` 로 들어갔다.
+    // 유닛 종류·타워 외형·이름은 매치 상태가 아니라 렌더러가 든다 — 서버 권위로 갈 때
+    // 검증 대상을 늘리지 않으려는 것이다. 힘·속도는 위에서 이미 `PlayerMods` 로 들어갔다.
     this.renderer.setUnitKinds(shownKinds);
+    this.renderer.setTowerKinds(shownTowers);
     if (plan.mode === 'pvp') {
       // 서버가 내려준 것만 쓴다. 클라이언트가 보내면 남의 이름·아바타를 자칭할 수 있다.
       this.renderer.setNames({ 1: plan.setup.names[1], 2: plan.setup.names[2] });

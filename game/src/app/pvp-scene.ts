@@ -23,6 +23,7 @@
 import { Agent8Client, type RoomSnapshot } from '../net/agent8';
 import { t } from '../i18n';
 import type { MatchSetup, MatchTransport } from '../net/types';
+import type { TowerKind } from '../towers';
 import type { Scene } from './scene';
 
 /**
@@ -137,7 +138,7 @@ export class PvpScene implements Scene {
      * `seed` 가 있으면 서버가 연 방(봇 확정)이고, 없으면 서버에 아예 못 붙은 것이다 —
      * 보상을 서버에 보고할지 로컬에 넣을지가 그 차이로 갈린다.
      */
-    private readonly startBot: (seed?: number) => void,
+    private readonly startBot: (seed?: number, towerKind?: TowerKind) => void,
     private readonly toLobby: () => void,
     /**
      * 앱이 들고 있는 접속 하나를 그대로 쓴다. 씬이 따로 만들면 계정용과 매칭용
@@ -415,7 +416,8 @@ export class PvpScene implements Scene {
 
     const soloSeed = this.client.soloSeedFrom(state);
     if (soloSeed !== null) {
-      this.handOff(() => this.startBot(soloSeed));
+      const towerKind = this.client.soloTowerFrom(state);
+      this.handOff(() => this.startBot(soloSeed, towerKind));
       return;
     }
 

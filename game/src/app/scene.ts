@@ -5,6 +5,7 @@
  * 씬이 각자 루프를 돌리면 전환하는 순간 둘이 겹쳐 도는 구간이 생긴다.
  */
 import type { MatchSetup, MatchTransport } from '../net/types';
+import type { TowerKind } from '../towers';
 
 export interface Scene {
   enter(): void;
@@ -26,5 +27,11 @@ export type MatchPlan =
    * `serverRoom` 은 이 판이 서버가 연 방이었는지다 — 보상을 서버에 보고할지
    * 로컬에 넣을지가 여기서 갈린다. 매칭이 아예 실패해 붙은 봇전은 `false` 다.
    */
-  | { mode: 'pve'; seed?: number; serverRoom: boolean }
+  | {
+      mode: 'pve';
+      seed?: number;
+      serverRoom: boolean;
+      /** 서버가 연 봇전 방이면 서버가 내려준 내 타워 외형. 없으면 계정에서 읽는다. */
+      towerKind?: TowerKind;
+    }
   | { mode: 'pvp'; setup: MatchSetup; transport: MatchTransport };

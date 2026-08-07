@@ -9,6 +9,7 @@
  */
 import type { ProfileId } from '../profiles';
 import type { Command, Owner, PlayerId } from '../sim/types';
+import type { TowerKind } from '../towers';
 import type { UnitKind } from '../units';
 
 /**
@@ -76,6 +77,14 @@ export interface MatchSetup {
    * 뺐다. 생산속도를 타워 외형이 이어받으면 그 종류 이름이 여기 나란히 들어온다.)
    */
   kinds: Record<PlayerId, UnitKind>;
+  /**
+   * 플레이어별 타워 외형. **`kinds` 와 정확히 같은 이유로 서버가 정한다** —
+   * 외형이 생산속도(`towers.ts` 의 `speed`)를 정하므로 순수 외형이 아니다.
+   * 각자 자기 계정에서 읽으면 두 쪽이 다른 `PlayerMods` 로 돌아 첫 틱부터 갈라진다.
+   *
+   * 서버는 **이름만** 내려준다. 이름 → 배수 변환은 클라이언트에만 있다 (`towerSpeedOf`).
+   */
+  towerKinds: Record<PlayerId, TowerKind>;
   /**
    * 플레이어별 닉네임. **서버가 내려준 것만 쓴다** —
    * 클라이언트가 보내면 남의 이름을 자칭할 수 있다.

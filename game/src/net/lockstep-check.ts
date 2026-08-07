@@ -17,6 +17,7 @@
  */
 import { DEFAULT_RATING } from '../account/account';
 import { DEFAULT_PROFILE } from '../profiles';
+import { DEFAULT_TOWER_KIND, towerSpeedOf, type TowerKind } from '../towers';
 import { DEFAULT_UNIT_KIND, unitPowerOf, type UnitKind } from '../units';
 import { TICK_DT } from '../sim/config';
 import { generateMap } from '../sim/maps';
@@ -40,8 +41,8 @@ class FakeClient {
     // **`MatchScene.restart` 의 PVP 갈래와 같은 식이어야 한다.** 둘이 어긋나면
     // 이 검증은 실제로 도는 코드가 아니라 하네스를 검사하게 된다.
     this.state = createMatch(generateMap(setup.seed), {
-      1: { speedMul: 1, unitPower: unitPowerOf(setup.kinds[1]) },
-      2: { speedMul: 1, unitPower: unitPowerOf(setup.kinds[2]) },
+      1: { speedMul: towerSpeedOf(setup.towerKinds[1]), unitPower: unitPowerOf(setup.kinds[1]) },
+      2: { speedMul: towerSpeedOf(setup.towerKinds[2]), unitPower: unitPowerOf(setup.kinds[2]) },
     });
     this.ls = new Lockstep({ ...setup, local }, transport);
     this.local = local;
@@ -109,6 +110,9 @@ export function runCase(seed: number, latencyMs: number, inputDelayTicks: number
     // 종류를 서로 다르게 준다. 힘이 갈린 상태에서도 락스텝이 어긋나지 않는지 봐야 한다 —
     // 양쪽 다 기본값이면 `unitPower` 경로가 한 번도 안 밟힌다.
     kinds: { 1: DEFAULT_UNIT_KIND, 2: 'beergang_purple' as UnitKind },
+    // 타워 외형도 서로 다르게 준다. **속도가 갈린 상태에서도** 락스텝이 안 어긋나는지
+    // 봐야 한다 — 양쪽이 같으면 `speedMul` 경로가 한 번도 안 밟힌다.
+    towerKinds: { 1: DEFAULT_TOWER_KIND, 2: 'tower_citadel' as TowerKind },
     names: { 1: 'A', 2: 'B' },
     // 카탈로그에서 읽는다. id를 손으로 박아 두면 아바타 목록을 고칠 때마다 여기가 깨진다.
     profiles: { 1: DEFAULT_PROFILE, 2: DEFAULT_PROFILE },

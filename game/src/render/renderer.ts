@@ -25,6 +25,7 @@ import { type Vec } from '../sim/geometry';
 import { routeBlockedBy, towerCount, unitPosition, unitProgressRate } from '../sim/sim';
 import type { MatchState, Owner, PlayerId, Route, TickEvents, Tower } from '../sim/types';
 import { DEFAULT_PROFILE, profileBg, type ProfileId } from '../profiles';
+import { DEFAULT_TOWER_KIND, type TowerKind } from '../towers';
 import {
   DEFAULT_UNIT_KIND,
   MAX_TIER,
@@ -267,6 +268,17 @@ export class Renderer {
     1: DEFAULT_UNIT_KIND,
     2: DEFAULT_UNIT_KIND,
   };
+  /**
+   * 플레이어별 타워 외형. 중립은 카탈로그 기본값으로 그린다.
+   *
+   * **`private` 가 아니다.** 그림을 바꾸는 것은 다음 과제라 이 파일 안에서는 아직 아무도
+   * 안 읽는다 — `private` 로 두면 `noUnusedLocals` 가 "안 읽는 private 필드"로 잡아
+   * 빌드가 깨진다. 다음 과제가 draw 경로에서 읽기 시작하면 그때 `private` 로 좁혀도 된다.
+   */
+  towerKinds: Record<PlayerId, TowerKind> = {
+    1: DEFAULT_TOWER_KIND,
+    2: DEFAULT_TOWER_KIND,
+  };
   /** 상대 입력 대기 중. PVP에서만 켜진다 (setWaiting). */
   private waitingForPeer = false;
   /** 플레이어별 닉네임. 비어 있으면 HUD에 이름 줄을 안 그린다. */
@@ -390,6 +402,14 @@ export class Renderer {
     // 미리 다 받으면 첫 로딩만 늘어진다. 이 판에 나올 48장만 받는다 (sprites.ts).
     this.sprites.loadUnit(1, this.unitKinds[1]);
     this.sprites.loadUnit(2, this.unitKinds[2]);
+  }
+
+  /**
+   * 판에 쓸 타워 외형. **`setUnitKinds` 와 같은 규칙이다** — 종류는 매치 상태가 아니라
+   * 렌더러가 든다. 서버 권위로 갈 때 검증 대상을 늘리지 않으려는 것이다.
+   */
+  setTowerKinds(kinds: Record<PlayerId, TowerKind>): void {
+    this.towerKinds = { ...kinds };
   }
 
   /** 화면 좌표 → 논리 좌표. 입력 처리에서 쓴다. */

@@ -12,6 +12,7 @@ import { GameServer } from '@agent8/gameserver';
 import { DEFAULT_RATING } from '../account/account';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
 import type { PlayerId } from '../sim/types';
+import { DEFAULT_TOWER_KIND, isTowerKind, type TowerKind } from '../towers';
 import { DEFAULT_UNIT_KIND, isUnitKind, type UnitKind } from '../units';
 import type { InputBatch, MatchSetup, MatchTransport } from './types';
 
@@ -35,6 +36,14 @@ function toKind(v: unknown): UnitKind {
   return isUnitKind(v) ? v : DEFAULT_UNIT_KIND;
 }
 
+/**
+ * 서버가 모르는 타워 외형을 내려줘도 판이 시작되게 기본값으로 떨어뜨린다.
+ * **여기서 던지면 안 된다** — `toKind` 와 정확히 같은 이유다.
+ */
+function toTowerKind(v: unknown): TowerKind {
+  return isTowerKind(v) ? v : DEFAULT_TOWER_KIND;
+}
+
 /** 서버가 방 상태에 실어 주지 않았을 때의 기본값. `server.js` 상수와 맞춰 둔다. */
 const DEFAULT_INPUT_DELAY_TICKS = 12;
 const DEFAULT_DESYNC_CHECK_TICKS = 30;
@@ -54,6 +63,8 @@ export interface RoomSnapshot {
   slots?: Record<string, PlayerId>;
   /** 슬롯 번호 → 유닛 종류. 힘을 정하는 값이라 서버 계정에서 읽어 내려준다. */
   kinds?: Record<number, string>;
+  /** 슬롯 번호 → 타워 외형. 생산속도를 정하는 값이라 서버 계정에서 읽어 내려준다. */
+  towerKinds?: Record<number, string>;
   /** 슬롯 번호 → 닉네임. 서버가 자기 계정에서 읽어 내려준다. */
   names?: Record<number, string>;
   /** 슬롯 번호 → 프로필 아바타 id. 이것도 서버 계정에서 읽는다. */
@@ -252,6 +263,10 @@ export class Agent8Client {
       seed: state.seed,
       local,
       kinds: { 1: toKind(state.kinds?.[1]), 2: toKind(state.kinds?.[2]) },
+      towerKinds: {
+        1: toTowerKind(state.towerKinds?.[1]),
+        2: toTowerKind(state.towerKinds?.[2]),
+      },
       names: { 1: state.names?.[1] ?? '', 2: state.names?.[2] ?? '' },
       profiles: {
         1: toProfile(state.profiles?.[1]),
@@ -281,6 +296,11 @@ export class Agent8Client {
   /** 봇전 방에서 서버가 내려준 내 아바타. */
   soloProfileFrom(state: RoomSnapshot): ProfileId {
     return toProfile(state.profiles?.[1]);
+  }
+
+  /** 봇전 방에서 서버가 내려준 내 타워 외형. 봇 것은 클라이언트가 만든다. */
+  soloTowerFrom(state: RoomSnapshot): TowerKind {
+    return toTowerKind(state.towerKinds?.[1]);
   }
 
   /** 이 방의 명령 통로. 락스텝에 그대로 넘긴다. */

@@ -4,8 +4,9 @@
  * 계정 데이터도 시뮬레이션 규칙도 아니고 "이 판을 어떤 조건으로 시작하는가"라서 app/에 둔다.
  * 스테이지 캠페인이 붙으면 스테이지 번호도 여기로 들어온다.
  */
-import { canUseTempo, modsFor, unitKindOf, type Account } from '../account/account';
+import { canUseTempo, modsFor, towerKindOf, unitKindOf, type Account } from '../account/account';
 import { stepDownKind, unitPowerOf, type UnitKind } from '../units';
+import { stepDownTower, towerSpeedOf, type TowerKind } from '../towers';
 import { SPEED_STEP } from '../sim/config';
 import type { PlayerId, PlayerMods } from '../sim/types';
 
@@ -35,30 +36,26 @@ const BOT_SPEED_LAG = 0.5;
  * 그래서 상대 기준이 아니라 **절대값**으로 박는다. `1 − 0.04×0.5 = 0.98` 은 옛 식이
  * 0단계 사람에게 주려 했던 값과 같아서, 실측해 둔 66.7~68.3% 가 그대로 유지된다.
  *
- * **임시 자리다.** 생산속도를 타워 외형이 이어받으면 봇도 유닛과 같은 방식으로
- * **사람보다 한 단계 낮은 타워**를 쓴다 (사용자 지시, `botUnitKindFor` 와 같은 꼴).
- * 그때 이 상수는 "가장 낮은 타워를 쓴 사람과 붙는 봇"의 바닥값으로만 남는다.
+ * **지금은 바닥값이다.** 생산속도를 타워 외형이 이어받은 뒤로(`botModsFor`) 봇은 보통
+ * `stepDownTower(내 외형)` 이 준 속도를 쓰고, 기본 타워(`tower_hut`)라 내려갈 곳이
+ * 없을 때만 이 값으로 떨어진다 — "가장 낮은 타워를 쓴 사람과 붙는 봇"의 바닥이다.
  */
 const BOT_SPEED_MUL = 1 - SPEED_STEP * BOT_SPEED_LAG;
 
 /**
- * 봇에게 줄 보정. **공속만 반 단계 아래고, 유닛의 힘은 사람과 정확히 같다.**
+ * 봇에게 줄 보정. **유닛의 힘도 타워의 속도도 사람보다 한 단계 아래다.**
  *
- * 두 축을 다르게 다루는 이유는 §-0.75의 실측이다. 유닛의 힘은 조절 가능한 축이 아니라
- * 계단이다 — 충돌이 `Math.min(a.power, b.power)` 라 조금이라도 낮은 쪽은 정면 교환에서
- * 항상 먼저 죽는다. 사람 전투력 2 기준으로 봇을 올려 가며 잰 사람 승률:
- *
- *   봇 1.0 → 100%   1.5 → 100%   1.7 → 100%   1.85 → 95%   1.95 → 95%   **2.0 → 45%**
- *
- * 1.95에서도 사람이 95% 이긴다. **봇 공속을 +20%까지 올려도, 판단주기를 0.5→0.1로 줄여
- * 최고 실력으로 만들어도 전부 100%였다.** 다른 어떤 것으로도 못 메운다.
- *
- * 그 대가로 **비싼 유닛을 사도 PVE에서는 이득이 0이다.** 축의 성질이지 버그가 아니다.
- * 봇전이 쉬워지길 원하면 여기서 봇의 `unitPower` 만 낮추면 되는데, 그 순간 승률이
- * 100%로 붙는다 — 위 표가 그 값이다.
+ * 위 실측표가 이 값의 근거다. 다만 **바닥이 필요하다** — 기본 타워(`tower_hut`)를
+ * 쓰면 아래가 없어 봇이 사람과 동등해지고, 표의 "지연 0 → 40%" 로 떨어진다.
+ * 신규가 가장 많이 겪을 상태인데 거기서 가장 어려워진다. 그때만 `BOT_SPEED_MUL` 을 쓴다.
  */
 export function botModsFor(a: Account): PlayerMods {
-  return { speedMul: BOT_SPEED_MUL, unitPower: unitPowerOf(botUnitKindFor(a)) };
+  const mine: TowerKind = towerKindOf(a);
+  const down = stepDownTower(mine);
+  return {
+    speedMul: down === mine ? BOT_SPEED_MUL : towerSpeedOf(down),
+    unitPower: unitPowerOf(botUnitKindFor(a)),
+  };
 }
 
 /**

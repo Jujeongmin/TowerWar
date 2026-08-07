@@ -5,7 +5,7 @@
  * 매치의 고정 타임스텝 루프는 MatchScene 안에 있다.
  */
 import './style.css';
-import { unitKindOf, type Reward } from './account/account';
+import { towerKindOf, unitKindOf, type Reward } from './account/account';
 import { AccountStore, type RatingChange } from './account/store';
 import { matchModsFor } from './app/difficulty';
 import { BoardScene } from './app/board-scene';
@@ -115,8 +115,8 @@ const pvp = new PvpScene(
   },
   // 상대를 못 구했다. 화면상으로는 PVP와 구분되지 않는다 (app/pvp-scene.ts 참고).
   // 시드가 있으면 서버가 연 방이라 보상을 서버가 준다.
-  (seed) => {
-    plan = { mode: 'pve', seed, serverRoom: seed !== undefined };
+  (seed, towerKind) => {
+    plan = { mode: 'pve', seed, serverRoom: seed !== undefined, towerKind };
     switchTo(match);
   },
   () => switchTo(lobby),
@@ -153,6 +153,7 @@ const match = new MatchScene(
   },
   () => matchModsFor(store.current),
   () => unitKindOf(store.current),
+  () => towerKindOf(store.current),
   () => store.current.name,
   () => store.current.profile,
   () => store.current.rating,

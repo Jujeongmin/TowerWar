@@ -132,6 +132,13 @@ export interface Account {
    * **서버가 진짜다** — 오프라인에서는 안 움직인다 (광고 코인 청구가 서버에만 있다).
    */
   adAt: number;
+  /**
+   * 제작자 팔로우 보상을 이미 받았는가. **계정당 한 번뿐이다.**
+   *
+   * **서버가 진짜다.** 오프라인에서는 절대 안 켜진다 — 팔로우 여부는 서버만 알고
+   * (`$sender.isFollower`), 로컬에서 켜 봐야 코인이 서버에 안 올라간다.
+   */
+  followRewarded: boolean;
 }
 
 /**
@@ -160,6 +167,7 @@ export function defaultAccount(): Account {
     rating: DEFAULT_RATING,
     entitlements: [],
     adAt: 0,
+    followRewarded: false,
   };
 }
 
@@ -187,6 +195,7 @@ export function fromRemote(r: {
   rating?: number;
   entitlements?: string[];
   adAt?: number;
+  followRewarded?: boolean;
 }): Account {
   const owned = r.ownedUnits.filter(isUnitKind);
   const kind = isUnitKind(r.unitKind) ? r.unitKind : DEFAULT_UNIT_KIND;
@@ -210,6 +219,7 @@ export function fromRemote(r: {
     rating: ratingOr(r.rating, DEFAULT_RATING),
     entitlements: [...new Set(r.entitlements ?? [])],
     adAt: num(r.adAt),
+    followRewarded: r.followRewarded === true,
   };
   return { ...a, unitKind: unitKindOf(a), towerKind: towerKindOf(a) };
 }
@@ -420,6 +430,8 @@ export function loadAccount(): Account {
       // 손으로 넣어도 착용은 서버가 거절한다 (`selectUnitKind`).
       entitlements: [...new Set(Array.isArray(parsed.entitlements) ? parsed.entitlements : [])],
       adAt: num(parsed.adAt),
+      // 로컬 사본은 화면 표시용이다. 손으로 켜 봐야 코인은 서버가 준다.
+      followRewarded: parsed.followRewarded === true,
     };
     // 안 가진 것이 착용돼 있으면(손으로 고친 저장본 등) 기본으로 되돌린다.
     return { ...account, unitKind: unitKindOf(account), towerKind: towerKindOf(account) };

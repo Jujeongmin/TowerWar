@@ -19,6 +19,13 @@ const VOL_ROWS = [
   { key: 'volBgm', field: 'bgm' },
 ] as const;
 
+/**
+ * 제작자 팔로우 보상 금액. **`server.js` 의 `FOLLOW_REWARD_COINS` 와 같아야 한다** —
+ * 여기 값은 안내 문구에 적는 용도일 뿐이고 실제로 주는 것은 서버다. 어긋나면 화면이
+ * 거짓말을 한다 (상점의 `AD_COINS` 와 같은 규칙).
+ */
+const FOLLOW_REWARD_COINS = 500;
+
 /** 각 언어를 **그 언어로** 적는다. 한국어 화면에서 'Korean' 은 아무 도움이 안 된다. */
 const ENDONYM: Record<Lang, string> = {
   en: 'English',
@@ -31,6 +38,12 @@ export class SettingsScene implements Scene {
   private readonly volLabels: { key: string; el: HTMLElement }[] = [];
   private readonly resetBtn: HTMLButtonElement;
   private readonly resetNote: HTMLElement;
+  private readonly followBtn: HTMLButtonElement;
+  private readonly followNote: HTMLElement;
+  /** 팔로우 보상 청구가 진행 중. 그동안 버튼을 잠가 두 번 안 나가게 한다. */
+  private claiming = false;
+  /** 방금 청구한 결과. `null` 이면 아직 안 눌렀다는 뜻이고, 안내 문구를 바꾼다. */
+  private claimResult: 'ok' | string | null = null;
   /** 초기화 버튼이 지금 "한 번 더 누르면" 확인 상태인가. */
   private confirming = false;
   /** 확인 상태를 자동으로 되돌리는 타이머. */
@@ -47,18 +60,27 @@ export class SettingsScene implements Scene {
     private readonly onResetRecord: () => Promise<void>,
     /** 지금 전적. 버튼 밑에 "현재 N승 M패"로 보여준다. */
     private readonly getRecord: () => { wins: number; losses: number },
+    /** 제작자 팔로우 보상 청구. `null` 이면 성공, 아니면 서버가 준 실패 코드. */
+    private readonly onClaimFollow: () => Promise<string | null>,
+    /** 이미 받았는가. 받았으면 버튼이 잠긴다. */
+    private readonly hasFollowReward: () => boolean,
   ) {
     const row = root.querySelector<HTMLElement>('#lang-row');
     const vols = root.querySelector<HTMLElement>('#vol-rows');
     const backBtn = root.querySelector<HTMLButtonElement>('#btn-settings-back');
     const resetBtn = root.querySelector<HTMLButtonElement>('#btn-reset-record');
     const resetNote = root.querySelector<HTMLElement>('#reset-record-note');
-    if (!row || !vols || !backBtn || !resetBtn || !resetNote) {
+    const followBtn = root.querySelector<HTMLButtonElement>('#btn-follow-claim');
+    const followNote = root.querySelector<HTMLElement>('#follow-note');
+    if (!row || !vols || !backBtn || !resetBtn || !resetNote || !followBtn || !followNote) {
       throw new Error('설정 화면 DOM이 예상과 다릅니다');
     }
     this.resetBtn = resetBtn;
     this.resetNote = resetNote;
     resetBtn.addEventListener('click', () => void this.onResetClick());
+    this.followBtn = followBtn;
+    this.followNote = followNote;
+    followBtn.addEventListener('click', () => void this.onFollowClick());
 
     for (const { key, field } of VOL_ROWS) {
       const line = document.createElement('label');
@@ -163,6 +185,42 @@ export class SettingsScene implements Scene {
       const { wins, losses } = this.getRecord();
       this.resetNote.textContent = t().resetRecordNote(wins, losses);
     }
+
+    this.paintFollow();
+  }
+
+  /**
+   * 팔로우 보상 칸.
+   *
+   * 상태가 넷이다: 이미 받음 / 청구 중 / 방금 실패 / 평소. **서버가 준 실패 코드를
+   * 그대로 화면에 쓰지 않는다** — `not_following` 은 사람이 읽을 글이 아니다 (§-40).
+   */
+  private paintFollow(): void {
+    const claimed = this.hasFollowReward();
+    this.followBtn.textContent = claimed ? t().followClaimed : t().followClaim;
+    this.followBtn.disabled = claimed || this.claiming;
+
+    if (claimed) {
+      this.followNote.textContent = t().followReward(FOLLOW_REWARD_COINS);
+      return;
+    }
+    // 아직 팔로우가 안 잡혔을 때만 "어떻게 하는지"로 바꾼다. 그 외 실패(오프라인·
+    // 통신 오류)는 평소 안내를 그대로 둔다 — 사용자가 할 수 있는 일이 같다.
+    this.followNote.textContent =
+      this.claimResult === 'not_following'
+        ? t().followNotYet
+        : `${t().followReward(FOLLOW_REWARD_COINS)} ${t().followHowTo}`;
+  }
+
+  private async onFollowClick(): Promise<void> {
+    if (this.claiming || this.hasFollowReward()) return;
+    this.claiming = true;
+    this.paintFollow();
+    const err = await this.onClaimFollow();
+    this.claiming = false;
+    this.claimResult = err ?? 'ok';
+    if (err === null) audio.play('purchase');
+    this.paintFollow();
   }
 
   exit(): void {

@@ -164,6 +164,27 @@ export class AccountStore {
     }
   }
 
+  /**
+   * 제작자 팔로우 보상을 청구한다. 실패 이유를 문자열로 돌려준다 — `null` 이면 성공.
+   *
+   * **광고와 달리 여기서는 아무것도 안 보낸다.** 팔로우 여부를 서버가
+   * `$sender.isFollower` 로 직접 읽으므로 클라이언트가 증명할 것이 없다.
+   *
+   * 오프라인에서는 안 준다. 팔로우 여부를 알 방법이 없고, 코인을 로컬로 주면
+   * 콘솔에서 고쳐 두고 접속하는 것과 같아진다 (이 파일 머리말).
+   */
+  async claimFollowReward(): Promise<string | null> {
+    if (!this.net) return 'offline';
+    try {
+      this.setLocal(fromRemote(await this.net.claimFollowReward()));
+      return null;
+    } catch (e) {
+      // 서버가 기계용 코드로 던진다 (`not_following` / `already_claimed`).
+      // 문구는 화면이 고른다 — 언어마다 달라야 한다.
+      return String((e as Error)?.message ?? 'failed');
+    }
+  }
+
   /** 판이 끝난 뒤 광고를 보고 보상을 한 번 더. 금액은 서버가 정한다. */
   async watchAdForDouble(): Promise<string | null> {
     if (!this.net) return 'offline';

@@ -433,6 +433,18 @@ export class Agent8Client {
     );
   }
 
+  /**
+   * 제작자 팔로우 보상. **계정당 한 번.**
+   *
+   * 인자가 없는 것이 핵심이다 — 팔로우 여부를 서버가 `$sender.isFollower` 로 직접
+   * 읽으므로 클라이언트가 보낼 것이 아무것도 없다. 광고 보상과 달리 위조할 통로가 없다.
+   *
+   * 실패는 그대로 던진다: `not_following`(아직 팔로우 안 함) / `already_claimed`(이미 받음).
+   */
+  async claimFollowReward(): Promise<RemoteAccount> {
+    return await withTimeout(this.server.remoteFunction('claimFollowReward', []), '팔로우 보상');
+  }
+
   /** 판이 끝난 뒤 보상을 한 번 더. 금액은 서버가 지불한 값 그대로다. `requestId` 는 위와 같다. */
   async claimDoubleReward(requestId: string): Promise<RemoteAccount> {
     return await withTimeout(
@@ -535,4 +547,6 @@ export interface RemoteAccount {
   entitlements: string[];
   /** 마지막 광고 코인 수령 시각(ms). 상점이 쿨다운 남은 시간 표시에 쓴다. */
   adAt: number;
+  /** 제작자 팔로우 보상을 이미 받았는가. 계정당 한 번의 자물쇠다. */
+  followRewarded: boolean;
 }

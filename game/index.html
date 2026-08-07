@@ -121,6 +121,17 @@
         <div id="vol-rows"></div>
       </div>
 
+      <!-- 제작자 팔로우 보상. **계정당 한 번 +500코인.**
+           팔로우 여부는 서버가 `$sender.isFollower` 로 직접 읽는다 — 클라이언트가
+           증명할 것이 없어서 위조가 불가능하다 (광고 보상과 다르다).
+           게임 안에서 팔로우 창을 여는 방법은 공식 SDK에 없어서(2026-08-07 확인)
+           "플랫폼에서 팔로우하고 와서 누르세요" 형태다. -->
+      <div class="shop">
+        <p class="shop-title" data-i18n="followSection">Support the creator</p>
+        <button id="btn-follow-claim" class="btn">Claim</button>
+        <p id="follow-note" class="shop-desc"></p>
+      </div>
+
       <!-- 전적 초기화. **승/패만 지우고 점수(레이팅)는 유지한다** (사용자 지시).
            두 번 눌러야 실행된다 — 실수로 한 번 눌러 전적이 날아가지 않게. -->
       <div class="shop">

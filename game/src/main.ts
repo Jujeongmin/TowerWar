@@ -110,6 +110,9 @@ const settings = new SettingsScene(
   // lobby.enter() 가 계정을 다시 읽어 0승 0패를 보여준다.
   () => store.resetRecord(),
   () => ({ wins: store.current.wins, losses: store.current.losses }),
+  // 팔로우 보상. 판정도 지급도 서버가 한다 — 여기는 결과만 화면에 옮긴다.
+  () => store.claimFollowReward(),
+  () => store.current.followRewarded,
 );
 const board = new BoardScene(
   need('board'),

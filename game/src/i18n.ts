@@ -138,6 +138,13 @@ export interface Strings {
   resetRecordDone: string;
   /** 점수는 유지된다는 안내. 지금 전적도 같이 보여준다. */
   resetRecordNote: (w: number, l: number) => string;
+  /** 제작자 팔로우 보상 구역. */
+  followSection: string;
+  followReward: (coins: number) => string;
+  followClaim: string;
+  followClaimed: string;
+  followNotYet: string;
+  followHowTo: string;
   volMaster: string;
   volSfx: string;
   volBgm: string;
@@ -291,6 +298,12 @@ const en: Strings = {
   resetRecordConfirm: 'Tap again to reset',
   resetRecordDone: 'Record reset',
   resetRecordNote: (w, l) => `Now ${w}W ${l}L · your score is kept`,
+  followSection: 'Support the creator',
+  followReward: (coins) => `Follow the creator for ${coins} coins — once per account.`,
+  followClaim: 'Claim',
+  followClaimed: 'Claimed',
+  followNotYet: "We can't see a follow yet. Follow on the game page, then tap Claim.",
+  followHowTo: 'Follow from the game page on Verse8, then come back and tap Claim.',
   volMaster: 'Overall',
   volSfx: 'Effects',
   volBgm: 'Music',
@@ -444,6 +457,12 @@ const ko: Strings = {
   resetRecordConfirm: '한 번 더 누르면 초기화',
   resetRecordDone: '전적을 초기화했습니다',
   resetRecordNote: (w, l) => `현재 ${w}승 ${l}패 · 점수는 유지됩니다`,
+  followSection: '제작자 응원',
+  followReward: (coins) => `제작자를 팔로우하면 ${coins}코인. 계정당 한 번입니다.`,
+  followClaim: '받기',
+  followClaimed: '받음',
+  followNotYet: '아직 팔로우가 확인되지 않았습니다. 게임 페이지에서 팔로우한 뒤 눌러 주세요.',
+  followHowTo: 'Verse8 게임 페이지에서 팔로우한 뒤 돌아와 눌러 주세요.',
   volMaster: '전체',
   volSfx: '효과음',
   volBgm: '배경음',
@@ -600,6 +619,12 @@ const zh: Strings = {
   resetRecordConfirm: '再次点击以重置',
   resetRecordDone: '战绩已重置',
   resetRecordNote: (w, l) => `当前 ${w}胜 ${l}负 · 积分保留`,
+  followSection: '支持创作者',
+  followReward: (coins) => `关注创作者可获得 ${coins} 金币。每个账号一次。`,
+  followClaim: '领取',
+  followClaimed: '已领取',
+  followNotYet: '尚未确认关注。请在游戏页面关注后再点击。',
+  followHowTo: '在 Verse8 游戏页面关注后返回并点击领取。',
   volMaster: '总音量',
   volSfx: '音效',
   volBgm: '音乐',

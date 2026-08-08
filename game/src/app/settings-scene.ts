@@ -12,6 +12,24 @@ import { audio } from '../audio';
 import { ENDONYM, LANGS, applyStaticText, getLang, setLang, t, type Lang } from '../i18n';
 import type { Scene } from './scene';
 
+/**
+ * 손가락으로 쓰는 기기인가.
+ *
+ * **신호 셋을 OR 로 본다.** `pointer: coarse` 하나만 보면 놓치는 곳이 있다 — 앱으로
+ * 감싼 WebView 중에는 입력 장치를 `none` 으로 보고하는 것이 있어 거기서는 거짓이 된다
+ * (2026-08-08: 폰에서 팔로우 칸이 안 감춰졌다).
+ *
+ * 오판의 비용이 한쪽으로 기운다. 터치 노트북에서 잘못 감춰 봐야 제작자 응원 칸 하나가
+ * 안 보일 뿐이고, 폰에서 못 감추면 애초에 하려던 일이 안 된다. 그래서 넓게 잡는다.
+ */
+function isTouchDevice(): boolean {
+  return (
+    window.matchMedia('(pointer: coarse)').matches ||
+    window.matchMedia('(hover: none)').matches ||
+    navigator.maxTouchPoints > 0
+  );
+}
+
 /** 음량 슬라이더 세 줄. 라벨 키와 어느 값을 만지는지만 다르다. */
 const VOL_ROWS = [
   { key: 'volMaster', field: 'master' },
@@ -74,7 +92,7 @@ export class SettingsScene implements Scene {
    * 판정을 여기 한 곳에서만 한다 — CSS 로도 감추면 화면과 서버 조회가 따로 놀아
    * 안 보이는 칸 때문에 서버를 계속 부르게 된다.
    */
-  private readonly followHidden = window.matchMedia('(pointer: coarse)').matches;
+  private readonly followHidden = isTouchDevice();
   /** 상태 조회가 도는 중. **화면을 안 건드린다** — 뒤에서 조용히 다녀오는 것이다. */
   private checkingFollow = false;
   /** 초기화 버튼이 지금 "한 번 더 누르면" 확인 상태인가. */

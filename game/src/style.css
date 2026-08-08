@@ -480,15 +480,18 @@ body {
   font: inherit;
 }
 
-/* 유닛이 서 있는 바닥. 종류마다 키가 달라(`sizeFactorOf`) 이 상자로 발끝을 맞춘다. */
+/* 유닛이 서 있는 바닥. 종류마다 키가 달라(`sizeFactorOf`) 이 상자로 발끝을 맞춘다.
+   **가장 큰 그림(52×1.2 = 62.4)보다 높아야** 이름 줄 위로 삐져나오지 않는다. */
 .podium-stage {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  height: calc(62px * var(--ui-scale));
+  height: calc(66px * var(--ui-scale));
 }
 
+/* 카드와 같은 규칙 — 코드는 `--art-scale` 만 주고 높이는 여기서 잰다. */
 .podium-unit {
+  height: calc(52px * var(--art-scale, 1) * var(--ui-scale));
   image-rendering: pixelated;
 }
 
@@ -692,16 +695,28 @@ body {
   background: rgba(255, 255, 255, 0.04);
 }
 
-/* 그림 상자. 유닛은 세기에 따라 높이가 달라지므로(`sizeFactorOf`) 바닥을 맞춘다. */
+/* 그림 상자. 유닛은 세기에 따라 높이가 달라지므로(`sizeFactorOf`) 바닥을 맞춘다.
+   **가장 큰 그림(유닛 46×1.2 = 55.2)보다 높아야** 위로 삐져나오지 않는다. */
 .board-card-art {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  height: calc(56px * var(--ui-scale));
+  height: calc(58px * var(--ui-scale));
 }
 
 .board-card-art img {
   image-rendering: pixelated;
+}
+
+/* **높이를 CSS 가 잰다.** 코드가 px 을 박으면 `--ui-scale` 을 안 타서, 짧은 화면에서
+   상자만 줄고 그림은 그대로라 위로 넘친다. 코드는 `--art-scale`(세기 배수)만 준다. */
+#board-card-unit-art {
+  height: calc(46px * var(--art-scale, 1) * var(--ui-scale));
+}
+
+/* 타워는 종류별 크기 차이가 없다. */
+#board-card-tower-art {
+  height: calc(52px * var(--ui-scale));
 }
 
 .board-card-slot-name {

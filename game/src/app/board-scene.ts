@@ -31,13 +31,6 @@ import {
 import { t } from '../i18n';
 import type { Scene } from './scene';
 
-/** 카드의 타워 그림 높이(px). 상점 카드(`shop-scene.ts`)와 같은 규칙이다. */
-const CARD_TOWER_ART_H = 52;
-/** 가장 약한 유닛의 카드 그림 높이(px). 여기에 `sizeFactorOf` 를 곱한다. */
-const CARD_UNIT_ART_BASE_H = 46;
-/** 시상대 위 유닛의 기준 높이(px). 카드보다 크게 세운다 — 여기가 이 화면의 주인공이다. */
-const PODIUM_UNIT_ART_BASE_H = 52;
-
 /**
  * 시상대에 세우는 순서. **가운데가 1등이다** — 올림픽 시상대와 같은 2·1·3 배치다
  * (2026-08-09 사용자 지시). 값은 순위(1부터)다.
@@ -226,9 +219,9 @@ export class BoardScene implements Scene {
     art.alt = '';
     art.src = unitFrontSrc(unit);
     // 센 유닛일수록 크게 — 판에서 보이는 크기 규칙과 같다 (`sizeFactorOf`).
-    art.style.height = `${Math.round(
-      PODIUM_UNIT_ART_BASE_H * sizeFactorOf(UNIT_KIND_META[unit].power),
-    )}px`;
+    // **배수만 넘기고 높이는 CSS 가 잰다.** 여기서 px 을 박으면 짧은 화면 축소
+    // (`--ui-scale`)를 안 타서 상자만 줄고 그림이 위로 삐져나온다.
+    art.style.setProperty('--art-scale', String(sizeFactorOf(UNIT_KIND_META[unit].power)));
 
     // 유닛이 서 있을 바닥. 키가 제각각이라 이 상자로 발끝을 맞춘다.
     const stage = document.createElement('span');
@@ -295,14 +288,15 @@ export class BoardScene implements Scene {
     this.cardRecord.textContent = t().record(e.wins, e.losses);
 
     this.cardUnitArt.src = unitPreviewSrc(unit);
-    // 센 유닛일수록 크게 — 판에서 보이는 크기 규칙과 같다 (`sizeFactorOf`).
-    this.cardUnitArt.style.height = `${Math.round(
-      CARD_UNIT_ART_BASE_H * sizeFactorOf(UNIT_KIND_META[unit].power),
-    )}px`;
+    // 시상대와 같은 규칙 — 배수만 넘기고 높이는 CSS 가 잰다.
+    this.cardUnitArt.style.setProperty(
+      '--art-scale',
+      String(sizeFactorOf(UNIT_KIND_META[unit].power)),
+    );
     this.cardUnitName.textContent = unitLabelOf(unit);
 
+    // 타워는 종류별 크기 차이가 없다. 높이는 CSS 가 정한다.
     this.cardTowerArt.src = towerPreviewSrc(tower);
-    this.cardTowerArt.style.height = `${CARD_TOWER_ART_H}px`;
     this.cardTowerName.textContent = towerLabelOf(tower);
 
     this.card.hidden = false;

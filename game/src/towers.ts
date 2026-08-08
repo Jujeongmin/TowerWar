@@ -172,6 +172,16 @@ export function towerTierOf(kind: TowerKind): number {
 export const MAX_TOWER_TIER = TOWER_KINDS.length - 1;
 
 /**
+ * 카탈로그에서 가장 빠른 값. **상점 카드 속도 막대의 분모다** (`shop-scene.ts`).
+ *
+ * 유닛의 `MAX_UNIT_POWER` 와 같은 자리다 — 손으로 적어 두면 종류를 추가할 때
+ * 조용히 어긋나므로 표에서 만들어 낸다.
+ */
+export const MAX_TOWER_SPEED = Math.max(
+  ...Object.values(TOWER_KIND_META).map((m) => m.speed),
+);
+
+/**
  * 한 단계 아래 종류. 봇이 사람보다 한 단계 낮은 타워를 쓰는 데 쓴다
  * (`app/difficulty.ts`). 가장 낮은 것에서는 자기 자신이 나온다 —
  * 부르는 쪽이 그때 바닥값을 따로 쓴다.

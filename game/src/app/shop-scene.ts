@@ -41,6 +41,7 @@ import {
   type UnitKind,
 } from '../units';
 import {
+  MAX_TOWER_SPEED,
   SHOP_PREMIUM_TOWER_ORDER,
   SHOP_TOWER_ORDER,
   TOWER_KIND_META,
@@ -304,10 +305,15 @@ export class ShopScene implements Scene {
     const meta = TOWER_KIND_META[kind];
     const artClass = meta.aura === 'rainbow' ? 'unit-art aura-rainbow' : 'unit-art';
     const crown = meta.regal ? '<span class="tower-crown" aria-hidden="true">♛</span>' : '';
+    // **유닛 카드와 같은 막대를 단다** (2026-08-09 사용자 지시). 타워는 그림 크기가
+    // 종류와 무관하게 같아서(판에서도 그렇다) 숫자 말고는 사다리가 안 읽혔다.
+    // 유닛이 `power / MAX_UNIT_POWER` 를 쓰듯 여기는 `speed / MAX_TOWER_SPEED` 다.
+    const fill = Math.round((meta.speed / MAX_TOWER_SPEED) * 100);
     el.innerHTML = `
       <span class="${artClass}">${crown}<img alt="" src="${towerPreviewSrc(kind)}" height="${TOWER_ART_H}"></span>
       <span class="unit-name" data-role="name"></span>
       <span class="unit-tier"></span>
+      <span class="unit-bar"><i style="width:${fill}%"></i></span>
       <span class="unit-power" data-role="stats"></span>
       <span class="unit-blurb" data-role="blurb"></span>
       <span class="unit-state" data-role="state"></span>
@@ -342,7 +348,21 @@ export class ShopScene implements Scene {
         // 영영 안 뜨는 버그였다. **대시보드의 실시간 구매 가능 플래그**(`isPurchasable`)
         // 를 봐야 한다 — 유닛 유료 카드·배속 카드와 같은 규칙이다.
         const sellable = isPurchasable(kind as PremiumItem);
-        set(el, 'state', equipped ? t().equipped : owned ? t().equip : sellable ? t().buyWithVx : t().comingSoon);
+        // **가격을 적는다** (2026-08-09 사용자 지시). 유료 유닛 카드와 배속 행은
+        // 진작 `N VX` 를 적고 있었는데 여기만 "VX로 구매" 라는 글자였다 — 같은 칸에
+        // 셋이 다른 말을 하고 있었다. 값은 대시보드가 진짜다 (`vxPrice`).
+        const vx = vxPrice(kind as PremiumItem);
+        set(
+          el,
+          'state',
+          equipped
+            ? t().equipped
+            : owned
+              ? t().equip
+              : sellable && vx !== null
+                ? `${vx.toLocaleString()} VX`
+                : t().comingSoon,
+        );
         el.querySelector('[data-role="state"]')?.classList.toggle('locked', !owned && !sellable);
         // 착용 중이거나(유닛과 같은 규칙), 안 가졌는데 아직 못 사는 상품이면 잠근다.
         el.disabled = equipped || (!owned && !sellable);

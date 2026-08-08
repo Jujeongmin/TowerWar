@@ -99,7 +99,6 @@ export interface Strings {
   vxOpenFailed: string;
   equipped: string;
   equip: string;
-  buyWithVx: string;
   comingSoon: string;
   unitStats: (power: number) => string;
   towerStats: (speed: number) => string;
@@ -235,7 +234,6 @@ const en: Strings = {
   vxOpenFailed: "Couldn't open the store. Tap again.",
   equipped: 'Equipped',
   equip: 'Equip',
-  buyWithVx: 'Buy with VX',
   comingSoon: 'Coming soon',
   unitStats: (power) => `Health ${power} · Attack ${power}`,
   towerStats: (speed) => `Production ×${speed.toFixed(2)}`,
@@ -397,7 +395,6 @@ const ko: Strings = {
   vxOpenFailed: '결제 창을 열지 못했습니다. 다시 눌러 주세요.',
   equipped: '착용 중',
   equip: '착용하기',
-  buyWithVx: 'VX로 구매',
   comingSoon: '준비 중',
   unitStats: (power) => `체력 ${power} · 공격력 ${power}`,
   towerStats: (speed) => `생산 ×${speed.toFixed(2)}`,
@@ -561,7 +558,6 @@ const zh: Strings = {
   vxOpenFailed: '无法打开支付窗口，请再次点击。',
   equipped: '装备中',
   equip: '装备',
-  buyWithVx: '用 VX 购买',
   comingSoon: '敬请期待',
   unitStats: (power) => `生命 ${power} · 攻击 ${power}`,
   towerStats: (speed) => `产量 ×${speed.toFixed(2)}`,
@@ -731,7 +727,6 @@ const vi: Strings = {
   vxOpenFailed: 'Không mở được cửa hàng. Hãy chạm lại.',
   equipped: 'Đang dùng',
   equip: 'Trang bị',
-  buyWithVx: 'Mua bằng VX',
   comingSoon: 'Sắp có',
   unitStats: (power) => `Máu ${power} · Sát thương ${power}`,
   towerStats: (speed) => `Sản xuất ×${speed.toFixed(2)}`,

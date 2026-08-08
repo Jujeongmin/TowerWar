@@ -131,12 +131,15 @@ const CODE_LOCK = 'towerwar:roomcode';
  *
  * 2026-07-31에 BeerGang 색 변형 4종이 붙었다 (하의·머리 색만 다르다).
  */
+// **2026-08-09에 전부 5배로 올렸다** (사용자 지시 — "지금 너무 싸다").
+// 400/900/1500/2400 이던 것이 승리 3~16판이면 다 모여서 목표가 안 됐다.
+// **보상은 안 건드렸다** — 같이 올리면 상쇄되어 아무것도 안 바뀐다.
 const UNIT_PRICES = {
   beergang: 0,
-  beergang_white: 400,
-  beergang_gold: 900,
-  beergang_green: 1500,
-  beergang_purple: 2400,
+  beergang_white: 2000,
+  beergang_gold: 4500,
+  beergang_green: 7500,
+  beergang_purple: 12000,
 };
 
 /**
@@ -149,12 +152,13 @@ const UNIT_PRICES = {
 // **`lv` 번호 순이 아니다.** 사다리가 오두막 → 석탑 → 집 → 병영 → 성채다
 // (2026-08-07 사용자 지시 — 석탑이 병영 뒤에 오면 좁아서 약해 보인다).
 // 이름은 안 옮겼으니 값만 보고 순서를 짐작하지 말 것.
+// 유닛과 같은 사다리다 — 2026-08-09에 함께 5배로 올렸다.
 const TOWER_PRICES = {
   tower_hut: 0,
-  tower_keep: 400,
-  tower_house: 900,
-  tower_barracks: 1500,
-  tower_citadel: 2400,
+  tower_keep: 2000,
+  tower_house: 4500,
+  tower_barracks: 7500,
+  tower_citadel: 12000,
 };
 
 /** 코인으로 못 사는 타워. `UNIT_PRICES`/`PREMIUM_UNITS` 와 같은 이유로 갈라 둔다. */

@@ -615,7 +615,7 @@ as(A); await server.leaveMatch().catch(() => {});
 as(B); await server.leaveMatch().catch(() => {});
 const T = { account: '0xTTT', roomId: null };
 as(T);
-userStates.set('0xTTT', { ...defaultsFor('0xTTT'), coins: 1000 });
+userStates.set('0xTTT', { ...defaultsFor('0xTTT'), coins: 5000 });
 let te = null;
 try { await server.buyTowerKind('tower_hut'); } catch (e) { te = e.message; }
 check('기본 타워는 이미 가진 것', te === '이미 가지고 있습니다', te);
@@ -637,11 +637,13 @@ for (const bad of ['toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
 }
 // **가장 싼 유료 칸을 산다.** 종류 이름에 가격을 박아 두면 사다리 순서를 바꿀 때마다
 // (2026-08-07에 석탑을 2번으로 올렸다) 이 검사가 이유 없이 빨개진다. 검사의 뜻은
-// "코인이 가격만큼 깎이고 바로 착용된다"이지 "집이 400원이다"가 아니다.
+// "코인이 가격만큼 깎이고 바로 착용된다"이지 "석탑이 2000원이다"가 아니다.
+// 값 자체는 `server.js` 의 `TOWER_PRICES` 를 따라간다 (2026-08-09에 5배가 됐다).
 const cheapest = 'tower_keep';
-const cheapestPrice = 400;
+const cheapestPrice = 2000;
+const wallet = 5000;
 const bought = await server.buyTowerKind(cheapest);
-check(`타워 구매: 1000 - ${cheapestPrice}`, bought.coins === 1000 - cheapestPrice, bought.coins);
+check(`타워 구매: ${wallet} - ${cheapestPrice}`, bought.coins === wallet - cheapestPrice, bought.coins);
 check('사면 바로 착용된다', bought.towerKind === cheapest, bought);
 te = null;
 try { await server.buyTowerKind('tower_citadel'); } catch (e) { te = e.message; }
@@ -667,7 +669,9 @@ let e2 = null;
 //
 // 2026-07-31에 BeerGang 색 변형 4종이 들어와 **구매 경로가 다시 살아났다**
 // (2026-07-30 ~ 07-31 사이에는 값 0짜리 하나뿐이라 거부 경로만 지켰다).
-userStates.set('0xDDD', { ...acct, coins: 500 });
+// 지갑은 `UNIT_PRICES` 를 따라간다 — 가장 싼 칸(2000)은 사지고 그다음(4500)은
+// 못 사는 액수여야 아래 두 검사가 뜻을 갖는다. 2026-08-09에 가격이 5배가 됐다.
+userStates.set('0xDDD', { ...acct, coins: 2500 });
 e2 = null;
 try { await server.buyUnitKind(DEFAULT_UNIT_KIND); } catch (e) { e2 = e.message; }
 check('값 0짜리는 살 수 없다 (이미 가진 것)', e2 === '이미 가지고 있습니다', e2);
@@ -692,16 +696,16 @@ for (const bad of ['toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
 acct = await server.selectUnitKind(DEFAULT_UNIT_KIND);
 check('기본 유닛은 언제나 착용 가능', acct.unitKind === DEFAULT_UNIT_KIND, acct);
 
-// 코인 500으로 400짜리는 사지고 900짜리는 안 사져야 한다
+// 코인 2500으로 2000짜리는 사지고 4500짜리는 안 사져야 한다
 acct = await server.buyUnitKind('beergang_white');
 check(
-  '흰 비어갱 400 구매: 500 - 400, 자동 착용',
-  acct.coins === 100 && acct.unitKind === 'beergang_white' && acct.ownedUnits.includes('beergang_white'),
+  '흰 비어갱 2000 구매: 2500 - 2000, 자동 착용',
+  acct.coins === 500 && acct.unitKind === 'beergang_white' && acct.ownedUnits.includes('beergang_white'),
   acct,
 );
 e2 = null;
 try { await server.buyUnitKind('beergang_gold'); } catch (e) { e2 = e.message; }
-check('잔액 100으로 900짜리 거부', e2 === '코인이 모자랍니다', e2);
+check('잔액 500으로 4500짜리 거부', e2 === '코인이 모자랍니다', e2);
 e2 = null;
 try { await server.buyUnitKind('beergang_white'); } catch (e) { e2 = e.message; }
 check('이미 산 것을 또 못 산다', e2 === '이미 가지고 있습니다', e2);
@@ -709,9 +713,9 @@ e2 = null;
 try { await server.selectUnitKind('beergang_purple'); } catch (e) { e2 = e.message; }
 check('안 가진 유닛 착용 거부', e2 === '가지고 있지 않습니다', e2);
 acct = await server.selectUnitKind(DEFAULT_UNIT_KIND);
-check('기본으로 되돌아가도 코인은 그대로', acct.coins === 100 && acct.unitKind === DEFAULT_UNIT_KIND, acct);
+check('기본으로 되돌아가도 코인은 그대로', acct.coins === 500 && acct.unitKind === DEFAULT_UNIT_KIND, acct);
 acct = await server.selectUnitKind('beergang_white');
-check('산 것은 다시 입어도 공짜', acct.coins === 100 && acct.unitKind === 'beergang_white', acct);
+check('산 것은 다시 입어도 공짜', acct.coins === 500 && acct.unitKind === 'beergang_white', acct);
 
 // 29) 손으로 고친 계정은 정규화된다
 userStates.set('0xDDD', {

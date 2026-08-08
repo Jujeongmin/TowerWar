@@ -116,11 +116,13 @@ export interface UnitKindMeta {
  * (§-10) 어긋나면 "상점에는 보이는데 못 입는"이 된다. 고칠 때 양쪽을 같이 고칠 것.
  */
 export const UNIT_KIND_META: Record<UnitKind, UnitKindMeta> = {
+  // **2026-08-09에 전부 5배로 올렸다** (사용자 지시). 전에는 승리 3~16판이면 다
+  // 모여서 목표가 안 됐다. 보상(`REWARD_*`)은 안 건드렸다 — 같이 올리면 상쇄된다.
   beergang: { frames: 8, scale: 1.3, price: 0, power: 1 },
-  beergang_white: { frames: 8, scale: 1.3, price: 400, power: 1.5, accent: '#e8eef5' },
-  beergang_gold: { frames: 8, scale: 1.3, price: 900, power: 2, accent: '#f5c542' },
-  beergang_green: { frames: 8, scale: 1.3, price: 1500, power: 2.5, accent: '#34d399' },
-  beergang_purple: { frames: 8, scale: 1.3, price: 2400, power: 3, accent: '#a78bfa' },
+  beergang_white: { frames: 8, scale: 1.3, price: 2000, power: 1.5, accent: '#e8eef5' },
+  beergang_gold: { frames: 8, scale: 1.3, price: 4500, power: 2, accent: '#f5c542' },
+  beergang_green: { frames: 8, scale: 1.3, price: 7500, power: 2.5, accent: '#34d399' },
+  beergang_purple: { frames: 8, scale: 1.3, price: 12000, power: 3, accent: '#a78bfa' },
   beergang_rainbow: {
     frames: 8,
     scale: 1.3,

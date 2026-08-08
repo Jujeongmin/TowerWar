@@ -89,11 +89,12 @@ export interface TowerKindMeta {
  * 전부 `speed` 에서 파생되므로 여기만 고치면 봇 보정도 등급 표시도 따라온다.
  */
 export const TOWER_KIND_META: Record<TowerKind, TowerKindMeta> = {
+  // 유닛과 같은 사다리다 — 2026-08-09에 함께 5배로 올렸다 (사용자 지시).
   tower_hut: { art: 'lv1', price: 0, speed: 1 },
-  tower_keep: { art: 'lv4', price: 400, speed: 1.25, accent: '#e8eef5' },
-  tower_house: { art: 'lv2', price: 900, speed: 1.5, accent: '#f5c542' },
-  tower_barracks: { art: 'lv3', price: 1500, speed: 1.75, accent: '#34d399' },
-  tower_citadel: { art: 'lv5', price: 2400, speed: 2, accent: '#a78bfa' },
+  tower_keep: { art: 'lv4', price: 2000, speed: 1.25, accent: '#e8eef5' },
+  tower_house: { art: 'lv2', price: 4500, speed: 1.5, accent: '#f5c542' },
+  tower_barracks: { art: 'lv3', price: 7500, speed: 1.75, accent: '#34d399' },
+  tower_citadel: { art: 'lv5', price: 12000, speed: 2, accent: '#a78bfa' },
   tower_prime: {
     art: 'lv5',
     price: 0,

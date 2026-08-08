@@ -69,6 +69,20 @@ export interface AdWatch {
  */
 export function verse8AdProvider(): AdProvider {
   let unsupported = false;
+
+  // **핸드셰이크를 먼저 세운다.** VXShop 도 같은 규칙으로 `init()` 을 부른다
+  // (`net/vx.ts`). 광고 쪽만 빠져 있었다 — `showRewarded` 가 기본 핸드셰이크로도
+  // 돌기는 하지만, 부모 오리진을 정하는 자리가 여기다.
+  //
+  // `onAdTelemetry` 는 **진단용이다.** "다 봤는데 보상이 없다"는 신고가 들어왔을 때
+  // (2026-08-09) SDK 가 실제로 무엇을 봤는지 알 길이 이것뿐이었다 — 결과는
+  // `rewarded`/`dismissed`/`failed` 셋뿐이라 어디서 끊겼는지가 안 보인다.
+  // `ad_viewed` 까지 왔는데 결과가 `dismissed` 면 SDK·셸 쪽 문제이고,
+  // `ad_dismissed` 만 왔으면 보상 시점 전에 닫힌 것이다.
+  Verse8Ads.init({
+    onAdTelemetry: (e) => console.info('[ads]', e.type, e),
+  });
+
   return {
     ready: () => !unsupported,
     show: async () => {
@@ -76,6 +90,9 @@ export function verse8AdProvider(): AdProvider {
         placementId: AD_PLACEMENT_ID,
         timeoutMs: 120_000,
       });
+      // **결과를 남긴다.** 실패했을 때 화면은 "끝까지 안 봤다"로만 말하는데, 그것이
+      // `dismissed` 인지 `failed`(어떤 코드인지)인지에 따라 손댈 곳이 완전히 다르다.
+      console.info('[ads] result', result.status, result);
       if (result.status === 'failed' && result.error.code === 'unsupported_env') {
         unsupported = true;
       }

@@ -68,13 +68,21 @@ export class SettingsScene implements Scene {
   /** 방금 청구한 결과. `null` 이면 아직 안 눌렀다는 뜻이고, 안내 문구를 바꾼다. */
   private claimResult: 'ok' | string | null = null;
   /**
-   * 서버가 말한 팔로우 상태. `null` 이면 아직 안 물어봤다.
-   *
-   * `'unknown'`(조회 실패)을 `'not_following'` 과 갈라 두는 것이 요점이다 — 뭉개면
-   * 서버가 안 떠 있을 때 **이미 팔로우한 사람을 팔로우 페이지로** 보내게 되고,
-   * 그 사람은 눌러도 아무 일이 안 일어나는 막다른 길에 갇힌다.
+   * 서버가 말한 팔로우 상태. `null` 이면 아직 안 물어봤다. `'rewarded'` 면 버튼이
+   * '받음'으로 잠긴다.
    */
   private followState: FollowState | null = null;
+  /**
+   * 팔로우 칸을 아예 안 보여주는가.
+   *
+   * **터치 기기에서는 통째로 감춘다** (2026-08-08 사용자 지시). 팔로우는 Verse8
+   * 플랫폼에서 해야 하는데 게임이 그 페이지를 열어 줄 수 없어(앱 WebView 에서
+   * `window.open` 이 무시된다) 폰에서는 누를 수 있는 것이 사실상 없다.
+   *
+   * 판정을 여기 한 곳에서만 한다 — CSS 로도 감추면 화면과 서버 조회가 따로 놀아
+   * 안 보이는 칸 때문에 서버를 계속 부르게 된다.
+   */
+  private readonly followHidden = window.matchMedia('(pointer: coarse)').matches;
   /** 상태 조회가 도는 중. **화면을 안 건드린다** — 뒤에서 조용히 다녀오는 것이다. */
   private checkingFollow = false;
   /** 초기화 버튼이 지금 "한 번 더 누르면" 확인 상태인가. */
@@ -107,9 +115,21 @@ export class SettingsScene implements Scene {
     const resetNote = root.querySelector<HTMLElement>('#reset-record-note');
     const followBtn = root.querySelector<HTMLButtonElement>('#btn-follow-claim');
     const followNote = root.querySelector<HTMLElement>('#follow-note');
-    if (!row || !vols || !backBtn || !resetBtn || !resetNote || !followBtn || !followNote) {
+    const followSection = root.querySelector<HTMLElement>('#follow-section');
+    if (
+      !row ||
+      !vols ||
+      !backBtn ||
+      !resetBtn ||
+      !resetNote ||
+      !followBtn ||
+      !followNote ||
+      !followSection
+    ) {
       throw new Error('설정 화면 DOM이 예상과 다릅니다');
     }
+    // 제목까지 함께 감춘다 — 버튼만 빼면 제목이 빈 칸으로 남는다.
+    followSection.hidden = this.followHidden;
     this.resetBtn = resetBtn;
     this.resetNote = resetNote;
     resetBtn.addEventListener('click', () => void this.onResetClick());
@@ -274,6 +294,8 @@ export class SettingsScene implements Scene {
    * 그때 버튼 모양만 조용히 바뀐다.
    */
   private async refreshFollowState(): Promise<void> {
+    // 칸 자체를 안 보여주는 기기다. 물어봐야 쓸 데가 없다.
+    if (this.followHidden) return;
     // 안 떠 있으면 물을 이유가 없다. 리스너를 안 떼는 대신 여기서 거른다.
     if (this.root.hidden) return;
     // 이미 받았으면 더 볼 것이 없다. 팔로우를 끊었든 말든 '받음'으로 잠긴다.

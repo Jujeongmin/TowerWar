@@ -17,7 +17,7 @@ import {
   profileSrc,
   type ProfileId,
 } from '../profiles';
-import { t } from '../i18n';
+import { ENDONYM, LANGS, applyStaticText, getLang, setLang, t, type Lang } from '../i18n';
 import type { Scene } from './scene';
 
 interface NameDraft {
@@ -29,6 +29,7 @@ export class NameScene implements Scene {
   private readonly input: HTMLInputElement;
   private readonly error: HTMLElement;
   private readonly cards: { id: ProfileId; el: HTMLButtonElement }[];
+  private readonly langButtons: { lang: Lang; el: HTMLButtonElement }[];
   private picked: ProfileId = DEFAULT_PROFILE;
   private busy = false;
 
@@ -43,9 +44,30 @@ export class NameScene implements Scene {
     const error = root.querySelector<HTMLElement>('#name-error');
     const grid = root.querySelector<HTMLElement>('#avatar-grid');
     const ok = root.querySelector<HTMLButtonElement>('#btn-name-ok');
-    if (!input || !error || !grid || !ok) throw new Error('닉네임 화면 DOM이 예상과 다릅니다');
+    const langRow = root.querySelector<HTMLElement>('#name-lang-row');
+    if (!input || !error || !grid || !ok || !langRow) {
+      throw new Error('닉네임 화면 DOM이 예상과 다릅니다');
+    }
     this.input = input;
     this.error = error;
+
+    // 언어 버튼. 설정 화면(`settings-scene.ts`)과 같은 모양·같은 규칙이다.
+    this.langButtons = LANGS.map((lang) => {
+      const el = document.createElement('button');
+      el.className = 'btn lang-btn';
+      el.textContent = ENDONYM[lang];
+      el.addEventListener('click', () => {
+        if (getLang() === lang) return;
+        setLang(lang);
+        // 순서가 중요하다: 정적 문자열을 먼저 칠하고 그 다음 이 화면을 다시 그린다.
+        applyStaticText();
+        // 방금 뜬 오류는 옛 언어로 적혀 있다. 남겨 두면 화면에 두 언어가 섞인다.
+        this.error.textContent = '';
+        this.paint();
+      });
+      langRow.appendChild(el);
+      return { lang, el };
+    });
 
     this.cards = PROFILE_IDS.map((id) => {
       const el = document.createElement('button');
@@ -94,7 +116,20 @@ export class NameScene implements Scene {
   }
 
   private paint(): void {
-    for (const { id, el } of this.cards) el.classList.toggle('is-picked', id === this.picked);
+    // 지금 언어를 눌린 상태로. 이미 쓰고 있는 언어는 누를 이유가 없다.
+    const now = getLang();
+    for (const { lang, el } of this.langButtons) {
+      el.classList.toggle('is-picked', lang === now);
+      el.disabled = lang === now;
+    }
+    for (const { id, el } of this.cards) {
+      el.classList.toggle('is-picked', id === this.picked);
+      // **카드 이름표는 만들 때 한 번 박힌다.** 언어를 바꾸면 여기서 다시 쓴다 —
+      // 안 그러면 화면은 한국어인데 아바타 설명만 영어로 남는다.
+      const label = profileLabel(id);
+      el.title = label;
+      el.querySelector('img')?.setAttribute('alt', label);
+    }
   }
 
   private async commit(): Promise<void> {

@@ -28,6 +28,20 @@ export type Lang = (typeof LANGS)[number];
 /** 기본 언어. 사용자 지시로 영어다. */
 export const DEFAULT_LANG: Lang = 'en';
 
+/**
+ * 각 언어를 **그 언어로** 적는다. 한국어 화면에서 'Korean' 은 아무 도움이 안 된다.
+ *
+ * **여기 둔 이유는 고르는 곳이 둘이기 때문이다** — 설정 화면과 첫 실행 닉네임 화면.
+ * 이 표를 화면 쪽에 두면 언어를 하나 더 넣을 때 한쪽을 빠뜨린다. `LANGS` 옆에 있어야
+ * 타입이 빠진 언어를 잡아 준다.
+ */
+export const ENDONYM: Record<Lang, string> = {
+  en: 'English',
+  ko: '한국어',
+  zh: '中文',
+  vi: 'Tiếng Việt',
+};
+
 const STORAGE_KEY = 'towerwar.lang';
 
 export interface Strings {

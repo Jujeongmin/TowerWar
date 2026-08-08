@@ -9,7 +9,7 @@
  * 바꾸는 값으로는 너무 비싸다.
  */
 import { audio } from '../audio';
-import { LANGS, applyStaticText, getLang, setLang, t, type Lang } from '../i18n';
+import { ENDONYM, LANGS, applyStaticText, getLang, setLang, t, type Lang } from '../i18n';
 import type { Scene } from './scene';
 
 /** 음량 슬라이더 세 줄. 라벨 키와 어느 값을 만지는지만 다르다. */
@@ -47,14 +47,6 @@ function followMessage(err: string): string {
   // 안 일어난 것으로 보인다.
   return t().followFailed;
 }
-
-/** 각 언어를 **그 언어로** 적는다. 한국어 화면에서 'Korean' 은 아무 도움이 안 된다. */
-const ENDONYM: Record<Lang, string> = {
-  en: 'English',
-  ko: '한국어',
-  zh: '中文',
-  vi: 'Tiếng Việt',
-};
 
 export class SettingsScene implements Scene {
   private readonly buttons: { lang: Lang; el: HTMLButtonElement }[];

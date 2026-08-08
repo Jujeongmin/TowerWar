@@ -571,6 +571,10 @@ export class MatchScene implements Scene {
     // 열었는지는 재접속·복구 뒤에 클라이언트가 알 수 없다 (`MatchSetup.friendRoom`).
     const plan = this.getPlan();
     const friendRoom = plan.mode === 'pvp' && plan.setup.friendRoom;
+    // 서버가 지불한 판인가. 봇 대체전(`serverRoom: true`)은 서버가 열고 지불하므로
+    // 두 배도 된다. **서버 없이 돌린 봇전은 아니다** — 지불 기록(`paid`)이 없어서
+    // 청구가 조용히 실패한다.
+    const paidByServer = plan.mode === 'pvp' || plan.serverRoom;
 
     // **항복은 보상이 0이라 두 배도 없다.** 서버도 `paid` 가 없어 거절한다.
     // 광고가 안 붙어 있으면(`isAdReady`) 아예 안 보여 준다 — 눌러도 아무 일이 없는
@@ -578,8 +582,9 @@ export class MatchScene implements Scene {
     //
     // **친구 방도 같다.** 지불이 0이라 서버가 `no_reward` 로 거절하는데, 버튼을 두면
     // 광고를 끝까지 다 본 뒤에 거절당한다 — 위 규칙이 막으려던 것보다 더 나쁘다.
+    // 서버가 안 연 판(`serverRoom: false`)도 마찬가지로 청구할 것이 없다.
     this.adDoubleBtn.hidden =
-      this.resigned || this.endedByDisconnect || friendRoom || !isAdReady();
+      this.resigned || this.endedByDisconnect || friendRoom || !paidByServer || !isAdReady();
     this.adDoubleBtn.disabled = false;
     this.adDoubleBtn.textContent = t().adDouble;
 

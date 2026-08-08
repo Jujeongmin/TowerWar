@@ -7,7 +7,7 @@
  * **상대가 봇인지 사람인지 이 파일은 모른다.** 차이는 `CommandSource` 하나에 갇혀 있다.
  */
 import { rewardFor, type Reward } from '../account/account';
-import type { RatingChange } from '../account/store';
+import type { AdDoubleResult, RatingChange } from '../account/store';
 import { audio } from '../audio';
 import { isAdReady } from '../net/ads';
 import { t } from '../i18n';
@@ -62,6 +62,21 @@ const STALL_DIAGNOSE_MS = 3000;
  * 전송 주기보다 넉넉히 잡아 한 주기를 통째로 놓쳤을 때만 뜨게 한다.
  */
 const WAITING_HINT_MS = 400;
+
+/**
+ * 두 배 청구 실패 이유 → 버튼에 적을 글자.
+ *
+ * **서버 코드를 그대로 쓰지 않는다** — `no_reward` 는 사람이 읽을 글이 아니다
+ * (설정 화면의 `followMessage` 와 같은 규칙). `includes` 로 보는 것도 같은 이유다:
+ * 서버가 던진 문자열이 remote function 을 거치며 감싸져 온다.
+ */
+function adDoubleMessage(err: string): string {
+  if (err === 'offline') return t().adUnavailable;
+  if (err === 'notFinished') return t().adFailed;
+  if (err.includes('already_claimed')) return t().adLimit;
+  // 남은 것은 청구할 판이 없거나(`no_reward`·`not_finished_match`) 통신 오류다.
+  return t().adFailed;
+}
 
 /**
  * 정지가 이만큼(ms) 이어지면 통로를 다시 세워 본다 (`transport.recover`).
@@ -171,8 +186,8 @@ export class MatchScene implements Scene {
     private readonly tempoStatus: HTMLElement,
     /** 결과 화면의 [광고 보고 두 배] 버튼. */
     private readonly adDoubleBtn: HTMLButtonElement,
-    /** 광고를 보고 보상 두 배. `null` 이면 성공, 아니면 실패 이유. */
-    private readonly watchAdForDouble: () => Promise<string | null>,
+    /** 광고를 보고 보상 두 배. 성공하면 **실제로 들어온 코인**, 아니면 실패 이유. */
+    private readonly watchAdForDouble: () => Promise<AdDoubleResult>,
   ) {
     const again = resultRoot.querySelector<HTMLButtonElement>('#btn-again');
     const lobby = resultRoot.querySelector<HTMLButtonElement>('#btn-lobby');
@@ -195,14 +210,21 @@ export class MatchScene implements Scene {
       // 광고를 보는 동안 두 번 눌리면 두 번 재생된다. 성공하면 버튼이 사라지므로
       // 되살릴 필요가 없다 — **판당 한 번**이다 (서버의 `doubled` 가 자물쇠).
       this.adDoubleBtn.disabled = true;
-      void this.watchAdForDouble().then((err) => {
-        if (err === null) {
+      void this.watchAdForDouble().then((res) => {
+        if ('gained' in res) {
           this.adDoubleBtn.hidden = true;
           audio.play('purchase');
+          // **얼마가 더 들어왔는지 적는다** (2026-08-09 사용자 신고). 전에는 버튼만
+          // 사라지고 문구가 그대로라, 코인이 실제로 늘어도 화면에는 아무 일도 안
+          // 일어난 것으로 보였다 — 잔액은 로비에 가야 보인다.
+          this.resultReward.textContent = t().rewardDoubled(res.gained);
           return;
         }
         // 실패했으면 다시 누를 수 있어야 한다 — 광고가 안 뜬 것일 수도 있다.
+        // **이유를 버튼에 적는다.** 조용히 되살리면 누른 것 자체가 안 먹은 것으로 읽힌다
+        // (팔로우 청구에서 같은 문제를 겪었다 — `settings-scene.ts` 의 §-40).
         this.adDoubleBtn.disabled = false;
+        this.adDoubleBtn.textContent = adDoubleMessage(res.error);
       });
     });
   }

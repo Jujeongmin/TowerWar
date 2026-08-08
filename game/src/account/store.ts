@@ -74,6 +74,14 @@ const DEV_BOARD: BoardEntry[] | null = import.meta.env.DEV
     ]
   : null;
 
+/**
+ * 광고 두 배 청구의 결과.
+ *
+ * 성공이면 **실제로 들어온 코인**을 준다 — 결과 화면이 그 값을 적는다.
+ * 실패면 이유를 그대로 준다 (`'offline'` · `'notFinished'` · 서버가 던진 코드).
+ */
+export type AdDoubleResult = { gained: number } | { error: string };
+
 /** 한 판으로 점수가 어떻게 움직였는가. 결과 화면이 그대로 보여준다. */
 export interface RatingChange {
   before: number;
@@ -261,16 +269,23 @@ export class AccountStore {
     }
   }
 
-  /** 판이 끝난 뒤 광고를 보고 보상을 한 번 더. 금액은 서버가 정한다. */
-  async watchAdForDouble(): Promise<string | null> {
-    if (!this.net) return 'offline';
+  /**
+   * 판이 끝난 뒤 광고를 보고 보상을 한 번 더. 금액은 서버가 정한다.
+   *
+   * **얼마가 들어왔는지 돌려준다** — 결과 화면이 그 값을 적는다. 클라이언트가 다시
+   * 계산하면 서버의 상한(`MAX_TOWERS`)과 어긋나는 날 화면이 거짓말을 한다. 잔액
+   * 차이를 재는 것이 서버가 실제로 준 값이다.
+   */
+  async watchAdForDouble(): Promise<AdDoubleResult> {
+    if (!this.net) return { error: 'offline' };
     const { watched, requestId } = await watchRewardedAd();
-    if (!watched) return 'notFinished';
+    if (!watched) return { error: 'notFinished' };
+    const before = this.account.coins;
     try {
       this.setLocal(fromRemote(await this.net.claimDoubleReward(requestId)));
-      return null;
+      return { gained: this.account.coins - before };
     } catch (e) {
-      return String((e as Error)?.message ?? 'failed');
+      return { error: String((e as Error)?.message ?? 'failed') };
     }
   }
 

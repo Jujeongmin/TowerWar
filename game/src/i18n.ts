@@ -177,6 +177,8 @@ export interface Strings {
   owned: string;
   adWatch: (coins: number) => string;
   adDouble: string;
+  /** 두 배를 실제로 받은 뒤. **서버가 준 금액을 그대로 적는다** — 화면이 다시 계산하지 않는다. */
+  rewardDoubled: (gained: number) => string;
   adUnavailable: string;
   adFailed: string;
   adLimit: string;
@@ -338,6 +340,7 @@ const en: Strings = {
   owned: 'Owned',
   adWatch: (coins) => `Watch an ad · +${coins}`,
   adDouble: 'Watch an ad — double it',
+  rewardDoubled: (gained) => `Ad reward · +${gained} more`,
   adUnavailable: 'No ad available right now',
   adFailed: 'Ad was not finished, so no reward',
   adLimit: "You've claimed all of today's ads",
@@ -499,6 +502,7 @@ const ko: Strings = {
   owned: '보유 중',
   adWatch: (coins) => `광고 보고 +${coins}`,
   adDouble: '광고 보고 두 배 받기',
+  rewardDoubled: (gained) => `광고 보상 · +${gained} 추가`,
   adUnavailable: '지금은 볼 광고가 없습니다',
   adFailed: '광고를 끝까지 안 봐서 보상이 없습니다',
   adLimit: '오늘 받을 수 있는 광고를 다 받았습니다',
@@ -663,6 +667,7 @@ const zh: Strings = {
   owned: '已拥有',
   adWatch: (coins) => `观看广告 · +${coins}`,
   adDouble: '观看广告 —— 奖励翻倍',
+  rewardDoubled: (gained) => `广告奖励 · 追加 +${gained}`,
   adUnavailable: '当前没有可观看的广告',
   adFailed: '广告未看完，无法获得奖励',
   adLimit: '今日广告奖励已全部领取',
@@ -832,6 +837,7 @@ const vi: Strings = {
   owned: 'Đã sở hữu',
   adWatch: (coins) => `Xem quảng cáo · +${coins}`,
   adDouble: 'Xem quảng cáo — nhân đôi',
+  rewardDoubled: (gained) => `Thưởng quảng cáo · +${gained} thêm`,
   adUnavailable: 'Hiện chưa có quảng cáo nào',
   adFailed: 'Chưa xem hết quảng cáo nên không có thưởng',
   adLimit: 'Bạn đã nhận hết quảng cáo hôm nay',

@@ -120,6 +120,8 @@ export function runCase(seed: number, latencyMs: number, inputDelayTicks: number
     ratings: { 1: DEFAULT_RATING, 2: DEFAULT_RATING },
     // 배속도 검증에 안 쓴다. 켜도 틱 내용은 안 바뀌므로 락스텝 검증과 무관하다.
     tempo: { 1: false, 2: false },
+    // 친구 방 여부도 시뮬레이션에 안 들어간다 — 결과 화면 문구만 정한다.
+    friendRoom: false,
   };
   const a = new FakeClient(1, setup, hub.port());
   const b = new FakeClient(2, setup, hub.port());

@@ -567,10 +567,19 @@ export class MatchScene implements Scene {
     // 내면 안 된다 — 소리가 화면보다 먼저 들리므로 어긋나면 그게 더 눈에 띈다.
     audio.play(!this.resigned && !this.endedByDisconnect && w !== 0 && w === local ? 'victory' : 'defeat');
 
+    // 코드로 만나 잡은 친구 방인가. **서버가 내려준 값만 믿는다** — 방을 어떻게
+    // 열었는지는 재접속·복구 뒤에 클라이언트가 알 수 없다 (`MatchSetup.friendRoom`).
+    const plan = this.getPlan();
+    const friendRoom = plan.mode === 'pvp' && plan.setup.friendRoom;
+
     // **항복은 보상이 0이라 두 배도 없다.** 서버도 `paid` 가 없어 거절한다.
     // 광고가 안 붙어 있으면(`isAdReady`) 아예 안 보여 준다 — 눌러도 아무 일이 없는
     // 버튼은 고장으로 읽힌다.
-    this.adDoubleBtn.hidden = this.resigned || this.endedByDisconnect || !isAdReady();
+    //
+    // **친구 방도 같다.** 지불이 0이라 서버가 `no_reward` 로 거절하는데, 버튼을 두면
+    // 광고를 끝까지 다 본 뒤에 거절당한다 — 위 규칙이 막으려던 것보다 더 나쁘다.
+    this.adDoubleBtn.hidden =
+      this.resigned || this.endedByDisconnect || friendRoom || !isAdReady();
     this.adDoubleBtn.disabled = false;
     this.adDoubleBtn.textContent = t().adDouble;
 
@@ -580,6 +589,14 @@ export class MatchScene implements Scene {
       this.resultReward.textContent = t().disconnectedNote;
     } else if (this.resigned) {
       this.resultReward.textContent = t().resignNoReward;
+    } else if (friendRoom) {
+      // **금액을 적으면 거짓말이 된다.** 서버가 한 푼도 안 준다. 보고는 그대로 한다 —
+      // 서버가 방을 닫고 승패를 기록해야 상대 쪽도 결과가 정리된다.
+      const shown = ++this.resultRound;
+      void this.grantReward(rewardFor(this.state, local), w ?? 0).then((change) => {
+        if (shown === this.resultRound) this.showRating(change);
+      });
+      this.resultReward.textContent = t().friendNoReward;
     } else {
       const reward = rewardFor(this.state, local);
       const shown = ++this.resultRound;

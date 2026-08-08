@@ -118,6 +118,8 @@ export interface Strings {
   draw: string;
   resigned: string;
   resignNoReward: string;
+  /** 친구 방은 코인도 점수도 전적도 안 준다 — 짜고 두면 무한히 불릴 수 있어서다. */
+  friendNoReward: string;
   /** 상대와의 연결이 끊겨 판을 끝냈다. 승패가 아니다 — 점수도 보상도 안 움직인다. */
   disconnected: string;
   disconnectedNote: string;
@@ -248,6 +250,7 @@ const en: Strings = {
   draw: 'Draw',
   resigned: 'Resigned',
   resignNoReward: 'Resigned — no reward',
+  friendNoReward: 'Friendly match — no coins, score, or record',
   disconnected: 'Disconnected',
   disconnectedNote: 'Lost connection to your opponent. Score and rewards are unchanged.',
   rewardLine: (total, base, towers, bonus) =>
@@ -408,6 +411,7 @@ const ko: Strings = {
   draw: '무승부',
   resigned: '항복',
   resignNoReward: '항복 — 보상 없음',
+  friendNoReward: '친구 대전 — 코인·점수·전적 없음',
   disconnected: '연결 끊김',
   disconnectedNote: '상대와의 연결이 끊겼습니다. 점수와 보상은 그대로입니다.',
   rewardLine: (total, base, towers, bonus) =>
@@ -570,6 +574,7 @@ const zh: Strings = {
   draw: '平局',
   resigned: '认输',
   resignNoReward: '认输 — 无奖励',
+  friendNoReward: '好友对战 — 无金币、积分与战绩',
   disconnected: '连接中断',
   disconnectedNote: '与对手的连接已中断。分数和奖励均不变。',
   rewardLine: (total, base, towers, bonus) =>
@@ -738,6 +743,7 @@ const vi: Strings = {
   draw: 'Hòa',
   resigned: 'Đã đầu hàng',
   resignNoReward: 'Đã đầu hàng — không có thưởng',
+  friendNoReward: 'Đấu với bạn — không có xu, điểm hay thành tích',
   disconnected: 'Mất kết nối',
   disconnectedNote: 'Đã mất kết nối với đối thủ. Điểm và phần thưởng không thay đổi.',
   rewardLine: (total, base, towers, bonus) =>

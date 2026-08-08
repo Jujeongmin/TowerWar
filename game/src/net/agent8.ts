@@ -82,6 +82,13 @@ export interface RoomSnapshot {
   $users?: string[];
   /** Friend-room invite code. Kept in room state so the host can recover it. */
   code?: string;
+  /**
+   * 코드로 만든 친구 방인가 (`hostRoom` 이 찍는다).
+   *
+   * **보상·점수·전적이 안 나가는 판이다** — 짜고 두면 무한히 불릴 수 있어서다
+   * (`server.js` 의 `#grantReward`). 결과 화면이 이 값을 보고 금액 대신 안내를
+   * 띄우고 [광고 보고 두 배] 버튼을 감춘다 (`MatchSetup.friendRoom`).
+   */
   private?: boolean;
 }
 
@@ -321,6 +328,9 @@ export class Agent8Client {
       ratings: { 1: state.ratings?.[1] ?? DEFAULT_RATING, 2: state.ratings?.[2] ?? DEFAULT_RATING },
       // 안 내려줬으면 양쪽 다 못 켜는 것으로 본다. 한쪽만 기본값이 달라지면 갈라진다.
       tempo: { 1: state.tempo?.[1] === true, 2: state.tempo?.[2] === true },
+      // 안 내려줬으면 일반 판으로 본다. 틀려도 화면 문구만 어긋나고, 실제 지불은
+      // 서버가 자기 판정대로 한다 — 여기 값이 코인을 만들지는 않는다.
+      friendRoom: state.private === true,
       inputDelayTicks: state.inputDelayTicks ?? DEFAULT_INPUT_DELAY_TICKS,
       desyncCheckTicks: state.desyncCheckTicks ?? DEFAULT_DESYNC_CHECK_TICKS,
     };

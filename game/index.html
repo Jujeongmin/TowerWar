@@ -124,8 +124,11 @@
       <!-- 제작자 팔로우 보상. **계정당 한 번 +500코인.**
            팔로우 여부는 서버가 `$sender.isFollower` 로 직접 읽는다 — 클라이언트가
            증명할 것이 없어서 위조가 불가능하다 (광고 보상과 다르다).
-           게임 안에서 팔로우 창을 여는 방법은 공식 SDK에 없어서(2026-08-07 확인)
-           "플랫폼에서 팔로우하고 와서 누르세요" 형태다. -->
+
+           **게임이 팔로우 페이지를 열어 주지는 않는다** (2026-08-08 사용자 지시).
+           앱으로 감싼 WebView 에서 `window.open` 이 조용히 무시돼 눌러도 아무 일이
+           없었다. "플랫폼에서 팔로우하고 와서 누르세요" 형태로 되돌렸다.
+           밑줄(#follow-note)은 청구 중·실패일 때만 쓴다 — 평소에는 비어 있다. -->
       <div class="shop">
         <p class="shop-title" data-i18n="followSection">Support the creator</p>
         <button id="btn-follow-claim" class="btn">Claim</button>

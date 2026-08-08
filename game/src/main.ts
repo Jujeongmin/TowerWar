@@ -22,6 +22,7 @@ import { devAdProvider, setAdProvider, verse8AdProvider } from './net/ads';
 import { buyVxItem, initVxShop, watchVxShop, type PremiumItem } from './net/vx';
 import { applyStaticText, getLang, setLang } from './i18n';
 import { Renderer } from './render/renderer';
+import { measureSafeArea, watchSafeArea } from './safe-area';
 import type { UnitKind } from './units';
 import type { TowerKind } from './towers';
 
@@ -38,9 +39,16 @@ applyStaticText();
 
 const canvas = need<HTMLCanvasElement>('stage');
 
+// 노치·상태바 여백을 **Renderer보다 먼저** 확정한다. 생성자가 곧바로 resize()를
+// 부르면서 `--safe-top` 을 읽어 가므로, 순서가 뒤집히면 첫 판의 HUD가 0으로 그려진다.
+measureSafeArea();
+
 // Renderer는 앱 수명 동안 하나만 만든다. 매치마다 새로 만들면 스프라이트 27장을
 // 매번 다시 로드하고 색칠 캐시도 버려진다.
 const renderer = new Renderer(canvas);
+
+// 회전하거나 주소창이 접히면 여백이 달라진다. 다시 재고 캔버스를 새로 맞춘다.
+watchSafeArea(() => renderer.resize());
 
 // 접속은 앱 수명 동안 하나만. 매칭용과 계정용을 따로 만들면 서버가 보는 계정과
 // 화면이 보는 계정이 갈릴 수 있다.

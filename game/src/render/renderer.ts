@@ -310,8 +310,13 @@ export class Renderer {
 
   /**
    * 노치·홈 인디케이터가 먹는 높이. **캔버스는 `env()` 를 못 읽어** CSS 변수로 받는다
-   * (`style.css` 의 `--safe-top`/`--safe-bottom`). 안 쓰면 HUD의 이름·아바타가
-   * 노치 밑으로 들어가 안 보인다.
+   * (`--safe-top`/`--safe-bottom`). 안 쓰면 HUD의 이름·아바타가 노치 밑으로 들어가
+   * 안 보인다.
+   *
+   * 값을 박는 곳은 `safe-area.ts` 다 — `style.css` 의 `env()` 정의를 그대로 읽으면
+   * 두 가지로 0이 된다: 커스텀 프로퍼티는 `env(...)` 원문이 나올 수 있고(파싱 실패),
+   * iframe·앱 WebView 에서는 `env()` 자체가 0이다. 거기서 실측하고 폴백까지 얹어
+   * px 로 덮어 준다.
    */
   private safeTop = 0;
   private safeBottom = 0;

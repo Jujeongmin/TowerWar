@@ -5,7 +5,11 @@
 }
 
 /* 캔버스는 `env()` 를 못 읽는다. HUD(이름·아바타·타이머)가 노치 밑으로 들어가지
-   않게 렌더러가 이 값을 읽어 간다 (`Renderer.resize`). 여기 이름을 바꾸면 거기도 고칠 것. */
+   않게 렌더러가 이 값을 읽어 간다 (`Renderer.resize`). 여기 이름을 바꾸면 거기도 고칠 것.
+
+   **여기 값은 폴백이다.** 실제로는 `safe-area.ts` 가 시작할 때 실측해 `:root` 에 px 로
+   덮어쓴다 — iframe·앱 WebView 에서는 `env()` 가 0으로 오기 때문이다. 스크립트가
+   안 돌면 이 정의가 남아 최소한 일반 브라우저에서는 맞는다. */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);

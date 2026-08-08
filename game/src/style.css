@@ -582,13 +582,6 @@ body {
   background: rgba(255, 255, 255, 0.04);
 }
 
-.board-card-slot-title {
-  font-size: calc(10px * var(--ui-scale));
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #7f93a6;
-}
-
 /* 그림 상자. 유닛은 세기에 따라 높이가 달라지므로(`sizeFactorOf`) 바닥을 맞춘다. */
 .board-card-art {
   display: flex;

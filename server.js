@@ -563,6 +563,9 @@ class Server {
    */
   async getLeaderboard() {
     await this.#migrateLegacyBoard();
+    // 내 칸을 먼저 최신으로 맞추고 읽는다. 안 그러면 방금 갈아입은 장비가 다음 판까지
+    // 안 보인다 (2026-08-09 사용자 지시).
+    await this.#refreshMyBoardRow();
     const rows = await $global.getCollectionItems(BOARD_COLLECTION, {
       orderBy: [{ field: 'rating', direction: 'desc' }],
       limit: BOARD_SIZE,
@@ -1472,11 +1475,52 @@ class Server {
   }
 
   /**
+   * 순위표에 이미 있는 내 칸을 지금 계정 값으로 맞춘다.
+   *
+   * **표에 없으면 아무것도 안 한다.** 이것이 `#recordOnBoard` 와 갈리는 점이다 —
+   * 순위표는 누구나 열 수 있어서, 없을 때 넣어 버리면 점수가 낮아 못 든 사람까지
+   * 전부 컬렉션에 쌓인다. `BOARD_SIZE` 는 읽기 제한이지 저장 제한이 아니라서
+   * 표가 계속 커지고 정렬 조회가 느려진다.
+   *
+   * 그래서 쓰기가 도는 것은 **상위권이 순위표를 열 때**뿐이다. 갈아입는 시점에
+   * 맞추는 방법도 있었는데, 상점은 이것저것 눌러 보는 화면이라 클릭마다 쓰기가
+   * 생긴다. 보는 순간 최신이면 체감은 같고 쓰기는 훨씬 적다.
+   */
+  async #refreshMyBoardRow() {
+    const account = $sender.account;
+    await $lock(`board:${account}`, async () => {
+      const mine = await $global.getCollectionItems(BOARD_COLLECTION, {
+        filters: [{ field: 'account', operator: '==', value: account }],
+      });
+      if (!mine[0]) return;
+      const a = await this.#loadAccount();
+      // 이름이 사라진 계정은 표에서도 빠져야 한다 (`#recordOnBoard` 와 같은 규칙).
+      if (!a.name) {
+        for (const row of mine) await $global.deleteCollectionItem(BOARD_COLLECTION, row.__id);
+        return;
+      }
+      await $global.updateCollectionItem(BOARD_COLLECTION, {
+        ...mine[0],
+        name: a.name,
+        rating: a.rating,
+        profile: a.profile,
+        unitKind: a.unitKind,
+        towerKind: a.towerKind,
+        wins: a.wins,
+        losses: a.losses,
+        updatedAt: Date.now(),
+      });
+    });
+  }
+
+  /**
    * 순위표에 내 점수를 반영한다. 계정당 한 칸이라 먼저 빼고 다시 넣는다 —
    * 안 그러면 같은 사람이 이길 때마다 표를 채운다.
    *
    * **점수가 내려가면 표에서 밀려난다.** 최고 기록이 아니라 지금 점수의 순위표다.
    * 최고 기록으로 두면 한 번 올라간 사람이 안 내려와 표가 굳는다.
+   *
+   * 이미 표에 있는 사람의 칸을 최신으로 맞추기만 하는 것은 `#refreshMyBoardRow` 다.
    */
   async #recordOnBoard(a) {
     await this.#migrateLegacyBoard();

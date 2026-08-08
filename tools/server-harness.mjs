@@ -1284,6 +1284,53 @@ const legacy = mixed.find((e) => e.name === '옛사람');
 check('옛 기록은 프로필 필드가 빈 문자열', legacy.profile === '' && legacy.unitKind === '' && legacy.towerKind === '', legacy);
 check('옛 기록의 전적은 0', legacy.wins === 0 && legacy.losses === 0, legacy);
 
+// 56) 순위표를 열면 **이미 표에 있는 내 칸**이 지금 계정 값으로 맞춰진다.
+//     상점에서 갈아입어도 다음 판까지 옛 장비가 보이던 것을 고친 것이다.
+collections.set('rankings', new Map());
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', {
+  ...defaultsFor('0xAAA'), name: '앨리스', rating: 1200,
+  ownedUnits: ['beergang_gold'], ownedTowers: ['tower_keep'],
+});
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), name: '밥', rating: 1000 });
+as(A);
+const froom = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(froom.code);
+await server.setReady(true);
+await server.$roomTick(300, froom.roomId);
+age(froom.roomId);
+const fsB = await $global.getRoomState(froom.roomId);
+as(A); await server.reportResult(fsB.slots['0xAAA'], 3);
+as(B); await server.reportResult(fsB.slots['0xAAA'], 1);
+
+// 판이 끝난 시점의 값 — 아직 기본 장비다.
+as(A);
+const beforeSwap = (await server.getLeaderboard()).find((e) => e.name === '앨리스');
+check('판 뒤에는 그때 장비가 실린다', beforeSwap.unitKind === DEFAULT_UNIT_KIND, beforeSwap);
+
+// 판을 안 하고 상점에서 갈아입기만 한다.
+await server.selectUnitKind('beergang_gold');
+await server.selectTowerKind('tower_keep');
+await server.setName('앨리스2');
+const afterSwap = (await server.getLeaderboard()).find((e) => e.name === '앨리스2');
+check('순위표를 열면 갈아입은 유닛이 바로 보인다', afterSwap.unitKind === 'beergang_gold', afterSwap);
+check('타워도 바로 보인다', afterSwap.towerKind === 'tower_keep', afterSwap);
+check('바꾼 이름도 따라온다', !!afterSwap, afterSwap);
+check('칸이 늘어나지 않는다', (await server.getLeaderboard()).length === 2);
+
+// **표에 없는 사람은 열어도 안 들어간다.** 넣어 버리면 점수가 낮아 못 든 사람까지
+// 전부 컬렉션에 쌓이고, `BOARD_SIZE` 는 읽기 제한이라 표가 계속 커진다.
+const H2 = { account: '0xJJJ', roomId: null };
+as(H2);
+await server.getAccount();
+await server.setName('구경꾼');
+const afterPeek = await server.getLeaderboard();
+check('표에 없는 사람은 열어도 안 들어간다', afterPeek.length === 2, afterPeek.map((e) => e.name));
+check('구경꾼은 표에 없다', afterPeek.every((e) => e.name !== '구경꾼'), afterPeek.map((e) => e.name));
+
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  ← ' + JSON.stringify(r.extra)}`);

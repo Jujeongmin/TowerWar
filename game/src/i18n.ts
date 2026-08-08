@@ -109,6 +109,9 @@ export interface Strings {
   boardOffline: string;
   boardEmpty: string;
   points: (n: number) => string;
+  /** 순위표 프로필 카드의 장비 칸 제목. 짧아야 두 칸이 나란히 들어간다. */
+  gearUnit: string;
+  gearTower: string;
   // 매치
   playAgain: string;
   toLobby: string;
@@ -240,6 +243,8 @@ const en: Strings = {
   boardOffline: 'Not connected, so the ranking is unavailable',
   boardEmpty: 'Nobody has made the ranking yet',
   points: (n) => `${n} pts`,
+  gearUnit: 'Unit',
+  gearTower: 'Tower',
   playAgain: 'Find Match',
   toLobby: 'Lobby',
   resign: 'Resign',
@@ -400,6 +405,8 @@ const ko: Strings = {
   boardOffline: '서버에 연결되지 않아 순위를 볼 수 없습니다',
   boardEmpty: '아직 순위에 오른 사람이 없습니다',
   points: (n) => `${n}점`,
+  gearUnit: '유닛',
+  gearTower: '타워',
   playAgain: '다시 매칭',
   toLobby: '로비로',
   resign: '항복',
@@ -562,6 +569,8 @@ const zh: Strings = {
   boardOffline: '未连接服务器，无法查看排行榜',
   boardEmpty: '还没有人登上排行榜',
   points: (n) => `${n} 分`,
+  gearUnit: '单位',
+  gearTower: '塔',
   playAgain: '重新匹配',
   toLobby: '返回大厅',
   resign: '认输',
@@ -730,6 +739,8 @@ const vi: Strings = {
   boardOffline: 'Chưa kết nối nên không xem được bảng xếp hạng',
   boardEmpty: 'Chưa có ai lên bảng xếp hạng',
   points: (n) => `${n} điểm`,
+  gearUnit: 'Quân',
+  gearTower: 'Tháp',
   playAgain: 'Tìm trận',
   toLobby: 'Sảnh chờ',
   resign: 'Đầu hàng',

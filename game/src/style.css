@@ -455,14 +455,36 @@ body {
   gap: 6px;
 }
 
+/* 줄 자체는 배경만 맡고, 배치와 클릭은 안쪽 버튼(`.board-hit`)이 맡는다 —
+   **줄 전체가 눌려야** 어디를 눌러야 카드가 뜨는지 보인다. */
 .board-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+.board-hit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+/* 목록의 작은 아바타. 카드의 큰 것과 같은 파일·같은 배경색 규칙이다. */
+.board-avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: contain;
+  background: var(--avatar-bg, #3a4757);
 }
 
 /* 내 줄. 서버가 `me` 로 짚어 준다 (동명이인 때문에 이름으로 못 찾는다). */
@@ -472,6 +494,7 @@ body {
 }
 
 .board-name {
+  flex: 1;
   font-weight: 700;
   color: #f2f7fb;
   overflow: hidden;
@@ -483,6 +506,106 @@ body {
   font-weight: 800;
   color: #7dd3fc;
   flex: none;
+}
+
+/* 순위표 프로필 카드. 튜토리얼 창과 같은 규칙이다 — 화면 안에 깔고 `hidden` 으로
+   여닫는다. 바깥을 누르면 닫히므로 덮개도 클릭 대상이다. */
+.board-card-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom));
+  background: rgba(3, 8, 13, 0.83);
+  backdrop-filter: blur(9px);
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  width: min(100%, 320px);
+  padding: calc(18px * var(--ui-scale)) 18px calc(16px * var(--ui-scale));
+  border-radius: 14px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  background: linear-gradient(180deg, rgba(18, 27, 38, 0.97), rgba(9, 14, 20, 0.97));
+}
+
+.board-card-avatar {
+  width: calc(72px * var(--ui-scale));
+  height: calc(72px * var(--ui-scale));
+  border-radius: 50%;
+  object-fit: contain;
+  background: var(--avatar-bg, #3a4757);
+}
+
+.board-card-name {
+  font-weight: 800;
+  font-size: calc(17px * var(--ui-scale));
+  color: #f2f7fb;
+  /* 남이 정한 문자열이다. 긴 이름이 카드를 늘리지 않게 자른다. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-card-rating {
+  font-weight: 800;
+  font-size: calc(15px * var(--ui-scale));
+  color: #7dd3fc;
+}
+
+.board-card-record {
+  font-size: calc(12px * var(--ui-scale));
+  color: #9fb2c4;
+}
+
+/* 착용 장비 두 칸. 나란히 두면 무엇을 쓰는지 한눈에 비교된다. */
+.board-card-gear {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin-top: calc(2px * var(--ui-scale));
+}
+
+.board-card-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: calc(8px * var(--ui-scale)) 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.board-card-slot-title {
+  font-size: calc(10px * var(--ui-scale));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7f93a6;
+}
+
+/* 그림 상자. 유닛은 세기에 따라 높이가 달라지므로(`sizeFactorOf`) 바닥을 맞춘다. */
+.board-card-art {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: calc(56px * var(--ui-scale));
+}
+
+.board-card-art img {
+  image-rendering: pixelated;
+}
+
+.board-card-slot-name {
+  font-size: calc(11px * var(--ui-scale));
+  font-weight: 700;
+  color: #dbe6f0;
+  text-align: center;
 }
 
 .acc-name {
@@ -1393,7 +1516,8 @@ body {
    1093×470 실측으로 68px 넘쳤고 여기서 90px 이 줄어든다. */
 @media (max-height: 640px) {
   .board-list { gap: 3px; }
-  .board-row { padding: 5px 10px; }
+  .board-hit { padding: 5px 10px; }
+  .board-avatar { width: 20px; height: 20px; }
 
   /* 상점 위 여백 56px 은 코인 줄(y 14~35)을 피하려던 값이다. 35px 만 넘으면
      되므로 42px 로 줄이고 아래도 같이 조인다 — 세로가 짧은 폰(360×640)은
@@ -1420,7 +1544,8 @@ body {
   #lobby .btn { min-height: 34px; padding-top: 5px; padding-bottom: 5px; }
   .lobby-title-block { padding: 4px 14px 6px; }
   .board-list { gap: 2px; }
-  .board-row { padding: 3px 10px; }
+  .board-hit { padding: 3px 10px; }
+  .board-avatar { width: 18px; height: 18px; }
   .board-list,
   #board .shop-title { font-size: 11px; }
 

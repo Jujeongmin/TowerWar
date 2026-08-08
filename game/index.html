@@ -108,6 +108,33 @@
       <div class="menu">
         <button id="btn-board-back" class="btn" data-i18n="back">Back</button>
       </div>
+
+      <!-- 순위표에서 한 줄을 누르면 뜨는 프로필 카드. **값은 순위표 응답에 실려 온다** —
+           따로 조회하려면 남의 계정 주소를 클라이언트에 내려야 하는데 서버가 그걸
+           막고 있다 (`server.js` 의 `getLeaderboard` 주석).
+
+           튜토리얼 창과 같은 자리·같은 규칙이다: 화면 안에 두고 `hidden` 으로만 여닫는다. -->
+      <div id="board-card" class="board-card-dim" hidden role="dialog" aria-modal="true" aria-labelledby="board-card-name">
+        <div class="board-card">
+          <img id="board-card-avatar" class="board-card-avatar" alt="" />
+          <p id="board-card-name" class="board-card-name"></p>
+          <p id="board-card-rating" class="board-card-rating"></p>
+          <p id="board-card-record" class="board-card-record"></p>
+          <div class="board-card-gear">
+            <div class="board-card-slot">
+              <span class="board-card-slot-title" data-i18n="gearUnit">Unit</span>
+              <span class="board-card-art"><img id="board-card-unit-art" alt="" /></span>
+              <span id="board-card-unit-name" class="board-card-slot-name"></span>
+            </div>
+            <div class="board-card-slot">
+              <span class="board-card-slot-title" data-i18n="gearTower">Tower</span>
+              <span class="board-card-art"><img id="board-card-tower-art" alt="" /></span>
+              <span id="board-card-tower-name" class="board-card-slot-name"></span>
+            </div>
+          </div>
+          <button id="btn-board-card-close" class="btn btn-primary" data-i18n="back">Back</button>
+        </div>
+      </div>
     </div>
 
     <!-- 설정. 지금은 언어 하나뿐이다. **매치 중에는 못 연다** — 판을 멈추는 창은

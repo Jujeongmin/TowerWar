@@ -579,6 +579,16 @@ export interface BoardEntry {
   name: string;
   rating: number;
   me: boolean;
+  /**
+   * 프로필 카드용. **빈 문자열로 올 수 있다** — 순위표는 점수가 움직인 판 뒤에만
+   * 갱신되므로, 이 필드가 생기기 전에 표에 오른 사람은 다음 판까지 비어 있다.
+   * 화면은 기본 아바타·기본 장비로 떨어뜨린다 (그림 폴백과 같은 규칙).
+   */
+  profile: string;
+  unitKind: string;
+  towerKind: string;
+  wins: number;
+  losses: number;
 }
 
 /** 서버가 들고 있는 계정. `account/account.ts` 의 로컬 계정과 필드가 겹친다. */

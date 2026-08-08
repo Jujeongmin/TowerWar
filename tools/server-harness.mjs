@@ -189,13 +189,31 @@ const C = { account: '0xCCC', roomId: null };
 const as = (s) => (sender = s);
 
 /**
- * 방을 `ms` 전에 시작한 것으로 만든다.
+ * 점수·보상이 실제로 나가는 판으로 만든다.
  *
- * `MIN_RATED_MS`(10초)보다 짧게 끝난 판은 점수가 안 움직인다. 하네스는 판을 실제로
- * 돌리지 않고 곧바로 결과를 보고하므로, **점수를 보는 검사는 전부 방을 늙혀야 한다.**
+ * 두 가지를 손본다:
+ *
+ * - **길이**: `MIN_RATED_MS`(10초)보다 짧게 끝난 판은 점수가 안 움직인다. 하네스는
+ *   판을 실제로 돌리지 않고 곧바로 결과를 보고하므로 시작 시각을 뒤로 당겨야 한다.
+ * - **공개 여부**: 친구 방(`private`)은 코인도 점수도 전적도 안 준다. 하네스는 거의
+ *   모든 판을 `createRoom` + `joinRoomByCode` 로 만드는데 그 길이 곧 친구 방이라,
+ *   여기서 풀지 않으면 점수를 보는 검사가 전부 0을 본다.
+ *
+ * **친구 방이 정말 아무것도 안 주는지 보는 검사는 이 함수를 쓰면 안 된다** —
+ * `startedAt` 만 직접 당겨서 길이 조건만 맞춰야 `private` 하나가 원인임이 드러난다.
  */
 function age(roomId, ms = 30000) {
   rooms.get(roomId).state.startedAt = Date.now() - ms;
+  open(roomId);
+}
+
+/**
+ * 친구 방 표시만 뗀다. **길이는 안 건드린다** — "짧은 판이라 점수는 안 움직여도
+ * 코인·전적은 나간다"를 보는 검사들이 있어서, 거기에 `age` 를 쓰면 검사 자체가
+ * 무의미해진다.
+ */
+function open(roomId) {
+  rooms.get(roomId).state.private = false;
 }
 
 // 1) A가 매칭 → 새 방
@@ -732,6 +750,8 @@ check('위조한 종류가 안 먹는다 (A=보라)', fs.kinds[fs.slots['0xAAA']
 check('상대도 서버 값 (B=기본)', fs.kinds[fs.slots['0xBBB']] === DEFAULT_UNIT_KIND, fs.kinds);
 
 // 31) 보상은 서버가 준다. 양쪽 다 받고, 두 번은 안 준다
+// 짧은 판이라 점수는 안 움직이지만 코인·전적은 나가는 자리다. 친구 방 표시만 뗀다.
+open(forge.roomId);
 const coinsBefore = (await $global.getUserStateOf('0xAAA')).coins;
 as(A);
 const paidA = await server.reportResult(fs.slots['0xAAA'], 7);
@@ -987,7 +1007,9 @@ as(B);
 await server.joinRoomByCode(qroom.code);
 await server.setReady(true);
 await server.$roomTick(300, qroom.roomId);
-// 방금 시작한 판을 곧바로 보고한다 (경과 ≈ 0ms)
+// 방금 시작한 판을 곧바로 보고한다 (경과 ≈ 0ms). 길이만 짧게 두고 친구 방 표시는 뗀다 —
+// 여기서 보는 것은 "짧아서 점수가 안 움직인다"이지 "친구 방이라 아무것도 안 준다"가 아니다.
+open(qroom.roomId);
 as(A);
 const quick = await server.reportResult((await $global.getRoomState(qroom.roomId)).slots['0xAAA'], 3);
 check('짧은 판은 점수가 안 움직인다', quick.rating === 1000, quick.rating);
@@ -1186,6 +1208,81 @@ check('기본 계정은 아직 안 받은 상태', defaultsFor('0xZZZ').followRe
 
 // 락 안에서 돈다 (코인을 건드리는 경로는 전부 그래야 한다).
 check('팔로우 보상이 계정 락 안에서 돈다', lockCalls.includes('acct:0xFFF'), lockCalls.slice(-3));
+
+// 54) 친구 방(private)은 아무것도 안 준다 — 코인도 점수도 전적도, 순위표도.
+//     둘이 짜고 번갈아 져 주면 무엇이든 무한히 불릴 수 있어서다.
+//     **`age` 대신 `startedAt` 만 당긴다** — 길이 조건은 맞춰 두고 `private` 하나가
+//     원인임이 드러나야 한다 (`age` 는 private 도 같이 뗀다).
+collections.set('rankings', new Map());
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', rating: 1000, coins: 0 });
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), name: '밥', rating: 1000, coins: 0 });
+as(A);
+const proom = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(proom.code);
+await server.setReady(true);
+await server.$roomTick(300, proom.roomId);
+check('코드 방은 private 로 남아 있다', rooms.get(proom.roomId).state.private === true);
+rooms.get(proom.roomId).state.startedAt = Date.now() - 30000; // 길이만 채운다
+const ps = await $global.getRoomState(proom.roomId);
+as(A);
+const privWin = await server.reportResult(ps.slots['0xAAA'], 7);
+check('친구 방 승리는 코인이 0', privWin.coins === 0, privWin.coins);
+check('친구 방 승리는 점수가 안 움직인다', privWin.rating === 1000, privWin.rating);
+check('친구 방 승리는 전적에 안 쌓인다', privWin.wins === 0 && privWin.draws === 0, privWin);
+as(B);
+const privLose = await server.reportResult(ps.slots['0xAAA'], 2);
+check('친구 방 패배도 코인이 0', privLose.coins === 0, privLose.coins);
+check('친구 방 패배도 전적에 안 쌓인다', privLose.losses === 0, privLose);
+as(A);
+check('친구 방은 순위표에도 안 오른다', (await server.getLeaderboard()).length === 0);
+// 지불액이 0이라 광고 2배도 탈 것이 없다 — 그쪽에 따로 조건을 안 달아도 막힌다.
+let pderr = null;
+try { await server.claimDoubleReward('req-priv'); } catch (e) { pderr = e.message; }
+check('친구 방은 광고 2배도 못 탄다', pderr === 'no_reward', pderr);
+
+// 55) 순위표가 프로필 카드용 값을 함께 내려준다. **따로 조회를 안 만들려는 것이다** —
+//     상세를 계정에서 읽으려면 남의 계정 주소를 클라이언트에 내려야 한다.
+collections.set('rankings', new Map());
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', {
+  ...defaultsFor('0xAAA'), name: '앨리스', rating: 1200, profile: 'gold',
+  ownedUnits: ['beergang_gold'], unitKind: 'beergang_gold',
+  ownedTowers: ['tower_keep'], towerKind: 'tower_keep',
+});
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), name: '밥', rating: 1000 });
+as(A);
+const croom2 = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(croom2.code);
+await server.setReady(true);
+await server.$roomTick(300, croom2.roomId);
+age(croom2.roomId);
+const cs2 = await $global.getRoomState(croom2.roomId);
+as(A); await server.reportResult(cs2.slots['0xAAA'], 4);
+as(B); await server.reportResult(cs2.slots['0xAAA'], 1);
+as(A);
+const cardBoard = await server.getLeaderboard();
+const mineRow = cardBoard.find((e) => e.name === '앨리스');
+check('아바타가 실려 온다', mineRow.profile === 'gold', mineRow);
+check('착용 유닛이 실려 온다', mineRow.unitKind === 'beergang_gold', mineRow);
+check('착용 타워가 실려 온다', mineRow.towerKind === 'tower_keep', mineRow);
+check('전적이 실려 온다', mineRow.wins === 1 && mineRow.losses === 0, mineRow);
+check('계정 id는 여전히 안 내려간다', cardBoard.every((e) => e.account === undefined), cardBoard);
+
+// 옛 기록(필드가 붙기 전에 오른 줄)은 빈 문자열로 내려간다 — 화면이 기본값으로 떨어뜨린다.
+collections.get('rankings').set('legacy-1', {
+  __id: 'legacy-1', account: '0xZZZ', name: '옛사람', rating: 1100,
+});
+const mixed = await server.getLeaderboard();
+const legacy = mixed.find((e) => e.name === '옛사람');
+check('옛 기록은 프로필 필드가 빈 문자열', legacy.profile === '' && legacy.unitKind === '' && legacy.towerKind === '', legacy);
+check('옛 기록의 전적은 0', legacy.wins === 0 && legacy.losses === 0, legacy);
 
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);

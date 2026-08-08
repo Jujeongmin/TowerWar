@@ -6,15 +6,78 @@
  *
  * 계정을 안 읽는다. 내 줄은 서버가 `me` 로 표시해 준다 — 닉네임은 안 겹치는 값이
  * 아니라서 이름으로 맞추면 동명이인이 내 줄로 강조된다.
+ *
+ * 줄을 누르면 프로필 카드가 뜬다. **카드에 쓰는 값도 이 응답에 실려 온다** — 따로
+ * 조회하려면 남의 계정 주소를 받아야 하는데 서버가 그것을 막고 있다
+ * (`server.js` 의 `getLeaderboard` 주석).
  */
 import type { BoardEntry } from '../net/agent8';
+import { DEFAULT_PROFILE, isProfileId, profileBg, profileSrc, type ProfileId } from '../profiles';
+import {
+  DEFAULT_UNIT_KIND,
+  UNIT_KIND_META,
+  sizeFactorOf,
+  spriteKindOf,
+  unitLabelOf,
+  type UnitKind,
+} from '../units';
+import {
+  DEFAULT_TOWER_KIND,
+  TOWER_KIND_META,
+  towerLabelOf,
+  towerSpriteKindOf,
+  type TowerKind,
+} from '../towers';
 import { t } from '../i18n';
 import type { Scene } from './scene';
+
+/** 카드의 타워 그림 높이(px). 상점 카드(`shop-scene.ts`)와 같은 규칙이다. */
+const CARD_TOWER_ART_H = 52;
+/** 가장 약한 유닛의 카드 그림 높이(px). 여기에 `sizeFactorOf` 를 곱한다. */
+const CARD_UNIT_ART_BASE_H = 46;
+
+/** 미리보기 이미지. 판에서 쓰는 것과 같은 파일이다 — P1(파랑) 기준. */
+function towerPreviewSrc(kind: TowerKind): string {
+  return `/assets/tower/p1/${TOWER_KIND_META[towerSpriteKindOf(kind)].art}.png`;
+}
+
+/** 러닝 사이클 첫 프레임. 그림이 없는 종류는 빌려 온다 (`spriteKindOf`). */
+function unitPreviewSrc(kind: UnitKind): string {
+  return `/assets/unit/p1/${spriteKindOf(kind)}/run0.png`;
+}
+
+/**
+ * 서버가 준 문자열을 아는 값으로 떨어뜨린다.
+ *
+ * **비어 있을 수 있다.** 순위표는 점수가 움직인 판 뒤에만 갱신되므로, 이 필드가
+ * 생기기 전에 표에 오른 사람은 다음 판까지 빈 값이다. 모르는 값도 마찬가지로
+ * 기본값이 된다 — 옛 클라이언트가 안 아는 신상 외형이 그렇다.
+ */
+function asProfile(v: string): ProfileId {
+  return isProfileId(v) ? v : DEFAULT_PROFILE;
+}
+
+function asUnitKind(v: string): UnitKind {
+  return v in UNIT_KIND_META ? (v as UnitKind) : DEFAULT_UNIT_KIND;
+}
+
+function asTowerKind(v: string): TowerKind {
+  return v in TOWER_KIND_META ? (v as TowerKind) : DEFAULT_TOWER_KIND;
+}
 
 export class BoardScene implements Scene {
   private readonly list: HTMLElement;
   private readonly note: HTMLElement;
   private readonly mascot: HTMLElement;
+  private readonly card: HTMLElement;
+  private readonly cardAvatar: HTMLImageElement;
+  private readonly cardName: HTMLElement;
+  private readonly cardRating: HTMLElement;
+  private readonly cardRecord: HTMLElement;
+  private readonly cardUnitArt: HTMLImageElement;
+  private readonly cardUnitName: HTMLElement;
+  private readonly cardTowerArt: HTMLImageElement;
+  private readonly cardTowerName: HTMLElement;
   /**
    * 이번에 연 화면의 번호. 응답이 늦게 오는 사이에 나갔다 다시 들어오면
    * 앞 응답이 뒤 화면을 덮어쓴다 — 번호가 다르면 버린다.
@@ -31,15 +94,58 @@ export class BoardScene implements Scene {
     const note = root.querySelector<HTMLElement>('#board-note');
     const mascot = root.querySelector<HTMLElement>('#board-mascot');
     const backBtn = root.querySelector<HTMLButtonElement>('#btn-board-back');
-    if (!list || !note || !mascot || !backBtn) throw new Error('순위 DOM이 예상과 다릅니다');
+    const card = root.querySelector<HTMLElement>('#board-card');
+    const cardAvatar = root.querySelector<HTMLImageElement>('#board-card-avatar');
+    const cardName = root.querySelector<HTMLElement>('#board-card-name');
+    const cardRating = root.querySelector<HTMLElement>('#board-card-rating');
+    const cardRecord = root.querySelector<HTMLElement>('#board-card-record');
+    const cardUnitArt = root.querySelector<HTMLImageElement>('#board-card-unit-art');
+    const cardUnitName = root.querySelector<HTMLElement>('#board-card-unit-name');
+    const cardTowerArt = root.querySelector<HTMLImageElement>('#board-card-tower-art');
+    const cardTowerName = root.querySelector<HTMLElement>('#board-card-tower-name');
+    const cardClose = root.querySelector<HTMLButtonElement>('#btn-board-card-close');
+    if (
+      !list ||
+      !note ||
+      !mascot ||
+      !backBtn ||
+      !card ||
+      !cardAvatar ||
+      !cardName ||
+      !cardRating ||
+      !cardRecord ||
+      !cardUnitArt ||
+      !cardUnitName ||
+      !cardTowerArt ||
+      !cardTowerName ||
+      !cardClose
+    ) {
+      throw new Error('순위 DOM이 예상과 다릅니다');
+    }
     this.list = list;
     this.note = note;
     this.mascot = mascot;
+    this.card = card;
+    this.cardAvatar = cardAvatar;
+    this.cardName = cardName;
+    this.cardRating = cardRating;
+    this.cardRecord = cardRecord;
+    this.cardUnitArt = cardUnitArt;
+    this.cardUnitName = cardUnitName;
+    this.cardTowerArt = cardTowerArt;
+    this.cardTowerName = cardTowerName;
     backBtn.addEventListener('click', back);
+    cardClose.addEventListener('click', () => this.closeCard());
+    // 바깥을 눌러도 닫힌다. 패널 안쪽 클릭은 여기까지 안 온다(`stopPropagation` 대신
+    // 대상 비교를 쓴다 — 패널 안에 버튼이 늘어도 따로 손댈 것이 없다).
+    card.addEventListener('click', (e) => {
+      if (e.target === card) this.closeCard();
+    });
   }
 
   enter(): void {
     this.root.hidden = false;
+    this.closeCard();
     // 들어올 때마다 새로 받는다. 판을 한 번 하고 돌아오면 순위가 바뀌어 있다.
     const mine = ++this.opened;
     this.list.replaceChildren();
@@ -67,18 +173,65 @@ export class BoardScene implements Scene {
   private row(e: BoardEntry): HTMLElement {
     const li = document.createElement('li');
     li.className = e.me ? 'board-row board-row-me' : 'board-row';
+
+    // **줄 전체가 버튼이다.** 이름만 누르게 하면 어디를 눌러야 카드가 뜨는지 안 보인다.
+    const hit = document.createElement('button');
+    hit.className = 'board-hit';
+    hit.type = 'button';
+    hit.addEventListener('click', () => this.openCard(e));
+
+    const avatar = document.createElement('img');
+    avatar.className = 'board-avatar';
+    avatar.alt = '';
+    avatar.src = profileSrc(asProfile(e.profile));
+    avatar.style.setProperty('--avatar-bg', profileBg(asProfile(e.profile)));
+
     const name = document.createElement('span');
     name.className = 'board-name';
     // textContent 다. 닉네임은 남이 정한 문자열이라 innerHTML 로 넣으면 안 된다.
     name.textContent = e.name;
+
     const rating = document.createElement('span');
     rating.className = 'board-rating';
     rating.textContent = t().points(e.rating);
-    li.append(name, rating);
+
+    hit.append(avatar, name, rating);
+    li.append(hit);
     return li;
   }
 
+  /** 프로필 카드를 채워서 연다. 값은 이미 목록에 실려 온 것뿐이다. */
+  private openCard(e: BoardEntry): void {
+    const profile = asProfile(e.profile);
+    const unit = asUnitKind(e.unitKind);
+    const tower = asTowerKind(e.towerKind);
+
+    this.cardAvatar.src = profileSrc(profile);
+    this.cardAvatar.style.setProperty('--avatar-bg', profileBg(profile));
+    this.cardName.textContent = e.name;
+    this.cardRating.textContent = t().points(e.rating);
+    this.cardRecord.textContent = t().record(e.wins, e.losses);
+
+    this.cardUnitArt.src = unitPreviewSrc(unit);
+    // 센 유닛일수록 크게 — 판에서 보이는 크기 규칙과 같다 (`sizeFactorOf`).
+    this.cardUnitArt.style.height = `${Math.round(
+      CARD_UNIT_ART_BASE_H * sizeFactorOf(UNIT_KIND_META[unit].power),
+    )}px`;
+    this.cardUnitName.textContent = unitLabelOf(unit);
+
+    this.cardTowerArt.src = towerPreviewSrc(tower);
+    this.cardTowerArt.style.height = `${CARD_TOWER_ART_H}px`;
+    this.cardTowerName.textContent = towerLabelOf(tower);
+
+    this.card.hidden = false;
+  }
+
+  private closeCard(): void {
+    this.card.hidden = true;
+  }
+
   exit(): void {
+    this.closeCard();
     this.root.hidden = true;
   }
 

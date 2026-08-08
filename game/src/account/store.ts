@@ -36,6 +36,33 @@ import {
   type Reward,
 } from './account';
 
+/**
+ * 개발용 가짜 순위표. **`npm run dev` 에서만 존재한다.**
+ *
+ * 로컬에는 서버가 없어서 순위 화면이 늘 "접속되지 않아 순위를 볼 수 없습니다"로만
+ * 떴다 — 프로필 카드를 손볼 때마다 배포해야 보이는 셈이었다. `import.meta.env.DEV`
+ * 는 프로덕션 빌드에서 `false` 로 치환되므로 이 표는 번들에서 통째로 사라진다.
+ *
+ * 아바타·유닛·타워를 일부러 섞었고, **필드가 빈 줄도 하나 뒀다** — 순위표는 점수가
+ * 움직인 판 뒤에만 갱신되므로 실제로 옛 기록에는 이 값들이 없다. 그 경우 화면이
+ * 기본값으로 떨어지는지 여기서 같이 보인다.
+ */
+const DEV_BOARD: BoardEntry[] | null = import.meta.env.DEV
+  ? [
+      { name: '비어갱마스터', rating: 1480, me: false, profile: 'gold', unitKind: 'beergang_purple', towerKind: 'tower_barracks', wins: 62, losses: 18 },
+      { name: 'SupplyLine', rating: 1395, me: false, profile: 'blue', unitKind: 'beergang_green', towerKind: 'tower_house', wins: 47, losses: 21 },
+      { name: '전선지휘관', rating: 1310, me: true, profile: 'cyan', unitKind: 'beergang_gold', towerKind: 'tower_keep', wins: 33, losses: 25 },
+      { name: 'Tháp Việt', rating: 1255, me: false, profile: 'green', unitKind: 'beergang_gold', towerKind: 'tower_house', wins: 28, losses: 19 },
+      { name: '塔王', rating: 1188, me: false, profile: 'red', unitKind: 'beergang_white', towerKind: 'tower_keep', wins: 24, losses: 22 },
+      { name: 'RelayRunner', rating: 1102, me: false, profile: 'purple', unitKind: 'beergang_white', towerKind: 'tower_hut', wins: 19, losses: 20 },
+      { name: '새내기', rating: 1044, me: false, profile: 'pink', unitKind: 'beergang', towerKind: 'tower_hut', wins: 11, losses: 14 },
+      { name: 'Chokepoint', rating: 998, me: false, profile: 'orange', unitKind: 'beergang', towerKind: 'tower_keep', wins: 9, losses: 17 },
+      // 옛 기록: 프로필 필드가 붙기 전에 표에 오른 사람. 전부 기본값으로 떨어져야 한다.
+      { name: 'OldTimer', rating: 940, me: false, profile: '', unitKind: '', towerKind: '', wins: 0, losses: 0 },
+      { name: '연습생', rating: 902, me: false, profile: 'slate', unitKind: 'beergang', towerKind: 'tower_hut', wins: 3, losses: 12 },
+    ]
+  : null;
+
 /** 한 판으로 점수가 어떻게 움직였는가. 결과 화면이 그대로 보여준다. */
 export interface RatingChange {
   before: number;
@@ -120,6 +147,15 @@ export class AccountStore {
    * 올랐다"로 읽어 버린다. 서버가 없는 것과 표가 비어 있는 것은 다른 사정이다.
    */
   async leaderboard(): Promise<BoardEntry[] | null> {
+    const board = await this.fetchBoard();
+    // 개발 중에는 빈 표 대신 가짜 줄을 보여준다. **로컬 백엔드는 붙어 있어도 표가
+    // 늘 비어 있다** — 순위는 서버가 판마다 고치는 것인데 그 서버가 없다. 진짜 표가
+    // 있으면 그쪽이 먼저다.
+    if (DEV_BOARD && (board === null || board.length === 0)) return DEV_BOARD;
+    return board;
+  }
+
+  private async fetchBoard(): Promise<BoardEntry[] | null> {
     if (!this.net) return null;
     try {
       return await this.net.getLeaderboard();

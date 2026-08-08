@@ -567,6 +567,14 @@ class Server {
       name: cleanName(e.name),
       rating: numOr(e.rating, DEFAULT_RATING),
       me: e.account === $sender.account,
+      // 프로필 카드용. **옛 기록에는 없다** — 표는 점수가 움직일 때만 갱신되므로
+      // 이 필드가 붙기 전에 오른 사람은 다음 판까지 비어 있다. 클라이언트가 기본값으로
+      // 떨어뜨린다 (그림 폴백과 같은 규칙).
+      profile: typeof e.profile === 'string' ? e.profile : '',
+      unitKind: typeof e.unitKind === 'string' ? e.unitKind : '',
+      towerKind: typeof e.towerKind === 'string' ? e.towerKind : '',
+      wins: num(e.wins),
+      losses: num(e.losses),
     }));
   }
 
@@ -1402,12 +1410,19 @@ class Server {
    *
    * 봇 대체 판(`solo`)은 전적을 따로 센다. 화면에는 안 알리지만(§-7) 나중에 밸런스를
    * 볼 때 표본이 뭐였는지 알 수 있어야 한다.
+   *
+   * **친구 방(`private`)은 아무것도 안 준다** (2026-08-08 사용자 지시) — 코인도 점수도
+   * 전적도. 코드를 주고받아 만나는 자리라 상대를 고를 수 있고, 둘이 짜고 번갈아 져
+   * 주면 무엇이든 무한히 불릴 수 있다. **막는 곳은 여기 하나다** — 클라이언트가 보고를
+   * 안 하게 두는 것은 우회가 되므로 지불 지점에서 끊는다.
    */
   async #grantReward(state, slot, winnerSlot, towers) {
+    // 친구끼리 잡은 방인가. 방을 만들 때 `private: true` 가 찍힌다 (`hostRoom`).
+    const priv = state.private === true;
     // 이 판이 점수에 셀 만큼 길었는가 (`MIN_RATED_MS`). `endedAt` 은 첫 보고가 찍고
     // 두 번째 보고는 그 값을 그대로 읽으므로, 양쪽이 같은 판정을 받는다.
     const played = (state.endedAt || Date.now()) - (state.startedAt || 0);
-    const rated = state.startedAt > 0 && played >= MIN_RATED_MS;
+    const rated = !priv && state.startedAt > 0 && played >= MIN_RATED_MS;
     // 락 밖에서도 지불액을 알아야 한다 — 광고 2배가 이 값을 그대로 한 번 더 준다.
     let paid = 0;
     return await $lock(`acct:${$sender.account}`, async () => {
@@ -1415,19 +1430,24 @@ class Server {
       const outcome = winnerSlot === 0 ? 'draw' : winnerSlot === slot ? 'win' : 'loss';
       const base = outcome === 'win' ? REWARD_WIN : outcome === 'draw' ? REWARD_DRAW : REWARD_LOSS;
       const kept = Math.min(MAX_TOWERS, num(towers));
-      const total = base + kept * REWARD_PER_TOWER;
+      // 친구 방은 0원이다. `paid` 가 0이면 광고 2배(`claimDoubleReward`)도 `no_reward`
+      // 로 막히므로 그쪽에 따로 조건을 달 필요가 없다.
+      const total = priv ? 0 : base + kept * REWARD_PER_TOWER;
       paid = total;
       const solo = !!state.solo;
+      // 친구 방은 전적에도 안 센다 — 짜고 두면 승수가 그대로 거짓말이 되고, 순위표
+      // 프로필 카드가 그 숫자를 보여준다.
+      const counts = !priv;
       return await this.#saveAccount({
         ...a,
         coins: a.coins + total,
         // 봇 대체전도 로비의 일반 전적에 합산한다. solo 필드는 밸런스 분석용으로 함께 유지한다.
-        wins: a.wins + (outcome === 'win' ? 1 : 0),
-        losses: a.losses + (outcome === 'loss' ? 1 : 0),
-        draws: a.draws + (outcome === 'draw' ? 1 : 0),
-        soloWins: a.soloWins + (solo && outcome === 'win' ? 1 : 0),
-        soloLosses: a.soloLosses + (solo && outcome === 'loss' ? 1 : 0),
-        soloDraws: a.soloDraws + (solo && outcome === 'draw' ? 1 : 0),
+        wins: a.wins + (counts && outcome === 'win' ? 1 : 0),
+        losses: a.losses + (counts && outcome === 'loss' ? 1 : 0),
+        draws: a.draws + (counts && outcome === 'draw' ? 1 : 0),
+        soloWins: a.soloWins + (counts && solo && outcome === 'win' ? 1 : 0),
+        soloLosses: a.soloLosses + (counts && solo && outcome === 'loss' ? 1 : 0),
+        soloDraws: a.soloDraws + (counts && solo && outcome === 'draw' ? 1 : 0),
         rating: rated ? this.#ratingAfter(state, slot, outcome, a.rating) : a.rating,
       });
     }).then(async (saved) => {
@@ -1465,7 +1485,25 @@ class Server {
         for (const row of mine) await $global.deleteCollectionItem(BOARD_COLLECTION, row.__id);
         return;
       }
-      const entry = { account: a.account, name: a.name, rating: a.rating, updatedAt: Date.now() };
+      // **프로필 카드에 쓸 값을 여기 같이 적어 둔다.** 순위표를 누르면 그 사람의
+      // 아바타·착용 장비·전적이 보이는데, 그걸 계정에서 따로 읽으려면 남의 계정
+      // 주소를 클라이언트에 내려야 한다 (`getLeaderboard` 주석이 막아 둔 것이다).
+      // 표에 미리 실어 두면 그 원칙을 안 깨고도 보여줄 수 있다.
+      //
+      // 값이 갱신되는 시점은 **점수가 움직인 판 뒤**다. 그래서 상점에서 갈아입어도
+      // 다음 판까지는 옛 장비가 보인다 — 갈아입을 때마다 표를 쓰면 상점을 만질 때마다
+      // 순위표 락을 잡게 되어 그쪽이 더 비싸다.
+      const entry = {
+        account: a.account,
+        name: a.name,
+        rating: a.rating,
+        profile: a.profile,
+        unitKind: a.unitKind,
+        towerKind: a.towerKind,
+        wins: a.wins,
+        losses: a.losses,
+        updatedAt: Date.now(),
+      };
       if (mine[0]) {
         await $global.updateCollectionItem(BOARD_COLLECTION, { ...entry, __id: mine[0].__id });
         for (const duplicate of mine.slice(1)) {

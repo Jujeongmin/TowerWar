@@ -445,6 +445,102 @@ body {
 }
 
 /* 순위. `ol` 이라 번호는 브라우저가 매긴다 — 서버가 준 순서가 곧 등수다. */
+/* 순위 화면. **시상대는 고정이고 4등부터의 목록만 스크롤한다** (2026-08-09 사용자 지시).
+   그래서 화면 자체는 안 밀리게 잠그고, 넘침은 `.board-list` 한 곳에서만 받는다. */
+#board {
+  justify-content: flex-start;
+  padding-top: calc(56px + env(safe-area-inset-top));
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  gap: calc(8px * var(--ui-scale));
+  overflow: hidden;
+}
+
+/* 상위 세 명. 바닥을 맞춰 세워야 단상 높이 차이가 등수로 읽힌다. */
+.board-podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: calc(8px * var(--ui-scale));
+  width: 100%;
+  max-width: 380px;
+  flex: none;
+}
+
+.podium-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+/* 유닛이 서 있는 바닥. 종류마다 키가 달라(`sizeFactorOf`) 이 상자로 발끝을 맞춘다. */
+.podium-stage {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: calc(62px * var(--ui-scale));
+}
+
+.podium-unit {
+  image-rendering: pixelated;
+}
+
+.podium-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: calc(12px * var(--ui-scale));
+  color: #f2f7fb;
+}
+
+.podium-rating {
+  font-weight: 800;
+  font-size: calc(11px * var(--ui-scale));
+  color: #7dd3fc;
+}
+
+/* 단상. **높이가 곧 등수다** — 숫자를 못 읽어도 누가 1등인지 보인다. */
+.podium-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 3px;
+  border-radius: 6px 6px 0 0;
+  font-weight: 900;
+  font-size: calc(18px * var(--ui-scale));
+  color: #0b1017;
+}
+
+.podium-slot[data-rank='1'] .podium-block {
+  height: calc(52px * var(--ui-scale));
+  background: linear-gradient(180deg, #f5d76e, #c2921f);
+}
+
+.podium-slot[data-rank='2'] .podium-block {
+  height: calc(38px * var(--ui-scale));
+  background: linear-gradient(180deg, #dfe6ee, #97a8ba);
+}
+
+.podium-slot[data-rank='3'] .podium-block {
+  height: calc(28px * var(--ui-scale));
+  background: linear-gradient(180deg, #e0a678, #a3663a);
+}
+
+/* 내 자리. 목록의 `.board-row-me` 와 같은 신호(하늘색)를 쓴다. */
+.podium-slot-me .podium-name {
+  color: #7dd3fc;
+}
+
 .board-list {
   width: 100%;
   max-width: 380px;
@@ -453,6 +549,20 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* 넘치는 것은 여기서만 받는다. `min-height: 0` 이 없으면 flex 자식이 내용 높이만큼
+     늘어나 스크롤이 안 생긴다. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 막대는 감춘다 — 화면 전체 규칙과 같다 (`.screen`). */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.board-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 /* 줄 자체는 배경만 맡고, 배치와 클릭은 안쪽 버튼(`.board-hit`)이 맡는다 —

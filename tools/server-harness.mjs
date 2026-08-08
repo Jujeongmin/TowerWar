@@ -969,11 +969,11 @@ check('봇전 승리도 순위표에 오른다', boardSolo.some((e) => e.name ==
 // 1300 대 1300: 기대승률 0.5 → +4
 check('순위표 점수도 봇전 결과를 반영한다', boardSolo.find((e) => e.name === '캐럴').rating === 1304, boardSolo);
 
-// 43) 표는 10명에서 잘린다
+// 43) 표는 `BOARD_SIZE`(50)에서 잘린다
 collections.set('rankings', new Map());
 globalState = {
   ...globalState,
-  board: Array.from({ length: 10 }, (_, i) => ({ account: `0xF${i}`, name: `봇${i}`, rating: 9000 + i })),
+  board: Array.from({ length: 50 }, (_, i) => ({ account: `0xF${i}`, name: `봇${i}`, rating: 9000 + i })),
 };
 as(A); await server.leaveMatch().catch(() => {});
 as(B); await server.leaveMatch().catch(() => {});
@@ -989,7 +989,7 @@ age(croom.roomId);
 as(A); await server.reportResult(cs.slots['0xAAA'], 0);
 as(A);
 const board3 = await server.getLeaderboard();
-check('10명을 안 넘는다', board3.length === 10, board3.length);
+check('상한(50명)을 안 넘는다', board3.length === 50, board3.length);
 check('점수가 모자라면 표에 못 든다', board3.every((e) => e.name !== '앨리스'), board3);
 
 // 44) 짧게 끝난 판은 점수에 안 센다 (MIN_RATED_MS). 코인과 전적은 그대로 준다.

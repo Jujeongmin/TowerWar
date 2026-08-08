@@ -35,6 +35,14 @@ import type { Scene } from './scene';
 const CARD_TOWER_ART_H = 52;
 /** 가장 약한 유닛의 카드 그림 높이(px). 여기에 `sizeFactorOf` 를 곱한다. */
 const CARD_UNIT_ART_BASE_H = 46;
+/** 시상대 위 유닛의 기준 높이(px). 카드보다 크게 세운다 — 여기가 이 화면의 주인공이다. */
+const PODIUM_UNIT_ART_BASE_H = 52;
+
+/**
+ * 시상대에 세우는 순서. **가운데가 1등이다** — 올림픽 시상대와 같은 2·1·3 배치다
+ * (2026-08-09 사용자 지시). 값은 순위(1부터)다.
+ */
+const PODIUM_ORDER = [2, 1, 3] as const;
 
 /** 미리보기 이미지. 판에서 쓰는 것과 같은 파일이다 — P1(파랑) 기준. */
 function towerPreviewSrc(kind: TowerKind): string {
@@ -67,6 +75,7 @@ function asTowerKind(v: string): TowerKind {
 
 export class BoardScene implements Scene {
   private readonly list: HTMLElement;
+  private readonly podium: HTMLElement;
   private readonly note: HTMLElement;
   private readonly mascot: HTMLElement;
   private readonly card: HTMLElement;
@@ -91,6 +100,7 @@ export class BoardScene implements Scene {
     back: () => void,
   ) {
     const list = root.querySelector<HTMLElement>('#board-list');
+    const podium = root.querySelector<HTMLElement>('#board-podium');
     const note = root.querySelector<HTMLElement>('#board-note');
     const mascot = root.querySelector<HTMLElement>('#board-mascot');
     const backBtn = root.querySelector<HTMLButtonElement>('#btn-board-back');
@@ -106,6 +116,7 @@ export class BoardScene implements Scene {
     const cardClose = root.querySelector<HTMLButtonElement>('#btn-board-card-close');
     if (
       !list ||
+      !podium ||
       !note ||
       !mascot ||
       !backBtn ||
@@ -123,6 +134,7 @@ export class BoardScene implements Scene {
       throw new Error('순위 DOM이 예상과 다릅니다');
     }
     this.list = list;
+    this.podium = podium;
     this.note = note;
     this.mascot = mascot;
     this.card = card;
@@ -149,6 +161,7 @@ export class BoardScene implements Scene {
     // 들어올 때마다 새로 받는다. 판을 한 번 하고 돌아오면 순위가 바뀌어 있다.
     const mine = ++this.opened;
     this.list.replaceChildren();
+    this.podium.replaceChildren();
     this.show(null, t().boardLoading);
     void this.fetchBoard().then((board) => {
       if (mine !== this.opened) return;
@@ -158,9 +171,22 @@ export class BoardScene implements Scene {
 
   private show(board: BoardEntry[] | null, note: string): void {
     this.list.replaceChildren();
-    if (board && board.length > 0) {
-      for (const e of board) this.list.append(this.row(e));
+    this.podium.replaceChildren();
+
+    // 앞 세 명은 시상대로, 나머지는 목록으로. **세 명이 안 되면 있는 만큼만 세운다** —
+    // 서비스를 막 열었을 때는 한두 명뿐이고, 그때 빈 단상을 그리면 고장으로 보인다.
+    const top = board ? board.slice(0, 3) : [];
+    const rest = board ? board.slice(3) : [];
+    this.podium.hidden = top.length === 0;
+    for (const rank of PODIUM_ORDER) {
+      const e = top[rank - 1];
+      if (e) this.podium.append(this.podiumSlot(e, rank));
     }
+
+    // 목록은 4등부터다. `start` 를 안 주면 브라우저가 1번부터 매겨 순위가 어긋난다.
+    this.list.setAttribute('start', String(top.length + 1));
+    for (const e of rest) this.list.append(this.row(e));
+
     // 붙었는데 표가 비어 있는 경우. 대전이 한 판도 안 끝난 상태다 —
     // 사람전과 봇 대체전 모두 점수를 반영하므로, 아직 유효한 판이 끝나지 않은 상태다.
     const text = board && board.length === 0 ? t().boardEmpty : note;
@@ -168,6 +194,51 @@ export class BoardScene implements Scene {
     this.note.hidden = text.length === 0;
     // 목록이 있으면 마스코트는 자리만 먹는다. 빈 화면일 때만 세운다.
     this.mascot.hidden = (board?.length ?? 0) > 0;
+  }
+
+  /**
+   * 시상대 한 칸. 위에서부터 유닛 → 이름·점수 → 단상(등수 숫자) 순이다.
+   *
+   * 단상 높이는 CSS 가 `data-rank` 로 정한다 — 여기서 px 을 계산하면 짧은 화면 축소
+   * (`--ui-scale`)와 따로 놀게 된다.
+   */
+  private podiumSlot(e: BoardEntry, rank: number): HTMLElement {
+    const slot = document.createElement('button');
+    slot.className = e.me ? 'podium-slot podium-slot-me' : 'podium-slot';
+    slot.type = 'button';
+    slot.dataset.rank = String(rank);
+    slot.addEventListener('click', () => this.openCard(e));
+
+    const unit = asUnitKind(e.unitKind);
+    const art = document.createElement('img');
+    art.className = 'podium-unit';
+    art.alt = '';
+    art.src = unitPreviewSrc(unit);
+    // 센 유닛일수록 크게 — 판에서 보이는 크기 규칙과 같다 (`sizeFactorOf`).
+    art.style.height = `${Math.round(
+      PODIUM_UNIT_ART_BASE_H * sizeFactorOf(UNIT_KIND_META[unit].power),
+    )}px`;
+
+    // 유닛이 서 있을 바닥. 키가 제각각이라 이 상자로 발끝을 맞춘다.
+    const stage = document.createElement('span');
+    stage.className = 'podium-stage';
+    stage.append(art);
+
+    const name = document.createElement('span');
+    name.className = 'podium-name';
+    // textContent 다. 닉네임은 남이 정한 문자열이라 innerHTML 로 넣으면 안 된다.
+    name.textContent = e.name;
+
+    const rating = document.createElement('span');
+    rating.className = 'podium-rating';
+    rating.textContent = t().points(e.rating);
+
+    const block = document.createElement('span');
+    block.className = 'podium-block';
+    block.textContent = String(rank);
+
+    slot.append(stage, name, rating, block);
+    return slot;
   }
 
   private row(e: BoardEntry): HTMLElement {

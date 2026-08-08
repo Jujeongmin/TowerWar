@@ -16,7 +16,7 @@
  */
 import type { Agent8Client, BoardEntry } from '../net/agent8';
 import { watchRewardedAd } from '../net/ads';
-import type { ProfileId } from '../profiles';
+import { PROFILE_IDS, type ProfileId } from '../profiles';
 import type { UnitKind } from '../units';
 import type { TowerKind } from '../towers';
 import {
@@ -60,6 +60,17 @@ const DEV_BOARD: BoardEntry[] | null = import.meta.env.DEV
       // 옛 기록: 프로필 필드가 붙기 전에 표에 오른 사람. 전부 기본값으로 떨어져야 한다.
       { name: 'OldTimer', rating: 940, me: false, profile: '', unitKind: '', towerKind: '', wins: 0, losses: 0 },
       { name: '연습생', rating: 902, me: false, profile: 'slate', unitKind: 'beergang', towerKind: 'tower_hut', wins: 3, losses: 12 },
+      // 목록이 넘쳐야 스크롤이 보인다. 여기는 채우기용이라 이름만 번호로 찍는다.
+      ...Array.from({ length: 18 }, (_, i) => ({
+        name: `Player ${i + 11}`,
+        rating: 890 - i * 17,
+        me: false,
+        profile: PROFILE_IDS[i % PROFILE_IDS.length],
+        unitKind: i % 3 === 0 ? 'beergang_white' : 'beergang',
+        towerKind: i % 4 === 0 ? 'tower_keep' : 'tower_hut',
+        wins: 12 - (i % 9),
+        losses: 8 + (i % 11),
+      })),
     ]
   : null;
 

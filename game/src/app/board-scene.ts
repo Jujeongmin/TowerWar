@@ -55,6 +55,17 @@ function unitPreviewSrc(kind: UnitKind): string {
 }
 
 /**
+ * 정면을 보는 첫 프레임. **시상대 전용이다** (2026-08-09 사용자 지시).
+ *
+ * `down` 은 화면 아래로 걷는 그림이고, 그것이 곧 카메라 쪽을 보는 각도다
+ * (`tools/bake-units.ts` 의 `directions` — yaw 0). 단상에 세우는 그림은 옆모습보다
+ * 정면이 맞다. 굽는 쪽에 이미 있는 파일이라 3D 모델을 실행에 끌어들일 이유가 없다.
+ */
+function unitFrontSrc(kind: UnitKind): string {
+  return `/assets/unit/p1/${spriteKindOf(kind)}/down0.png`;
+}
+
+/**
  * 서버가 준 문자열을 아는 값으로 떨어뜨린다.
  *
  * **비어 있을 수 있다.** 순위표는 점수가 움직인 판 뒤에만 갱신되므로, 이 필드가
@@ -213,7 +224,7 @@ export class BoardScene implements Scene {
     const art = document.createElement('img');
     art.className = 'podium-unit';
     art.alt = '';
-    art.src = unitPreviewSrc(unit);
+    art.src = unitFrontSrc(unit);
     // 센 유닛일수록 크게 — 판에서 보이는 크기 규칙과 같다 (`sizeFactorOf`).
     art.style.height = `${Math.round(
       PODIUM_UNIT_ART_BASE_H * sizeFactorOf(UNIT_KIND_META[unit].power),

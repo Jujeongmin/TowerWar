@@ -20,13 +20,6 @@ const VOL_ROWS = [
 ] as const;
 
 /**
- * 제작자 팔로우 보상 금액. **`server.js` 의 `FOLLOW_REWARD_COINS` 와 같아야 한다** —
- * 여기 값은 안내 문구에 적는 용도일 뿐이고 실제로 주는 것은 서버다. 어긋나면 화면이
- * 거짓말을 한다 (상점의 `AD_COINS` 와 같은 규칙).
- */
-const FOLLOW_REWARD_COINS = 500;
-
-/**
  * 제작자 페이지. **폴백이다** — Verse8 밖에서 열렸을 때만 여기로 보낸다.
  *
  * 안에서는 부모 프레임에 `OPEN_FOLLOW_DIALOG` 를 보내는 쪽이 맞다 (`openFollow`).
@@ -273,6 +266,10 @@ export class SettingsScene implements Scene {
    *
    * **서버가 준 실패 코드를 그대로 화면에 쓰지 않는다** — `not_following` 은 사람이
    * 읽을 글이 아니다 (§-40).
+   *
+   * **평소에는 버튼만 둔다** (2026-08-08 사용자 지시 — "밑에 설명 없애줘"). 밑줄은
+   * 무슨 일이 벌어지는 중일 때만 쓴다: 청구가 도는 중이거나, 방금 실패했거나.
+   * 요소 자체를 지우지는 않았다 — 지우면 청구 실패가 아무 반응 없는 것이 된다.
    */
   private paintFollow(): void {
     const claimed = this.hasFollowReward() || this.followState === 'rewarded';
@@ -287,10 +284,6 @@ export class SettingsScene implements Scene {
     // 것이 없다. `claiming` 은 청구가 도는 중일 때만 걸린다.
     this.followBtn.disabled = claimed || this.claiming;
 
-    if (claimed) {
-      this.followNote.textContent = t().followReward(FOLLOW_REWARD_COINS);
-      return;
-    }
     // **누르는 즉시 문구가 바뀌어야 한다.** 서버 호출이 최대 8초(`CALL_TIMEOUT_MS`)를
     // 기다리는데 그동안 화면이 그대로면 누른 것 자체가 안 먹은 것처럼 보인다 —
     // 사용자는 그 사이 또 누르고(`claiming` 이라 무시된다), 한참 뒤에 뜬 실패 문구를
@@ -300,14 +293,10 @@ export class SettingsScene implements Scene {
       this.followNote.textContent = t().followClaiming;
       return;
     }
-    // 방금 청구해서 실패했으면 그 이유가 먼저다. 끝난 뒤에도 반드시 문구가 바뀐다.
-    if (this.claimResult !== null) {
-      this.followNote.textContent = followMessage(this.claimResult);
-      return;
-    }
-    this.followNote.textContent = go
-      ? `${t().followReward(FOLLOW_REWARD_COINS)} ${t().followGoNote}`
-      : `${t().followReward(FOLLOW_REWARD_COINS)} ${t().followHowTo}`;
+    // 방금 청구해서 실패했으면 그 이유를 남긴다. 성공했으면 버튼이 '받음'으로
+    // 잠기는 것으로 충분하다.
+    this.followNote.textContent =
+      !claimed && this.claimResult !== null ? followMessage(this.claimResult) : '';
   }
 
   /**

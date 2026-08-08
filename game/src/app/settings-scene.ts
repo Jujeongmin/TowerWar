@@ -38,14 +38,25 @@ const VOL_ROWS = [
 ] as const;
 
 /**
- * 팔로우 칸이 지금 무엇을 보여줄지. 서버에 물어봐야 정해진다.
+ * 제작자 페이지. **폴백이다** — Verse8 밖에서 열렸을 때만 여기로 보낸다.
  *
- * **게임에서 제작자 페이지를 열어 주지는 않는다** (2026-08-08 사용자 지시). 앱으로
- * 감싼 WebView 에서 `window.open` 이 조용히 무시돼(새 창을 만들 대리자가 없다) 눌러도
- * 아무 일이 없었고, 부모 프레임에 다이얼로그를 부탁하는 길은 배포 URL 을 직접 여는
- * 앱에는 부모가 없어서 못 쓴다. 그래서 팔로우는 플랫폼에서 하고 오는 것으로 두고,
- * 여기 버튼은 보상 청구만 한다.
+ * 안에서는 부모 프레임에 `OPEN_FOLLOW_DIALOG` 를 보내는 쪽이 맞다 (`openFollow`).
  */
+const FOLLOW_URL = 'https://verse8.io/@jjm';
+
+/**
+ * 부모 프레임(Verse8 셸)에 팔로우 다이얼로그를 열라고 보내는 메시지.
+ *
+ * **`@verse8/platform` 에 타입이 없다.** 문서에도 없어서 한동안 존재하지 않는 줄 알고
+ * 새 탭만 열었다 — 다른 Verse8 게임이 쓰고 있는 것을 보고 알았다 (2026-08-07).
+ * `OPEN_VX_SHOP_DIALOG` 와 같은 평면의 메시지다.
+ */
+const OPEN_FOLLOW_DIALOG = 'OPEN_FOLLOW_DIALOG';
+
+/** 다이얼로그가 닫히면 부모가 이걸 돌려준다. `payload.isFollowing` 이 결과다. */
+const FOLLOW_DIALOG_CLOSED = 'FOLLOW_DIALOG_CLOSED';
+
+/** 팔로우 칸이 지금 무엇을 보여줄지. 서버에 물어봐야 정해진다. */
 type FollowState = 'following' | 'not_following' | 'rewarded' | 'unknown';
 
 /**
@@ -85,9 +96,10 @@ export class SettingsScene implements Scene {
   /**
    * 팔로우 칸을 아예 안 보여주는가.
    *
-   * **터치 기기에서는 통째로 감춘다** (2026-08-08 사용자 지시). 팔로우는 Verse8
-   * 플랫폼에서 해야 하는데 게임이 그 페이지를 열어 줄 수 없어(앱 WebView 에서
-   * `window.open` 이 무시된다) 폰에서는 누를 수 있는 것이 사실상 없다.
+   * **터치 기기에서는 통째로 감춘다** (2026-08-08 사용자 지시). 팔로우하러 가는 길이
+   * 손가락 화면에서만 막혀 있어서다 — 앱으로 감싼 WebView 는 `window.open` 을 조용히
+   * 무시하고(눌러도 아무 일이 없다), 배포 주소를 직접 여는 앱에는 다이얼로그를 부탁할
+   * 부모 프레임도 없다. PC 는 멀쩡하므로 거기서는 원래대로 둔다.
    *
    * 판정을 여기 한 곳에서만 한다 — CSS 로도 감추면 화면과 서버 조회가 따로 놀아
    * 안 보이는 칸 때문에 서버를 계속 부르게 된다.
@@ -146,14 +158,16 @@ export class SettingsScene implements Scene {
     this.followBtn = followBtn;
     this.followNote = followNote;
     followBtn.addEventListener('click', () => void this.onFollowClick());
-    // **플랫폼에서 팔로우하고 돌아오면 저절로 반영돼야 한다.** 팔로우는 이 게임
-    // 밖에서 하므로 돌아왔을 때 이 화면은 살아 있는 채로 가려졌다 다시 보일 뿐이다
-    // — `enter()` 가 다시 안 불린다. 이 씬은 앱이 사는 동안 계속 있으므로 리스너를
-    // 떼지 않는다. 대신 설정이 실제로 떠 있을 때만 일하도록 `refreshFollowState`
-    // 안에서 걸러 낸다.
+    // **팔로우하고 돌아오면 저절로 '받기'가 돼야 한다.** 팔로우 페이지를 새 탭으로 열기
+    // 때문에 이 화면은 살아 있는 채로 가려질 뿐이다 — `enter()` 가 다시 안 불린다.
+    // 이 씬은 앱이 사는 동안 계속 있으므로 리스너를 떼지 않는다. 대신 설정이 실제로
+    // 떠 있을 때만 일하도록 `refreshFollowState` 안에서 걸러 낸다.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') void this.refreshFollowState();
     });
+    // **다이얼로그 경로에서는 `visibilitychange` 가 안 터진다.** 부모가 오버레이를
+    // 띄우는 것이라 이 탭은 계속 보이는 상태다 — 그래서 닫힘 메시지를 따로 받는다.
+    window.addEventListener('message', (e: MessageEvent) => this.onParentMessage(e));
 
     for (const { key, field } of VOL_ROWS) {
       const line = document.createElement('label');
@@ -268,6 +282,17 @@ export class SettingsScene implements Scene {
   }
 
   /**
+   * 버튼이 지금 무엇을 하는가. 딱 둘이다: 팔로우하러 보내거나(`'go'`), 보상을
+   * 청구하거나(`'claim'`).
+   *
+   * **`'go'` 는 서버가 "지금 팔로워가 아니다"라고 말했을 때만 나온다.** 모를 때
+   * (`'unknown'`·아직 안 물어봄) 청구 쪽으로 두는 이유는 `followState` 주석에 있다.
+   */
+  private get followMode(): 'go' | 'claim' {
+    return this.followState === 'not_following' ? 'go' : 'claim';
+  }
+
+  /**
    * 팔로우 보상 칸.
    *
    * **서버가 준 실패 코드를 그대로 화면에 쓰지 않는다** — `not_following` 은 사람이
@@ -279,8 +304,15 @@ export class SettingsScene implements Scene {
    */
   private paintFollow(): void {
     const claimed = this.hasFollowReward() || this.followState === 'rewarded';
+    const go = !claimed && this.followMode === 'go';
 
-    this.followBtn.textContent = claimed ? t().followClaimed : t().followGo;
+    this.followBtn.textContent = claimed
+      ? t().followClaimed
+      : go
+        ? t().followGo
+        : t().followClaim;
+    // **`'go'` 일 때는 안 잠근다.** 팔로우하러 가는 것은 서버를 안 부르므로 기다릴
+    // 것이 없다. `claiming` 은 청구가 도는 중일 때만 걸린다.
     this.followBtn.disabled = claimed || this.claiming;
 
     // **누르는 즉시 문구가 바뀌어야 한다.** 서버 호출이 최대 8초(`CALL_TIMEOUT_MS`)를
@@ -296,6 +328,49 @@ export class SettingsScene implements Scene {
     // 잠기는 것으로 충분하다.
     this.followNote.textContent =
       !claimed && this.claimResult !== null ? followMessage(this.claimResult) : '';
+  }
+
+  /**
+   * 팔로우하러 보낸다.
+   *
+   * **Verse8 안에서는 부모가 다이얼로그를 띄운다.** 게임을 벗어나지 않으므로 판·매칭이
+   * 살아 있고, 모바일 앱 WebView 처럼 새 탭이 안 열리는 곳에서도 된다.
+   *
+   * `auth` 질의 문자열이 안에서 열렸다는 표시다. 없으면(로컬 개발·직접 연 주소) 부모가
+   * 없거나 이 메시지를 모르므로 **평범한 새 탭**으로 떨어진다. 같은 탭을 옮기면 판이
+   * 통째로 사라진다.
+   */
+  private openFollow(): void {
+    const inside = new URLSearchParams(window.location.search).get('auth') !== null;
+    if (inside) {
+      window.parent.postMessage({ type: OPEN_FOLLOW_DIALOG }, '*');
+      return;
+    }
+    // `noopener` 는 새 탭이 `window.opener` 로 이 창을 만지지 못하게 한다.
+    window.open(FOLLOW_URL, '_blank', 'noopener');
+  }
+
+  /**
+   * 부모 셸이 보낸 메시지. 지금 받는 것은 팔로우 다이얼로그가 닫혔다는 것 하나다.
+   *
+   * **보낸 곳을 안 가린다.** 가릴 수가 없다 — 부모 오리진이 웹 셸이냐 모바일
+   * WebView 냐에 따라 다르고 문서에도 없다. 그래도 되는 이유는 **이 값이 그림만
+   * 바꾸기 때문이다.** 누가 위조해 봐야 버튼이 '받기'로 보일 뿐이고, 눌러도 서버가
+   * 자기 락 안에서 `$sender.isFollower` 를 다시 읽어 거절한다. 코인이 새지 않는다.
+   */
+  private onParentMessage(e: MessageEvent): void {
+    const data = e.data as { type?: unknown; payload?: { isFollowing?: unknown } } | null;
+    if (!data || typeof data !== 'object' || data.type !== FOLLOW_DIALOG_CLOSED) return;
+    if (this.root.hidden) return;
+    // 팔로우 안 하고 닫았을 수도 있다. 그때는 '팔로우하러 가기'로 그냥 둔다.
+    if (data.payload?.isFollowing !== true) return;
+    this.followState = 'following';
+    // 아까의 `not_following` 문구는 낡았다.
+    this.claimResult = null;
+    this.paintFollow();
+    // 부모 말은 그림용이다. 서버에도 확인해 둔다 — 이미 받은 계정이면 '받음'으로
+    // 잠겨야 하는데 그 사실은 부모가 모른다.
+    void this.refreshFollowState();
   }
 
   /**
@@ -325,19 +400,25 @@ export class SettingsScene implements Scene {
     this.paintFollow();
   }
 
-  /**
-   * **누르면 곧장 청구한다.** 팔로우 여부는 서버가 `$sender.isFollower` 로 직접 읽으므로
-   * 아직 안 했으면 거절이 돌아오고, 그 이유가 밑줄에 뜬다 (`followNotYet` — "게임
-   * 페이지에서 팔로우한 뒤 눌러 주세요"). 게임이 팔로우 페이지를 열어 주지는 않는다
-   * (2026-08-08 사용자 지시 — 앱 WebView 에서 새 창이 안 열려 무반응이었다).
-   */
   private async onFollowClick(): Promise<void> {
     if (this.claiming || this.hasFollowReward()) return;
+
+    // 아직 팔로우 안 했다 — 청구해 봐야 서버가 거절한다. 팔로우할 곳으로 보낸다.
+    if (this.followMode === 'go') {
+      audio.play('tap');
+      this.openFollow();
+      // 실패 문구를 들고 있었으면 지운다 — 이제 안내는 "팔로우하고 오라"는 것이다.
+      this.claimResult = null;
+      this.paintFollow();
+      return;
+    }
 
     this.claiming = true;
     this.paintFollow();
     const err = await this.onClaimFollow();
     this.claiming = false;
+    // 서버가 "팔로워가 아니다"라고 했으면 버튼을 팔로우하러 가기로 바꾼다. 같은 버튼을
+    // 또 누르게 두면 실패만 반복된다.
     if (err !== null && err.includes('not_following')) this.followState = 'not_following';
     this.claimResult = err ?? 'ok';
     if (err === null) audio.play('purchase');

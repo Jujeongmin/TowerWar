@@ -1109,7 +1109,7 @@ as(H);
 userStates.set('0xHHH', { ...defaultsFor('0xHHH'), coins: 0 });
 
 const ad1 = await server.claimAdCoins('req-1');
-check('광고 보상 = +60 (검증 없이 바로)', ad1.coins === 60, ad1.coins);
+check('광고 보상 = +200 (검증 없이 바로)', ad1.coins === 200, ad1.coins);
 
 // 쿨다운 — 바로 다시 부르면 거절한다 ("연타" 만 막는다).
 let aerr = null;
@@ -1119,14 +1119,14 @@ check('연달아 부르면 거절 (쿨다운)', aerr === 'ad_cooldown', aerr);
 // 쿨다운이 지나면 다시 받는다. 빈 requestId 로도 된다 (검증을 안 하므로).
 userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 });
 const adAgain = await server.claimAdCoins('');
-check('쿨다운 지나면 다시 받는다 (빈 requestId 로도)', adAgain.coins === 120, adAgain.coins);
+check('쿨다운 지나면 다시 받는다 (빈 requestId 로도)', adAgain.coins === 400, adAgain.coins);
 
 // **하루 상한이 없다.** 쿨다운만 비켜 주면 몇 번이든 받는다.
 for (let i = 0; i < 20; i++) {
   userStates.set('0xHHH', { ...userStates.get('0xHHH'), adAt: 0 });
   await server.claimAdCoins(`req-many-${i}`);
 }
-check('하루 상한 없음 — 20번 더 받아도 안 막힘', (await server.getAccount()).coins === 120 + 20 * 60, (await server.getAccount()).coins);
+check('하루 상한 없음 — 20번 더 받아도 안 막힘', (await server.getAccount()).coins === 400 + 20 * 200, (await server.getAccount()).coins);
 
 // 52) 광고 2배 — 서버가 지불한 금액을 그대로 한 번 더, 판당 한 번. 검증 없음.
 as(A); await server.leaveMatch().catch(() => {});

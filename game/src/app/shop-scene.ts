@@ -26,7 +26,7 @@ import {
  * 광고 한 번에 주는 코인. **`server.js` 의 `AD_COINS` 와 같아야 한다** — 여기 값은
  * 버튼에 적는 용도일 뿐이고, 실제로 주는 것은 서버다. 어긋나면 화면이 거짓말을 한다.
  */
-const AD_COINS = 60;
+const AD_COINS = 200;
 import {
   MAX_UNIT_POWER,
   SHOP_PREMIUM_ORDER,

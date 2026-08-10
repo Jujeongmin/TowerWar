@@ -575,6 +575,10 @@ class Server {
    * **이름은 안 겹치는 값이 아니라서** 클라이언트가 이름으로 자기를 찾으면 안 된다.
    *
    * 계정 id는 안 내려준다. 순위 표시에 필요 없고, 내려주면 남의 계정 주소가 퍼진다.
+   *
+   * **배열이 아니라 객체다** (2026-08-10). 표는 상위 `BOARD_SIZE` 줄로 잘리므로 그 밖에
+   * 있는 사람은 자기 등수를 알 길이 없었다 — `myRank` · `total` 을 같이 실어 준다.
+   * 옛 클라이언트는 배열을 기대하지만, 새 클라이언트가 두 모양을 다 받아 준다.
    */
   async getLeaderboard() {
     await this.#migrateLegacyBoard();
@@ -585,7 +589,7 @@ class Server {
       orderBy: [{ field: 'rating', direction: 'desc' }],
       limit: BOARD_SIZE,
     });
-    return rows.map((e) => ({
+    const entries = rows.map((e) => ({
       name: cleanName(e.name),
       rating: numOr(e.rating, DEFAULT_RATING),
       me: e.account === $sender.account,
@@ -598,6 +602,35 @@ class Server {
       wins: num(e.wins),
       losses: num(e.losses),
     }));
+    return {
+      rows: entries,
+      myRank: await this.#myBoardRank(entries),
+      total: await $global.countCollectionItems(BOARD_COLLECTION),
+    };
+  }
+
+  /**
+   * 내 등수. 표에 안 올랐으면 `null` 이다 (이름을 아직 안 정한 계정이 그렇다).
+   *
+   * **표 안에 있으면 줄 번호를 그대로 쓴다.** 동점자가 있을 때 "나보다 위인 사람 수"로
+   * 세면 셋이 1017점일 때 모두 2위가 되는데, 화면은 그 셋을 2·3·4위 자리에 그린다 —
+   * 시상대에 3이 적힌 사람에게 "2위"라고 알려 주게 된다. 잘린 표 바깥일 때만 세어서
+   * 매기고, 그때는 화면에 비교할 줄이 없으므로 어긋날 일도 없다.
+   */
+  async #myBoardRank(entries) {
+    const inTable = entries.findIndex((e) => e.me);
+    if (inTable >= 0) return inTable + 1;
+
+    const mine = await $global.getCollectionItems(BOARD_COLLECTION, {
+      filters: [{ field: 'account', operator: '==', value: $sender.account }],
+    });
+    if (!mine[0]) return null;
+    const above = await $global.countCollectionItems(BOARD_COLLECTION, {
+      filters: [
+        { field: 'rating', operator: '>', value: numOr(mine[0].rating, DEFAULT_RATING) },
+      ],
+    });
+    return above + 1;
   }
 
   /**

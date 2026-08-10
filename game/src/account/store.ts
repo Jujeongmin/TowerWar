@@ -14,7 +14,7 @@
  *
  * 씬들은 `current` 를 읽고 콜백으로 사기만 한다. 온라인/오프라인 분기는 이 파일에만 있다.
  */
-import type { Agent8Client, BoardEntry } from '../net/agent8';
+import type { Agent8Client, BoardEntry, BoardResult } from '../net/agent8';
 import { watchRewardedAd } from '../net/ads';
 import { PROFILE_IDS, type ProfileId } from '../profiles';
 import type { UnitKind } from '../units';
@@ -74,6 +74,12 @@ const DEV_BOARD: BoardEntry[] | null = import.meta.env.DEV
     ]
   : null;
 
+/** 개발용 가짜 표를 진짜 응답과 같은 모양으로 감싼다. `me` 로 표시된 줄이 내 등수다. */
+function devBoard(rows: BoardEntry[]): BoardResult {
+  const mine = rows.findIndex((e) => e.me);
+  return { rows, myRank: mine >= 0 ? mine + 1 : null, total: rows.length };
+}
+
 /**
  * 광고 두 배 청구의 결과.
  *
@@ -91,10 +97,35 @@ export interface RatingChange {
 export class AccountStore {
   private account: Account = loadAccount();
   private net: Agent8Client | null = null;
+  /**
+   * 붙이려고 했던 상대. **실패해도 들고 있는다** — `net` 은 성공했을 때만 채워지므로
+   * 이것이 없으면 재연결에 쓸 클라이언트를 되찾을 수 없다.
+   */
+  private client: Agent8Client | null = null;
+  /**
+   * 지금 돌고 있는 연결 시도. **여러 화면이 동시에 불러도 하나로 합친다** —
+   * Verse8 은 살아 있는 연결이 하나뿐이라 `connect` 를 겹쳐 부르면 앞 소켓을 닫는다
+   * (`net/agent8.ts` 의 `connect` 주석).
+   */
+  private connecting: Promise<boolean> | null = null;
 
   /** 서버 계정을 쓰고 있는가. UI가 아니라 로그·디버그용이다. */
   get online(): boolean {
     return this.net !== null;
+  }
+
+  /**
+   * 붙어 있으면 그대로, 아니면 다시 붙어 본다. **화면이 서버를 쓰기 직전에 부른다.**
+   *
+   * 부팅 연결이 한 번 실패하면 `net` 이 `null` 로 남아 그 세션 내내 오프라인이었다 —
+   * 순위·상점·매칭이 전부 죽고 새로고침 말고는 살릴 방법이 없었다.
+   *
+   * 못 붙어도 던지지 않는다. 부르는 쪽은 오프라인 경로를 이미 갖고 있다.
+   */
+  async ensureOnline(): Promise<boolean> {
+    if (this.net) return true;
+    if (!this.client) return false;
+    return await this.connect(this.client);
   }
 
   get current(): Account {
@@ -106,6 +137,16 @@ export class AccountStore {
    * 화면에는 안 드러낸다 (§-7과 같은 규칙).
    */
   async connect(net: Agent8Client): Promise<boolean> {
+    this.client = net;
+    // 이미 도는 시도가 있으면 그것을 기다린다. 겹쳐 부르면 앞 소켓이 닫힌다.
+    if (this.connecting) return await this.connecting;
+    this.connecting = this.doConnect(net).finally(() => {
+      this.connecting = null;
+    });
+    return await this.connecting;
+  }
+
+  private async doConnect(net: Agent8Client): Promise<boolean> {
     try {
       if (!(await net.connect())) throw new Error('연결이 거부되었습니다');
       const local = this.account;
@@ -162,19 +203,23 @@ export class AccountStore {
   }
 
   /**
-   * 상위 10명. **오프라인이면 `null` 이다** — 빈 배열로 내리면 화면이 "아직 아무도 안
+   * 순위표. **오프라인이면 `null` 이다** — 빈 표로 내리면 화면이 "아직 아무도 안
    * 올랐다"로 읽어 버린다. 서버가 없는 것과 표가 비어 있는 것은 다른 사정이다.
+   *
+   * **부르기 전에 재연결을 시도한다.** 부팅 때 한 번 실패하면 그 세션 내내 오프라인이라
+   * 순위가 영영 안 열렸다 — 여기 들어온 것 자체가 "지금 필요하다"는 신호다.
    */
-  async leaderboard(): Promise<BoardEntry[] | null> {
+  async leaderboard(): Promise<BoardResult | null> {
+    await this.ensureOnline();
     const board = await this.fetchBoard();
     // 개발 중에는 빈 표 대신 가짜 줄을 보여준다. **로컬 백엔드는 붙어 있어도 표가
     // 늘 비어 있다** — 순위는 서버가 판마다 고치는 것인데 그 서버가 없다. 진짜 표가
     // 있으면 그쪽이 먼저다.
-    if (DEV_BOARD && (board === null || board.length === 0)) return DEV_BOARD;
+    if (DEV_BOARD && (board === null || board.rows.length === 0)) return devBoard(DEV_BOARD);
     return board;
   }
 
-  private async fetchBoard(): Promise<BoardEntry[] | null> {
+  private async fetchBoard(): Promise<BoardResult | null> {
     if (!this.net) return null;
     try {
       return await this.net.getLeaderboard();

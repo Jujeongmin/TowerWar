@@ -107,6 +107,12 @@ export interface Strings {
   boardLoading: string;
   boardOffline: string;
   boardEmpty: string;
+  /** 다시 붙어 보는 버튼. 순위가 안 열렸을 때만 뜬다. */
+  boardRetry: string;
+  /** 하단 내 순위 줄. 표가 잘려서 내 줄이 안 보일 때도 등수를 알려 준다. */
+  boardMyRank: (rank: number, total: number) => string;
+  /** 아직 표에 안 올랐을 때 (닉네임만 정하고 한 판도 안 끝낸 상태). */
+  boardUnranked: string;
   points: (n: number) => string;
   // 매치
   playAgain: string;
@@ -241,6 +247,9 @@ const en: Strings = {
   boardLoading: 'Loading…',
   boardOffline: 'Not connected, so the ranking is unavailable',
   boardEmpty: 'Nobody has made the ranking yet',
+  boardRetry: 'Try again',
+  boardMyRank: (rank, total) => `Your rank #${rank} of ${total}`,
+  boardUnranked: 'Not ranked yet',
   points: (n) => `${n} pts`,
   playAgain: 'Find Match',
   toLobby: 'Lobby',
@@ -402,6 +411,9 @@ const ko: Strings = {
   boardLoading: '불러오는 중…',
   boardOffline: '서버에 연결되지 않아 순위를 볼 수 없습니다',
   boardEmpty: '아직 순위에 오른 사람이 없습니다',
+  boardRetry: '다시 시도',
+  boardMyRank: (rank, total) => `내 순위 ${rank}위 / ${total}명`,
+  boardUnranked: '아직 순위에 안 올랐습니다',
   points: (n) => `${n}점`,
   playAgain: '다시 매칭',
   toLobby: '로비로',
@@ -565,6 +577,9 @@ const zh: Strings = {
   boardLoading: '加载中…',
   boardOffline: '未连接服务器，无法查看排行榜',
   boardEmpty: '还没有人登上排行榜',
+  boardRetry: '重试',
+  boardMyRank: (rank, total) => `我的排名 第${rank}名 / 共${total}人`,
+  boardUnranked: '尚未上榜',
   points: (n) => `${n} 分`,
   playAgain: '重新匹配',
   toLobby: '返回大厅',
@@ -734,6 +749,9 @@ const vi: Strings = {
   boardLoading: 'Đang tải…',
   boardOffline: 'Chưa kết nối nên không xem được bảng xếp hạng',
   boardEmpty: 'Chưa có ai lên bảng xếp hạng',
+  boardRetry: 'Thử lại',
+  boardMyRank: (rank, total) => `Hạng của bạn #${rank} / ${total}`,
+  boardUnranked: 'Chưa có hạng',
   points: (n) => `${n} điểm`,
   playAgain: 'Tìm trận',
   toLobby: 'Sảnh chờ',

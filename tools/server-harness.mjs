@@ -938,7 +938,7 @@ age(lroom.roomId);
 as(A); await server.reportResult(ls.slots['0xAAA'], 0);
 as(B); await server.reportResult(ls.slots['0xAAA'], 0);
 as(A);
-const board1 = await server.getLeaderboard();
+const board1 = (await server.getLeaderboard()).rows;
 check('두 사람 다 순위표에 오른다', board1.length === 2, board1);
 check('점수 내림차순이다', board1[0].name === '앨리스' && board1[1].name === '밥', board1);
 check('점수는 판이 끝난 뒤 값이다', board1[0].rating === 1208 && board1[1].rating === 992, board1);
@@ -959,7 +959,7 @@ age(rroom.roomId);
 as(A); const revA = await server.reportResult(rs.slots['0xBBB'], 0); // 이번엔 밥이 이긴다
 as(B); await server.reportResult(rs.slots['0xBBB'], 0);
 as(A);
-const board2 = await server.getLeaderboard();
+const board2 = (await server.getLeaderboard()).rows;
 check('같은 사람이 두 칸을 안 쓴다', board2.length === 2, board2);
 check('내려간 점수로 갱신된다', board2.find((e) => e.name === '앨리스').rating === revA.rating, board2);
 
@@ -968,7 +968,7 @@ check('내려간 점수로 갱신된다', board2.find((e) => e.name === '앨리�
 userStates.set('0xCCC', { ...defaultsFor('0xCCC'), name: '캐럴', rating: 1300 });
 await soloMatch(C, 1);
 as(A);
-const boardSolo = await server.getLeaderboard();
+const boardSolo = (await server.getLeaderboard()).rows;
 check('봇전 승리도 순위표에 오른다', boardSolo.some((e) => e.name === '캐럴'), boardSolo);
 // 1300 대 1300: 기대승률 0.5 → +4
 check('순위표 점수도 봇전 결과를 반영한다', boardSolo.find((e) => e.name === '캐럴').rating === 1304, boardSolo);
@@ -992,7 +992,7 @@ const cs = await $global.getRoomState(croom.roomId);
 age(croom.roomId);
 as(A); await server.reportResult(cs.slots['0xAAA'], 0);
 as(A);
-const board3 = await server.getLeaderboard();
+const board3 = (await server.getLeaderboard()).rows;
 check('상한(50명)을 안 넘는다', board3.length === 50, board3.length);
 check('점수가 모자라면 표에 못 든다', board3.every((e) => e.name !== '앨리스'), board3);
 
@@ -1020,7 +1020,7 @@ check('짧은 판은 점수가 안 움직인다', quick.rating === 1000, quick.r
 check('그래도 코인은 준다 = 100 + 3*8', quick.coins === 124, quick.coins);
 check('전적도 쌓인다', quick.wins === 1, quick);
 as(A);
-check('짧은 판은 순위표에도 안 오른다', (await server.getLeaderboard()).length === 0, await server.getLeaderboard());
+check('짧은 판은 순위표에도 안 오른다', ((await server.getLeaderboard()).rows).length === 0, (await server.getLeaderboard()).rows);
 
 // 45) 20초를 넘긴 판은 정상적으로 점수가 움직인다 (같은 방을 손으로 늙힌다)
 as(A); await server.leaveMatch().catch(() => {});
@@ -1039,7 +1039,7 @@ as(A);
 const slow = await server.reportResult(rooms.get(lroom2.roomId).state.slots['0xAAA'], 0);
 check('긴 판은 점수가 움직인다 1000 → 1016', slow.rating === 1016, slow.rating);
 as(A);
-check('긴 판은 순위표에 오른다', (await server.getLeaderboard()).some((e) => e.name === '앨리스'), await server.getLeaderboard());
+check('긴 판은 순위표에 오른다', ((await server.getLeaderboard()).rows).some((e) => e.name === '앨리스'), (await server.getLeaderboard()).rows);
 
 // 46) 시작한 적 없는 방에는 보고를 못 한다
 as(C); await server.leaveMatch().catch(() => {});
@@ -1242,7 +1242,7 @@ const privLose = await server.reportResult(ps.slots['0xAAA'], 2);
 check('친구 방 패배도 코인이 0', privLose.coins === 0, privLose.coins);
 check('친구 방 패배도 전적에 안 쌓인다', privLose.losses === 0, privLose);
 as(A);
-check('친구 방은 순위표에도 안 오른다', (await server.getLeaderboard()).length === 0);
+check('친구 방은 순위표에도 안 오른다', ((await server.getLeaderboard()).rows).length === 0);
 // 지불액이 0이라 광고 2배도 탈 것이 없다 — 그쪽에 따로 조건을 안 달아도 막힌다.
 let pderr = null;
 try { await server.claimDoubleReward('req-priv'); } catch (e) { pderr = e.message; }
@@ -1271,7 +1271,7 @@ const cs2 = await $global.getRoomState(croom2.roomId);
 as(A); await server.reportResult(cs2.slots['0xAAA'], 4);
 as(B); await server.reportResult(cs2.slots['0xAAA'], 1);
 as(A);
-const cardBoard = await server.getLeaderboard();
+const cardBoard = (await server.getLeaderboard()).rows;
 const mineRow = cardBoard.find((e) => e.name === '앨리스');
 check('아바타가 실려 온다', mineRow.profile === 'gold', mineRow);
 check('착용 유닛이 실려 온다', mineRow.unitKind === 'beergang_gold', mineRow);
@@ -1283,7 +1283,7 @@ check('계정 id는 여전히 안 내려간다', cardBoard.every((e) => e.accoun
 collections.get('rankings').set('legacy-1', {
   __id: 'legacy-1', account: '0xZZZ', name: '옛사람', rating: 1100,
 });
-const mixed = await server.getLeaderboard();
+const mixed = (await server.getLeaderboard()).rows;
 const legacy = mixed.find((e) => e.name === '옛사람');
 check('옛 기록은 프로필 필드가 빈 문자열', legacy.profile === '' && legacy.unitKind === '' && legacy.towerKind === '', legacy);
 check('옛 기록의 전적은 0', legacy.wins === 0 && legacy.losses === 0, legacy);
@@ -1312,18 +1312,18 @@ as(B); await server.reportResult(fsB.slots['0xAAA'], 1);
 
 // 판이 끝난 시점의 값 — 아직 기본 장비다.
 as(A);
-const beforeSwap = (await server.getLeaderboard()).find((e) => e.name === '앨리스');
+const beforeSwap = ((await server.getLeaderboard()).rows).find((e) => e.name === '앨리스');
 check('판 뒤에는 그때 장비가 실린다', beforeSwap.unitKind === DEFAULT_UNIT_KIND, beforeSwap);
 
 // 판을 안 하고 상점에서 갈아입기만 한다.
 await server.selectUnitKind('beergang_gold');
 await server.selectTowerKind('tower_keep');
 await server.setName('앨리스2');
-const afterSwap = (await server.getLeaderboard()).find((e) => e.name === '앨리스2');
+const afterSwap = ((await server.getLeaderboard()).rows).find((e) => e.name === '앨리스2');
 check('순위표를 열면 갈아입은 유닛이 바로 보인다', afterSwap.unitKind === 'beergang_gold', afterSwap);
 check('타워도 바로 보인다', afterSwap.towerKind === 'tower_keep', afterSwap);
 check('바꾼 이름도 따라온다', !!afterSwap, afterSwap);
-check('칸이 늘어나지 않는다', (await server.getLeaderboard()).length === 2);
+check('칸이 늘어나지 않는다', ((await server.getLeaderboard()).rows).length === 2);
 
 // **표에 없는 사람은 열어도 안 들어간다.** 넣어 버리면 점수가 낮아 못 든 사람까지
 // 전부 컬렉션에 쌓이고, `BOARD_SIZE` 는 읽기 제한이라 표가 계속 커진다.
@@ -1331,9 +1331,55 @@ const H2 = { account: '0xJJJ', roomId: null };
 as(H2);
 await server.getAccount();
 await server.setName('구경꾼');
-const afterPeek = await server.getLeaderboard();
+const afterPeek = (await server.getLeaderboard()).rows;
 check('표에 없는 사람은 열어도 안 들어간다', afterPeek.length === 2, afterPeek.map((e) => e.name));
 check('구경꾼은 표에 없다', afterPeek.every((e) => e.name !== '구경꾼'), afterPeek.map((e) => e.name));
+
+// ── 내 등수 (myRank · total) ────────────────────────────────────
+//
+// 표는 상위 `BOARD_SIZE` 줄로 잘려 오므로 그 밖에 있는 사람은 줄로는 자기를 못 찾는다.
+// 서버가 등수를 따로 실어 준다 (2026-08-10).
+
+as(A);
+const rankA = await server.getLeaderboard();
+check('표 안에 있으면 줄 번호가 곧 내 등수', rankA.myRank === 1, rankA.myRank);
+check('총원은 잘리기 전 값이다', rankA.total === 2, rankA.total);
+
+as(B);
+const rankB = await server.getLeaderboard();
+check('2등도 자기 등수를 받는다', rankB.myRank === 2, rankB.myRank);
+
+as(H2);
+const rankPeek = await server.getLeaderboard();
+check('표에 안 오른 계정은 등수가 null', rankPeek.myRank === null, rankPeek.myRank);
+check('표에 안 올라도 총원은 온다', rankPeek.total === 2, rankPeek.total);
+
+// **동점이어도 화면 순서와 안 어긋난다.** "나보다 위인 사람 수"로만 세면 동점자가 모두
+// 같은 등수가 되는데, 화면은 그들을 위아래로 갈라 그린다 — 시상대에 2가 적힌 사람에게
+// "1위"라고 알려 주게 된다.
+userStates.set('0xAAA', { ...userStates.get('0xAAA'), rating: 1000 });
+as(A); await server.getLeaderboard();
+as(B); await server.getLeaderboard();
+as(A);
+const tied = await server.getLeaderboard();
+const tiedRow = tied.rows.findIndex((e) => e.me) + 1;
+check('동점일 때도 등수가 줄 번호와 같다', tied.myRank === tiedRow, { myRank: tied.myRank, tiedRow });
+
+// 표가 잘려 내 줄이 안 보일 때. 이때만 "나보다 위인 사람 수"로 센다.
+for (let i = 0; i < 55; i++) {
+  await $global.addCollectionItem('rankings', {
+    account: `0xFAKE${i}`,
+    name: `허수아비${i}`,
+    rating: 2000 + i,
+    createdAt: 1,
+    updatedAt: 1,
+  });
+}
+as(A);
+const cut = await server.getLeaderboard();
+check('잘린 표 밖에서는 내 줄이 안 온다', !cut.rows.some((e) => e.me), cut.rows.length);
+check('그래도 등수는 온다', cut.myRank === 56, cut.myRank);
+check('총원은 잘린 뒤에도 전체다', cut.total === 57, cut.total);
 
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);

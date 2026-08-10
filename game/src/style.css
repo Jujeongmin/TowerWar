@@ -453,6 +453,72 @@ body {
   padding-bottom: calc(18px + env(safe-area-inset-bottom));
   gap: calc(8px * var(--ui-scale));
   overflow: hidden;
+  /* `position` 은 건드리지 않는다. `.screen` 의 `fixed` 를 덮으면 화면이 통째로 흐트러진다
+     (`left: 50%` + `transform` 으로 게임 컬럼에 맞춰 둔 것이 풀린다). `fixed` 도
+     절대 배치의 기준이 되므로 조명 레이어는 이대로 이 상자에 눕는다. */
+}
+
+/* 무대 조명. **그림이 아니라 그라디언트다** — `game/public/assets/` 는 라이선스 때문에
+   저장소에 없어서(`.gitignore`) 새 PNG 를 늘리면 다른 PC 에서 화면이 깨진다.
+   시상대 뒤에만 깔리고 목록 아래는 원래 어둠으로 돌아간다. */
+.board-stagelight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    /* 무대 바닥 선. 시상대 발끝 높이에 가로로 한 줄 긋는다. */
+    linear-gradient(
+        90deg,
+        transparent,
+        rgba(125, 211, 252, 0.22) 22%,
+        rgba(125, 211, 252, 0.28) 50%,
+        rgba(125, 211, 252, 0.22) 78%,
+        transparent
+      )
+      center calc(38% + 1px) / 78% 1px no-repeat,
+    /* 1등 위에서 내려오는 빛. */
+      radial-gradient(
+        ellipse 46% 34% at 50% 12%,
+        rgba(245, 215, 110, 0.16),
+        transparent 70%
+      ),
+    /* 무대 전체의 옅은 푸른 기운. */
+      radial-gradient(ellipse 90% 42% at 50% 26%, rgba(56, 108, 158, 0.3), transparent 72%);
+}
+
+/* 조명 위로 올려야 내용이 보인다. `.board-stagelight` 만 0 이고 나머지는 전부 1 이다.
+   **`position` 은 안 준다** — 프로필 카드 덮개(`.board-card-dim`)가 `absolute` 인데
+   이 선택자가 더 세서(`#board` 가 들어 있다) `relative` 로 덮어 버린다. `.screen` 이
+   flex 라 flex 자식은 `position` 없이도 `z-index` 가 먹는다. */
+#board > *:not(.board-stagelight) {
+  z-index: 1;
+}
+
+/* 순위 전용 제목. 상점 제목(`.shop-title`)을 같이 쓰던 것을 뗀다 — 흐린 회색이라
+   화면에서 가장 먼저 읽혀야 할 줄이 가장 늦게 읽혔다. */
+.board-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: calc(13px * var(--ui-scale));
+  letter-spacing: 0.16em;
+  color: #e8d9a8;
+  text-transform: uppercase;
+}
+
+/* 제목 좌우의 금색 선. 가운데 글씨를 무대 현수막처럼 잡아 준다. */
+.board-title::before,
+.board-title::after {
+  content: '';
+  width: calc(34px * var(--ui-scale));
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(232, 217, 168, 0.65));
+}
+
+.board-title::after {
+  background: linear-gradient(90deg, rgba(232, 217, 168, 0.65), transparent);
 }
 
 /* 상위 세 명. 바닥을 맞춰 세워야 단상 높이 차이가 등수로 읽힌다. */
@@ -495,8 +561,67 @@ body {
   image-rendering: pixelated;
 }
 
-.podium-name {
+/* 1등 왕관·2·3등 메달이 앉는 자리. **비어 있어도 높이를 차지한다** — 왕관이 있는 칸만
+   높아지면 세 사람의 발끝이 어긋나 단상 높이 차이가 안 읽힌다. */
+.podium-badge {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: calc(15px * var(--ui-scale));
+  margin-bottom: 1px;
+}
+
+.podium-badge svg {
+  width: calc(20px * var(--ui-scale));
+  height: auto;
+  /* 색은 등수별 규칙(아래)이 정한다. */
+  fill: currentColor;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
+}
+
+.podium-slot[data-rank='1'] .podium-badge {
+  color: #f7dd7a;
+}
+
+/* 2·3등은 메달. 글자가 없다 — 등수는 단상 숫자가 이미 말한다. 여기는 금속 색만 얹어
+   시상대라는 것을 알리는 자리다. */
+.podium-slot[data-rank='2'] .podium-badge::after,
+.podium-slot[data-rank='3'] .podium-badge::after {
+  content: '';
+  width: calc(11px * var(--ui-scale));
+  height: calc(11px * var(--ui-scale));
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.podium-slot[data-rank='2'] .podium-badge::after {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #9fb0c2 70%);
+}
+
+.podium-slot[data-rank='3'] .podium-badge::after {
+  background: radial-gradient(circle at 35% 30%, #f0bd93, #a3663a 70%);
+}
+
+/* 아바타 + 이름 한 줄. 목록 줄과 같은 짝이라 위아래가 한 화면으로 읽힌다. */
+.podium-who {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   max-width: 100%;
+}
+
+.podium-avatar {
+  flex: none;
+  width: calc(15px * var(--ui-scale));
+  height: calc(15px * var(--ui-scale));
+  border-radius: 50%;
+  object-fit: contain;
+  background: var(--avatar-bg, #3a4757);
+}
+
+.podium-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -511,44 +636,84 @@ body {
   color: #7dd3fc;
 }
 
-/* 단상. **높이가 곧 등수다** — 숫자를 못 읽어도 누가 1등인지 보인다. */
+/* 단상. **높이가 곧 등수다** — 숫자를 못 읽어도 누가 1등인지 보인다.
+   윗면(`.podium-top`)을 따로 얹어 두께를 낸다. */
 .podium-block {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  margin-top: 3px;
-  border-radius: 6px 6px 0 0;
+  /* 윗면이 이 자리로 올라온다. */
+  margin-top: calc(6px * var(--ui-scale));
+  border-radius: 2px 2px 0 0;
+  box-shadow: inset 0 -6px 10px rgba(0, 0, 0, 0.28), 0 -1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* 단상 윗면. 위로 삐져나온 얇은 판이라 정면보다 밝다 — 이것 하나로 입체가 선다. */
+.podium-top {
+  position: absolute;
+  left: -2%;
+  right: -2%;
+  top: calc(-5px * var(--ui-scale));
+  height: calc(5px * var(--ui-scale));
+  border-radius: 3px 3px 0 0;
+}
+
+.podium-num {
   font-weight: 900;
-  font-size: calc(18px * var(--ui-scale));
-  color: #0b1017;
+  font-size: calc(20px * var(--ui-scale));
+  color: rgba(11, 16, 23, 0.85);
+  /* 음각. 밝은 단상 위에서 숫자가 파인 것처럼 보인다. */
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .podium-slot[data-rank='1'] .podium-block {
-  height: calc(52px * var(--ui-scale));
-  background: linear-gradient(180deg, #f5d76e, #c2921f);
+  height: calc(58px * var(--ui-scale));
+  background: linear-gradient(180deg, #f5d76e, #b9871a);
+}
+
+.podium-slot[data-rank='1'] .podium-top {
+  background: linear-gradient(180deg, #fff3c4, #e5c256);
 }
 
 .podium-slot[data-rank='2'] .podium-block {
-  height: calc(38px * var(--ui-scale));
-  background: linear-gradient(180deg, #dfe6ee, #97a8ba);
+  height: calc(40px * var(--ui-scale));
+  background: linear-gradient(180deg, #dfe6ee, #8b9db0);
+}
+
+.podium-slot[data-rank='2'] .podium-top {
+  background: linear-gradient(180deg, #ffffff, #cfd8e2);
 }
 
 .podium-slot[data-rank='3'] .podium-block {
   height: calc(28px * var(--ui-scale));
-  background: linear-gradient(180deg, #e0a678, #a3663a);
+  background: linear-gradient(180deg, #e0a678, #96592f);
 }
 
-/* 내 자리. 목록의 `.board-row-me` 와 같은 신호(하늘색)를 쓴다. */
+.podium-slot[data-rank='3'] .podium-top {
+  background: linear-gradient(180deg, #f6cba7, #d09a6c);
+}
+
+/* 내 자리. 목록의 `.board-row-me` 와 같은 신호(하늘색)를 쓴다 — 이름만으로는 약해서
+   단상 테두리까지 같이 준다. */
 .podium-slot-me .podium-name {
   color: #7dd3fc;
+}
+
+.podium-slot-me .podium-block {
+  outline: 1px solid rgba(125, 211, 252, 0.75);
+  outline-offset: -1px;
 }
 
 .board-list {
   width: 100%;
   max-width: 380px;
   margin: 0 auto 4px;
-  padding: 0 0 0 28px;
+  /* **번호는 코드가 적는다** (`.board-rank`). 브라우저가 매기던 `ol` 번호는 크기도 색도
+     못 정해서 흐린 곁글씨로만 보였고, 왼쪽 여백(28px)도 그 번호 자리였다. */
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -575,19 +740,51 @@ body {
   background: rgba(255, 255, 255, 0.04);
 }
 
+/* 홀짝 대비. 줄이 열 개 넘게 이어지면 어디까지가 한 줄인지 흐려진다. */
+.board-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.065);
+}
+
+/* 시상대 바로 다음 두 줄. **상위권은 목록 안에서도 구분돼야 한다** — 4등과 20등이
+   똑같이 생기면 시상대에서 목록으로 넘어가는 순간 등급이 뚝 끊긴 것처럼 보인다. */
+.board-row[data-rank='4'],
+.board-row[data-rank='5'] {
+  box-shadow: inset 0 0 0 1px rgba(223, 230, 238, 0.22);
+}
+
+.board-row[data-rank='5'] {
+  box-shadow: inset 0 0 0 1px rgba(223, 230, 238, 0.12);
+}
+
 .board-hit {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border: 0;
   border-radius: 8px;
   background: none;
   color: inherit;
   font: inherit;
   text-align: left;
+}
+
+/* 등수 배지. 목록에서 가장 먼저 읽혀야 하는 값이라 자리를 고정한다 — 너비가 들쭉날쭉하면
+   아바타 줄이 등수마다 어긋난다. */
+.board-rank {
+  flex: none;
+  width: calc(22px * var(--ui-scale));
+  text-align: center;
+  font-weight: 800;
+  font-size: calc(12px * var(--ui-scale));
+  color: #8ea2b6;
+}
+
+.board-row[data-rank='4'] .board-rank,
+.board-row[data-rank='5'] .board-rank {
+  color: #dfe6ee;
 }
 
 /* 목록의 작은 아바타. 카드의 큰 것과 같은 파일·같은 배경색 규칙이다. */
@@ -619,6 +816,29 @@ body {
   font-weight: 800;
   color: #7dd3fc;
   flex: none;
+}
+
+/* 내 순위. **목록 바깥이라 스크롤을 안 탄다** — 표는 상위 몇 명으로 잘려 오므로 그 밖에
+   있으면 아무리 내려도 내 줄이 없었다. 아래 절반이 비던 자리를 이것이 채운다. */
+.board-mine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(125, 211, 252, 0.38);
+  background: linear-gradient(180deg, rgba(125, 211, 252, 0.16), rgba(125, 211, 252, 0.07));
+}
+
+/* 등수 글귀("내 순위 127위 / 340명"). 길이가 언어마다 달라 자리를 안 고정한다. */
+.board-mine-rank {
+  flex: none;
+  font-weight: 800;
+  font-size: calc(11px * var(--ui-scale));
+  color: #cfe9fb;
 }
 
 /* 순위표 프로필 카드. 튜토리얼 창과 같은 규칙이다 — 화면 안에 깔고 `hidden` 으로

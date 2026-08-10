@@ -103,7 +103,12 @@ const lobby = new LobbyScene(
     pvp.setMode('friend');
     switchTo(pvp);
   },
-  () => switchTo(shop),
+  // 상점은 유료(VX)와 광고 보상이 서버를 탄다. 들어가는 김에 끊긴 연결을 되살린다 —
+  // 기다리지는 않는다. 화면은 로컬 사본으로 먼저 떠야 한다.
+  () => {
+    void store.ensureOnline();
+    switchTo(shop);
+  },
   () => switchTo(board),
   () => switchTo(settings),
   () => switchTo(nameScene),
@@ -129,6 +134,11 @@ const board = new BoardScene(
   need('board'),
   () => store.leaderboard(),
   () => switchTo(lobby),
+  () => ({
+    name: store.current.name,
+    profile: store.current.profile,
+    rating: store.current.rating,
+  }),
 );
 const pvp = new PvpScene(
   need('pvp'),
@@ -144,6 +154,7 @@ const pvp = new PvpScene(
   },
   () => switchTo(lobby),
   net,
+  () => store.ensureOnline(),
 );
 const shop = new ShopScene(
   need('shop'),
@@ -253,8 +264,21 @@ function afterConnect(): void {
   if (current === lobby) lobby.enter();
 }
 
+/**
+ * 부팅 연결이 실패했을 때 다시 시도하는 간격(ms).
+ *
+ * 회선이 느리면 8초 타임아웃(`net/agent8.ts` 의 `CALL_TIMEOUT_MS`)에 걸려 첫 시도가
+ * 그냥 죽는데, 전에는 거기서 끝이라 그 세션 내내 오프라인이었다. 뒤로 갈수록 벌리는
+ * 이유는 정말로 서버가 없을 때 헛호출을 세 번으로 막기 위해서다.
+ */
+const BOOT_RETRY_MS = [2000, 5000, 10000];
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function bootAccount(): Promise<void> {
-  if (await store.connect(net)) {
+  if (await connectWithRetry()) {
     afterConnect();
     // 결제가 다른 탭에서 끝나므로 언제 끝나는지 우리가 모른다. 구독해 두고
     // 구매 결과는 서버의 `$onItemPurchased`가 지급한다. 결제창이 닫히면
@@ -269,6 +293,9 @@ async function bootAccount(): Promise<void> {
     return;
   }
 
+  // 여기까지 왔으면 네 번 다 실패했다. 그래도 오프라인으로 못 박지는 않는다 —
+  // 순위·상점·매칭에 들어갈 때 `ensureOnline()` 이 다시 붙어 본다.
+
   // 배포 전에는 Verse8에 붙을 수 없어 방 코드도 친구랑 하기도 시험할 수가 없다.
   // 개발 빌드에서만, 진짜 server.js 를 로컬에서 돌려 그 자리를 메운다.
   // 프로덕션에서는 이 분기가 통째로 떨어져 나간다 (동적 import + DEV 치환).
@@ -280,6 +307,17 @@ async function bootAccount(): Promise<void> {
   } catch (e) {
     console.warn('[dev] 로컬 백엔드를 못 띄웠습니다:', String((e as Error)?.message ?? e));
   }
+}
+
+/** 첫 시도 뒤 `BOOT_RETRY_MS` 간격으로 다시 붙어 본다. 붙는 즉시 멈춘다. */
+async function connectWithRetry(): Promise<boolean> {
+  if (await store.connect(net)) return true;
+  for (const ms of BOOT_RETRY_MS) {
+    await wait(ms);
+    // 그 사이에 다른 화면이 붙였을 수 있다 (`ensureOnline`). 그러면 더 안 붙는다.
+    if (await store.ensureOnline()) return true;
+  }
+  return false;
 }
 
 window.addEventListener('keydown', (e) => {

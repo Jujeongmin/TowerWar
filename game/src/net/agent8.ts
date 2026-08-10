@@ -523,12 +523,26 @@ export class Agent8Client {
   }
 
   /**
-   * 상위 10명. 서버가 판이 끝날 때마다 고치는 표를 그대로 읽는다 —
+   * 순위표. 서버가 판이 끝날 때마다 고치는 표를 그대로 읽는다 —
    * 클라이언트가 정렬하거나 자르지 않는다.
+   *
+   * **두 모양을 다 받는다.** 새 서버는 `{ rows, myRank, total }` 을 주고, 아직 안 올라간
+   * 서버는 줄 배열만 준다. 서버와 클라이언트의 배포 시점이 어긋나는 동안 화면이
+   * 안 깨져야 한다 — 옛 모양이면 내 등수를 모르는 것으로 다룬다.
    */
-  async getLeaderboard(): Promise<BoardEntry[]> {
+  async getLeaderboard(): Promise<BoardResult> {
     const res = await withTimeout(this.server.remoteFunction('getLeaderboard', []), '순위 불러오기');
-    return Array.isArray(res) ? (res as BoardEntry[]) : [];
+    if (Array.isArray(res)) {
+      const rows = res as BoardEntry[];
+      return { rows, myRank: null, total: rows.length };
+    }
+    const board = res as Partial<BoardResult> | null;
+    const rows = Array.isArray(board?.rows) ? board.rows : [];
+    return {
+      rows,
+      myRank: typeof board?.myRank === 'number' ? board.myRank : null,
+      total: typeof board?.total === 'number' ? board.total : rows.length,
+    };
   }
 
   /** 닉네임 저장. 정리·검사는 서버가 한다 (`server.js` `setName`). */
@@ -599,6 +613,20 @@ export interface BoardEntry {
   towerKind: string;
   wins: number;
   losses: number;
+}
+
+/**
+ * 순위표 한 판. 줄만이 아니라 **내가 전체에서 몇 등인지**까지 온다.
+ *
+ * 표는 상위 몇 명으로 잘려 오므로 그 밖에 있는 사람은 줄로는 자기를 못 찾는다
+ * (`server.js` 의 `getLeaderboard`).
+ */
+export interface BoardResult {
+  rows: BoardEntry[];
+  /** 표에 안 오른 계정은 `null`. 이름을 아직 안 정했을 때가 그렇다. */
+  myRank: number | null;
+  /** 표에 오른 사람 수 전체. 잘리기 전 값이다. */
+  total: number;
 }
 
 /** 서버가 들고 있는 계정. `account/account.ts` 의 로컬 계정과 필드가 겹친다. */

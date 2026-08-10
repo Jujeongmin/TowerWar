@@ -145,6 +145,14 @@ export class PvpScene implements Scene {
      * 접속이 둘이 되어, 서버가 보는 계정과 화면이 보는 계정이 갈릴 수 있다.
      */
     private readonly client: Agent8Client,
+    /**
+     * 붙어 있는지 확인하고, 아니면 다시 붙는다 (`AccountStore.ensureOnline`).
+     *
+     * **`client.connect()` 를 직접 안 부른다.** 계정 쪽과 매칭 쪽이 각자 붙으면 살아 있는
+     * 소켓을 서로 닫는다(`net/agent8.ts` 의 `connect` 주석). 한 곳으로 모아야 겹친 호출이
+     * 하나로 합쳐지고, 매칭하러 들어온 김에 계정도 같이 살아난다.
+     */
+    private readonly ensureOnline: () => Promise<boolean>,
   ) {
     const title = root.querySelector<HTMLElement>('#pvp-title');
     const status = root.querySelector<HTMLElement>('#pvp-status');
@@ -366,7 +374,7 @@ export class PvpScene implements Scene {
     if (!alive()) return;
 
     try {
-      const connected = await this.client.connect();
+      const connected = await this.ensureOnline();
       if (!alive()) return;
       if (!connected) throw new Error(t().connectionRefused);
 

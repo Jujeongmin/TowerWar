@@ -11,7 +11,7 @@
  * 조회하려면 남의 계정 주소를 받아야 하는데 서버가 그것을 막고 있다
  * (`server.js` 의 `getLeaderboard` 주석).
  */
-import type { BoardEntry } from '../net/agent8';
+import type { BoardEntry, BoardResult } from '../net/agent8';
 import { DEFAULT_PROFILE, isProfileId, profileBg, profileSrc, type ProfileId } from '../profiles';
 import {
   DEFAULT_UNIT_KIND,
@@ -36,6 +36,17 @@ import type { Scene } from './scene';
  * (2026-08-09 사용자 지시). 값은 순위(1부터)다.
  */
 const PODIUM_ORDER = [2, 1, 3] as const;
+
+/**
+ * 1등 머리 위 왕관. **그림 파일이 아니라 인라인 SVG 다** — `game/public/assets/` 는
+ * 라이선스 때문에 저장소에 없어서(`.gitignore`), 새 PNG 를 늘리면 다른 PC 에서 화면이
+ * 깨진다. 색은 CSS 가 `fill: currentColor` 로 준다.
+ *
+ * 상수 문자열이라 `innerHTML` 로 넣어도 된다 — 이 파일이 `textContent` 를 고집하는
+ * 것은 닉네임처럼 **남이 정한 문자열**을 넣을 때의 이야기다.
+ */
+const CROWN_SVG =
+  '<svg viewBox="0 0 24 15" aria-hidden="true"><path d="M1.6 13.4 L0.6 2.4 L6.8 6.6 L12 0.8 L17.2 6.6 L23.4 2.4 L22.4 13.4 Z"/></svg>';
 
 /** 미리보기 이미지. 판에서 쓰는 것과 같은 파일이다 — P1(파랑) 기준. */
 function towerPreviewSrc(kind: TowerKind): string {
@@ -91,6 +102,12 @@ export class BoardScene implements Scene {
   private readonly cardUnitName: HTMLElement;
   private readonly cardTowerArt: HTMLImageElement;
   private readonly cardTowerName: HTMLElement;
+  private readonly mine: HTMLElement;
+  private readonly mineRank: HTMLElement;
+  private readonly mineAvatar: HTMLImageElement;
+  private readonly mineName: HTMLElement;
+  private readonly mineRating: HTMLElement;
+  private readonly retryBtn: HTMLButtonElement;
   /**
    * 이번에 연 화면의 번호. 응답이 늦게 오는 사이에 나갔다 다시 들어오면
    * 앞 응답이 뒤 화면을 덮어쓴다 — 번호가 다르면 버린다.
@@ -99,9 +116,14 @@ export class BoardScene implements Scene {
 
   constructor(
     private readonly root: HTMLElement,
-    /** 상위 10명. 서버에 못 붙었으면 `null` (`AccountStore.leaderboard`). */
-    private readonly fetchBoard: () => Promise<BoardEntry[] | null>,
+    /** 순위표 한 판. 서버에 못 붙었으면 `null` (`AccountStore.leaderboard`). */
+    private readonly fetchBoard: () => Promise<BoardResult | null>,
     back: () => void,
+    /**
+     * 내 이름·아바타·점수. **표에 내 줄이 없을 때 쓴다** — 상위 몇 명으로 잘려 오므로
+     * 그 밖에 있으면 서버가 내 줄을 안 준다. 값 자체는 계정에 이미 있다.
+     */
+    private readonly myAccount: () => { name: string; profile: string; rating: number },
   ) {
     const list = root.querySelector<HTMLElement>('#board-list');
     const podium = root.querySelector<HTMLElement>('#board-podium');
@@ -118,6 +140,22 @@ export class BoardScene implements Scene {
     const cardTowerArt = root.querySelector<HTMLImageElement>('#board-card-tower-art');
     const cardTowerName = root.querySelector<HTMLElement>('#board-card-tower-name');
     const cardClose = root.querySelector<HTMLButtonElement>('#btn-board-card-close');
+    const mine = root.querySelector<HTMLElement>('#board-mine');
+    const mineRank = root.querySelector<HTMLElement>('#board-mine-rank');
+    const mineAvatar = root.querySelector<HTMLImageElement>('#board-mine-avatar');
+    const mineName = root.querySelector<HTMLElement>('#board-mine-name');
+    const mineRating = root.querySelector<HTMLElement>('#board-mine-rating');
+    const retryBtn = root.querySelector<HTMLButtonElement>('#btn-board-retry');
+    if (
+      !mine ||
+      !mineRank ||
+      !mineAvatar ||
+      !mineName ||
+      !mineRating ||
+      !retryBtn
+    ) {
+      throw new Error('순위 DOM이 예상과 다릅니다');
+    }
     if (
       !list ||
       !podium ||
@@ -150,7 +188,15 @@ export class BoardScene implements Scene {
     this.cardUnitName = cardUnitName;
     this.cardTowerArt = cardTowerArt;
     this.cardTowerName = cardTowerName;
+    this.mine = mine;
+    this.mineRank = mineRank;
+    this.mineAvatar = mineAvatar;
+    this.mineName = mineName;
+    this.mineRating = mineRating;
+    this.retryBtn = retryBtn;
     backBtn.addEventListener('click', back);
+    // 다시 붙어 본다. `fetchBoard` 안에서 재연결까지 한다 (`AccountStore.leaderboard`).
+    retryBtn.addEventListener('click', () => this.load());
     cardClose.addEventListener('click', () => this.closeCard());
     // 바깥을 눌러도 닫힌다. 패널 안쪽 클릭은 여기까지 안 온다(`stopPropagation` 대신
     // 대상 비교를 쓴다 — 패널 안에 버튼이 늘어도 따로 손댈 것이 없다).
@@ -163,6 +209,11 @@ export class BoardScene implements Scene {
     this.root.hidden = false;
     this.closeCard();
     // 들어올 때마다 새로 받는다. 판을 한 번 하고 돌아오면 순위가 바뀌어 있다.
+    this.load();
+  }
+
+  /** 표를 받아 그린다. [다시 시도] 도 이것을 부른다. */
+  private load(): void {
     const mine = ++this.opened;
     this.list.replaceChildren();
     this.podium.replaceChildren();
@@ -173,31 +224,60 @@ export class BoardScene implements Scene {
     });
   }
 
-  private show(board: BoardEntry[] | null, note: string): void {
+  private show(board: BoardResult | null, note: string): void {
     this.list.replaceChildren();
     this.podium.replaceChildren();
 
+    const rows = board?.rows ?? [];
     // 앞 세 명은 시상대로, 나머지는 목록으로. **세 명이 안 되면 있는 만큼만 세운다** —
     // 서비스를 막 열었을 때는 한두 명뿐이고, 그때 빈 단상을 그리면 고장으로 보인다.
-    const top = board ? board.slice(0, 3) : [];
-    const rest = board ? board.slice(3) : [];
+    const top = rows.slice(0, 3);
+    const rest = rows.slice(3);
     this.podium.hidden = top.length === 0;
     for (const rank of PODIUM_ORDER) {
       const e = top[rank - 1];
       if (e) this.podium.append(this.podiumSlot(e, rank));
     }
 
-    // 목록은 4등부터다. `start` 를 안 주면 브라우저가 1번부터 매겨 순위가 어긋난다.
-    this.list.setAttribute('start', String(top.length + 1));
-    for (const e of rest) this.list.append(this.row(e));
+    // 목록은 4등부터다. **등수는 코드가 적는다** — 브라우저가 매기는 `ol` 번호는
+    // 크기도 색도 못 정해서 흐린 곁글씨로만 보였다.
+    rest.forEach((e, i) => this.list.append(this.row(e, top.length + i + 1)));
 
     // 붙었는데 표가 비어 있는 경우. 대전이 한 판도 안 끝난 상태다 —
     // 사람전과 봇 대체전 모두 점수를 반영하므로, 아직 유효한 판이 끝나지 않은 상태다.
-    const text = board && board.length === 0 ? t().boardEmpty : note;
+    const text = board && rows.length === 0 ? t().boardEmpty : note;
     this.note.textContent = text;
     this.note.hidden = text.length === 0;
     // 목록이 있으면 마스코트는 자리만 먹는다. 빈 화면일 때만 세운다.
-    this.mascot.hidden = (board?.length ?? 0) > 0;
+    this.mascot.hidden = rows.length > 0;
+    // 못 받았을 때만 [다시 시도] 를 남긴다. 불러오는 중에는 안 띄운다 —
+    // 두 번 눌러 봐야 앞 요청만 버려진다.
+    this.retryBtn.hidden = board !== null || note !== t().boardOffline;
+    this.showMine(board);
+  }
+
+  /**
+   * 하단 내 순위 줄. **표에 내 줄이 없어도 뜬다** — 등수는 서버가 `myRank` 로 따로
+   * 실어 주고, 이름·아바타·점수는 계정에 이미 있다.
+   *
+   * 이름을 아직 안 정했으면 표에 오르지도 않으므로 줄 자체를 감춘다.
+   */
+  private showMine(board: BoardResult | null): void {
+    const me = board?.rows.find((e) => e.me);
+    const account = this.myAccount();
+    if (!board || !account.name) {
+      this.mine.hidden = true;
+      return;
+    }
+    this.mine.hidden = false;
+    this.mineRank.textContent =
+      board.myRank === null ? t().boardUnranked : t().boardMyRank(board.myRank, board.total);
+    const profile = asProfile(me ? me.profile : account.profile);
+    this.mineAvatar.src = profileSrc(profile);
+    this.mineAvatar.style.setProperty('--avatar-bg', profileBg(profile));
+    // textContent 다. 닉네임은 남이 정한 문자열이라 innerHTML 로 넣으면 안 된다.
+    this.mineName.textContent = me ? me.name : account.name;
+    this.mineRating.textContent = t().points(me ? me.rating : account.rating);
   }
 
   /**
@@ -228,32 +308,64 @@ export class BoardScene implements Scene {
     stage.className = 'podium-stage';
     stage.append(art);
 
+    // 1등은 왕관, 2·3등은 메달. **자리는 늘 잡아 둔다** — 왕관이 있는 칸만 높아지면
+    // 세 사람의 발끝이 안 맞아 단상 높이 차이가 안 읽힌다.
+    const badge = document.createElement('span');
+    badge.className = 'podium-badge';
+    if (rank === 1) badge.innerHTML = CROWN_SVG;
+
+    // 아바타를 이름 옆에 붙인다. 목록 줄과 같은 그림·같은 배경색 규칙이다 —
+    // 전에는 시상대에만 없어서 위아래가 따로 노는 화면이었다.
+    const profile = asProfile(e.profile);
+    const avatar = document.createElement('img');
+    avatar.className = 'podium-avatar';
+    avatar.alt = '';
+    avatar.src = profileSrc(profile);
+    avatar.style.setProperty('--avatar-bg', profileBg(profile));
+
     const name = document.createElement('span');
     name.className = 'podium-name';
     // textContent 다. 닉네임은 남이 정한 문자열이라 innerHTML 로 넣으면 안 된다.
     name.textContent = e.name;
 
+    const who = document.createElement('span');
+    who.className = 'podium-who';
+    who.append(avatar, name);
+
     const rating = document.createElement('span');
     rating.className = 'podium-rating';
     rating.textContent = t().points(e.rating);
 
+    // 단상. 윗면(`.podium-top`)을 따로 두어 두께를 낸다 — 숫자에 그림자를 주는 것만으로는
+    // 평면으로 보인다.
     const block = document.createElement('span');
     block.className = 'podium-block';
-    block.textContent = String(rank);
+    const top = document.createElement('span');
+    top.className = 'podium-top';
+    const num = document.createElement('span');
+    num.className = 'podium-num';
+    num.textContent = String(rank);
+    block.append(top, num);
 
-    slot.append(stage, name, rating, block);
+    slot.append(badge, stage, who, rating, block);
     return slot;
   }
 
-  private row(e: BoardEntry): HTMLElement {
+  private row(e: BoardEntry, rank: number): HTMLElement {
     const li = document.createElement('li');
     li.className = e.me ? 'board-row board-row-me' : 'board-row';
+    // 4·5등만 금속 톤 테두리를 받는다 (CSS). 상위권이 목록 안에서도 구분된다.
+    li.dataset.rank = String(rank);
 
     // **줄 전체가 버튼이다.** 이름만 누르게 하면 어디를 눌러야 카드가 뜨는지 안 보인다.
     const hit = document.createElement('button');
     hit.className = 'board-hit';
     hit.type = 'button';
     hit.addEventListener('click', () => this.openCard(e));
+
+    const badge = document.createElement('span');
+    badge.className = 'board-rank';
+    badge.textContent = String(rank);
 
     const avatar = document.createElement('img');
     avatar.className = 'board-avatar';
@@ -270,7 +382,7 @@ export class BoardScene implements Scene {
     rating.className = 'board-rating';
     rating.textContent = t().points(e.rating);
 
-    hit.append(avatar, name, rating);
+    hit.append(badge, avatar, name, rating);
     li.append(hit);
     return li;
   }

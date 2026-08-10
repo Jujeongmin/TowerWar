@@ -190,6 +190,10 @@
            밑줄(#follow-note)은 청구 중·실패일 때만 쓴다 — 평소에는 비어 있다. -->
       <div class="shop" id="follow-section">
         <p class="shop-title" data-i18n="followSection">Support the creator</p>
+        <!-- 보상이 있다는 것을 적어 둔다 (2026-08-10 사용자 지시). 버튼만 있으면 눌러야
+             할 이유가 화면에 없다. **금액이 들어가므로 코드가 채운다** — `data-i18n` 은
+             통짜 문자열만 칠한다. -->
+        <p id="follow-reward" class="shop-desc"></p>
         <button id="btn-follow-claim" class="btn">Claim</button>
         <p id="follow-note" class="shop-desc"></p>
       </div>

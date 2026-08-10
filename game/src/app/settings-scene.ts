@@ -56,6 +56,15 @@ const OPEN_FOLLOW_DIALOG = 'OPEN_FOLLOW_DIALOG';
 /** 다이얼로그가 닫히면 부모가 이걸 돌려준다. `payload.isFollowing` 이 결과다. */
 const FOLLOW_DIALOG_CLOSED = 'FOLLOW_DIALOG_CLOSED';
 
+/**
+ * 팔로우 보상 금액. 화면에 적기만 하는 값이고 **판정도 지급도 서버가 한다.**
+ *
+ * `server.js` 의 `FOLLOW_REWARD_COINS` 와 같아야 한다 — 그쪽을 고치면 여기도 고칠 것.
+ * 서버에서 받아 오지 않는 이유: 이 글은 오프라인에서도, 서버에 묻기 전에도 떠 있어야
+ * 한다. 틀려도 코인이 어긋나지는 않는다(주는 쪽은 서버다).
+ */
+const FOLLOW_REWARD_COINS = 500;
+
 /** 팔로우 칸이 지금 무엇을 보여줄지. 서버에 물어봐야 정해진다. */
 type FollowState = 'following' | 'not_following' | 'rewarded' | 'unknown';
 
@@ -84,6 +93,7 @@ export class SettingsScene implements Scene {
   private readonly resetNote: HTMLElement;
   private readonly followBtn: HTMLButtonElement;
   private readonly followNote: HTMLElement;
+  private readonly followReward: HTMLElement;
   /** 팔로우 보상 청구가 진행 중. 그동안 버튼을 잠가 두 번 안 나가게 한다. */
   private claiming = false;
   /** 방금 청구한 결과. `null` 이면 아직 안 눌렀다는 뜻이고, 안내 문구를 바꾼다. */
@@ -137,6 +147,7 @@ export class SettingsScene implements Scene {
     const resetNote = root.querySelector<HTMLElement>('#reset-record-note');
     const followBtn = root.querySelector<HTMLButtonElement>('#btn-follow-claim');
     const followNote = root.querySelector<HTMLElement>('#follow-note');
+    const followReward = root.querySelector<HTMLElement>('#follow-reward');
     const followSection = root.querySelector<HTMLElement>('#follow-section');
     if (
       !row ||
@@ -146,6 +157,7 @@ export class SettingsScene implements Scene {
       !resetNote ||
       !followBtn ||
       !followNote ||
+      !followReward ||
       !followSection
     ) {
       throw new Error('설정 화면 DOM이 예상과 다릅니다');
@@ -157,6 +169,7 @@ export class SettingsScene implements Scene {
     resetBtn.addEventListener('click', () => void this.onResetClick());
     this.followBtn = followBtn;
     this.followNote = followNote;
+    this.followReward = followReward;
     followBtn.addEventListener('click', () => void this.onFollowClick());
     // **팔로우하고 돌아오면 저절로 '받기'가 돼야 한다.** 팔로우 페이지를 새 탭으로 열기
     // 때문에 이 화면은 살아 있는 채로 가려질 뿐이다 — `enter()` 가 다시 안 불린다.
@@ -305,6 +318,12 @@ export class SettingsScene implements Scene {
   private paintFollow(): void {
     const claimed = this.hasFollowReward() || this.followState === 'rewarded';
     const go = !claimed && this.followMode === 'go';
+
+    // 보상이 있다는 것과 얼마인지를 적어 둔다 (2026-08-10 사용자 지시). 버튼만 있으면
+    // 누를 이유가 화면에 없다. **이미 받았으면 안 적는다** — 다시 못 받는 금액을
+    // 계속 걸어 두면 또 받을 수 있는 것처럼 읽힌다.
+    this.followReward.textContent = claimed ? '' : t().followReward(FOLLOW_REWARD_COINS);
+    this.followReward.hidden = claimed;
 
     this.followBtn.textContent = claimed
       ? t().followClaimed

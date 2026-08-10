@@ -161,6 +161,8 @@ export interface Strings {
   resetRecordNote: (w: number, l: number) => string;
   /** 제작자 팔로우 보상 구역. */
   followSection: string;
+  /** 팔로우 보상 안내. 금액이 들어가서 `data-i18n` 이 아니라 코드가 채운다. */
+  followReward: (coins: number) => string;
   followClaim: string;
   followClaimed: string;
   followClaiming: string;
@@ -328,6 +330,7 @@ const en: Strings = {
   resetRecordDone: 'Record reset',
   resetRecordNote: (w, l) => `Now ${w}W ${l}L · your score is kept`,
   followSection: 'Support the creator',
+  followReward: (coins) => `Follow the creator for ${coins} coins — once per account.`,
   followClaim: 'Claim',
   followClaimed: 'Claimed',
   followClaiming: 'Checking with the server…',
@@ -492,6 +495,7 @@ const ko: Strings = {
   resetRecordDone: '전적을 초기화했습니다',
   resetRecordNote: (w, l) => `현재 ${w}승 ${l}패 · 점수는 유지됩니다`,
   followSection: '제작자 응원',
+  followReward: (coins) => `제작자를 팔로우하면 ${coins}코인을 드립니다 — 계정당 한 번.`,
   followClaim: '받기',
   followClaimed: '받음',
   followClaiming: '서버에 확인하는 중…',
@@ -659,6 +663,7 @@ const zh: Strings = {
   resetRecordDone: '战绩已重置',
   resetRecordNote: (w, l) => `当前 ${w}胜 ${l}负 · 积分保留`,
   followSection: '支持创作者',
+  followReward: (coins) => `关注创作者可获得 ${coins} 金币 — 每个账号一次。`,
   followClaim: '领取',
   followClaimed: '已领取',
   followClaiming: '正在向服务器确认…',
@@ -831,6 +836,7 @@ const vi: Strings = {
   resetRecordDone: 'Đã xóa thành tích',
   resetRecordNote: (w, l) => `Hiện tại ${w} thắng ${l} thua · điểm được giữ nguyên`,
   followSection: 'Ủng hộ nhà phát triển',
+  followReward: (coins) => `Theo dõi nhà phát triển để nhận ${coins} xu — mỗi tài khoản một lần.`,
   followClaim: 'Nhận',
   followClaimed: 'Đã nhận',
   followClaiming: 'Đang kiểm tra với máy chủ…',

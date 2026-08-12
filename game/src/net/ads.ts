@@ -86,9 +86,14 @@ export function verse8AdProvider(): AdProvider {
   return {
     ready: () => !unsupported,
     show: async () => {
+      // **넉넉하게 잡는다** (2026-08-10 사용자 지시로 120초 → 300초). 이 값은 "광고가
+      // 이만큼 안에 안 끝나면 실패로 본다"는 뜻이라, 짧으면 끝까지 본 사람이 보상을
+      // 못 받는다 — 회선이 느리거나 광고가 길면 2분을 그냥 넘긴다. 길어져서 손해 보는
+      // 쪽은 없다: 사용자가 닫으면 `dismissed` 가 즉시 오고, 기다리는 것은 이미 광고를
+      // 보고 있는 동안뿐이다.
       const result = await Verse8Ads.showRewarded({
         placementId: AD_PLACEMENT_ID,
-        timeoutMs: 120_000,
+        timeoutMs: 300_000,
       });
       // **결과를 남긴다.** 실패했을 때 화면은 "끝까지 안 봤다"로만 말하는데, 그것이
       // `dismissed` 인지 `failed`(어떤 코드인지)인지에 따라 손댈 곳이 완전히 다르다.

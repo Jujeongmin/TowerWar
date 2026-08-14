@@ -307,11 +307,25 @@ body {
   color: #f2555f;
 }
 
-/* 언어 고르기. 각 언어를 그 언어로 적으므로(`ENDONYM`) 두 칸이 나란히 있으면 된다. */
+/* 언어 고르기. 각 언어를 그 언어로 적는다(`ENDONYM`).
+
+   **한 줄에 세 칸이다.** 언어가 여섯이 되면서(2026-08-10 일본어·번체 추가) 두 칸씩
+   놓으면 세 줄이 되어 닉네임 화면과 설정이 그만큼 길어졌다. 두 곳 다 320px 칸
+   (`.shop` · `#name-lang-row`)이라 여기 최소폭이 그대로 줄 수를 정한다 —
+   (320 - 여백 16) / 3 = 101px 이므로 92px 로 잡으면 세 칸이 서고 네 칸은 안 선다. */
 .lang-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 8px;
+}
+
+/* 세 칸에 맞춰 가로 여백과 글씨를 줄인다. 세로 여백은 `.btn` 그대로 둔다 —
+   손가락으로 누르는 크기가 줄면 안 된다. 가장 긴 이름('Tiếng Việt')이 13px 에서
+   81px 남짓이라 101px 칸에 들어간다. */
+.lang-btn {
+  padding-left: calc(6px * var(--ui-scale));
+  padding-right: calc(6px * var(--ui-scale));
+  font-size: calc(13px * var(--ui-scale));
 }
 
 /* 닉네임 화면의 언어 줄. **`#name` 은 세로 flex 라 격자가 내용 크기로 줄어든다** —

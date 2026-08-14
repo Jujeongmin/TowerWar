@@ -315,17 +315,27 @@ body {
    (320 - 여백 16) / 3 = 101px 이므로 92px 로 잡으면 세 칸이 서고 네 칸은 안 선다. */
 .lang-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  /* **칸 수를 못 박는다.** `auto-fit` 은 상자 폭에 따라 칸 수가 달라져서, 같은 여섯 개가
+     화면마다 다른 크기로 잘렸다. 세 칸이면 여섯 개가 정확히 두 줄로 떨어진다. */
+  grid-template-columns: repeat(3, 1fr);
+  /* 줄 높이도 서로 맞춘다. 안 맞추면 글자가 긴 칸이 두 줄이 되면서 그 줄만 두꺼워진다. */
+  grid-auto-rows: 1fr;
   gap: 8px;
 }
 
 /* 세 칸에 맞춰 가로 여백과 글씨를 줄인다. 세로 여백은 `.btn` 그대로 둔다 —
-   손가락으로 누르는 크기가 줄면 안 된다. 가장 긴 이름('Tiếng Việt')이 13px 에서
-   81px 남짓이라 101px 칸에 들어간다. */
+   손가락으로 누르는 크기가 줄면 안 된다.
+
+   **줄바꿈을 막는다.** 이름 길이가 제각각이라(`English` ↔ `Tiếng Việt`) 한 칸만 두 줄이
+   되면 여섯 개의 크기가 갈린다. 넘치면 줄바꿈이 아니라 말줄임으로 자른다. */
 .lang-btn {
-  padding-left: calc(6px * var(--ui-scale));
-  padding-right: calc(6px * var(--ui-scale));
+  min-width: 0;
+  padding-left: calc(4px * var(--ui-scale));
+  padding-right: calc(4px * var(--ui-scale));
   font-size: calc(13px * var(--ui-scale));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 닉네임 화면의 언어 줄. **`#name` 은 세로 flex 라 격자가 내용 크기로 줄어든다** —

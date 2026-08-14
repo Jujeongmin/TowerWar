@@ -10,6 +10,7 @@
  */
 import { audio } from '../audio';
 import { ENDONYM, LANGS, applyStaticText, getLang, setLang, t, type Lang } from '../i18n';
+import { fitText } from './fit-text';
 import type { Scene } from './scene';
 
 /**
@@ -87,7 +88,7 @@ function followMessage(err: string): string {
 }
 
 export class SettingsScene implements Scene {
-  private readonly buttons: { lang: Lang; el: HTMLButtonElement }[];
+  private readonly buttons: { lang: Lang; el: HTMLButtonElement; label: HTMLElement }[];
   private readonly volLabels: { key: string; el: HTMLElement }[] = [];
   private readonly resetBtn: HTMLButtonElement;
   private readonly resetNote: HTMLElement;
@@ -209,7 +210,12 @@ export class SettingsScene implements Scene {
     this.buttons = LANGS.map((lang) => {
       const el = document.createElement('button');
       el.className = 'btn lang-btn';
-      el.textContent = ENDONYM[lang];
+      // 글씨를 따로 감싼다. **버튼 자체를 재면 안 된다** — 버튼은 격자 칸 폭으로
+      // 늘어나 있어서 넘쳤는지가 안 보인다 (`app/fit-text.ts`).
+      const label = document.createElement('span');
+      label.className = 'lang-label';
+      label.textContent = ENDONYM[lang];
+      el.append(label);
       el.addEventListener('click', () => {
         if (getLang() === lang) return;
         setLang(lang);
@@ -219,7 +225,7 @@ export class SettingsScene implements Scene {
         this.onLangChange();
       });
       row.appendChild(el);
-      return { lang, el };
+      return { lang, el, label };
     });
   }
 
@@ -231,6 +237,8 @@ export class SettingsScene implements Scene {
     this.claimResult = null;
     this.paint();
     this.root.hidden = false;
+    // **화면을 띄운 뒤에 잰다.** `hidden` 인 동안은 폭이 0 이라 아무것도 못 맞춘다.
+    for (const { label } of this.buttons) fitText(label);
     // 화면을 먼저 띄우고 나서 묻는다. 응답을 기다렸다가 그리면 서버가 느릴 때
     // 설정이 통째로 늦게 뜬다 — 언어·음량은 팔로우와 아무 상관이 없다.
     void this.refreshFollowState();

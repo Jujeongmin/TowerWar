@@ -18,6 +18,7 @@ import {
   type ProfileId,
 } from '../profiles';
 import { ENDONYM, LANGS, applyStaticText, getLang, setLang, t, type Lang } from '../i18n';
+import { fitText } from './fit-text';
 import type { Scene } from './scene';
 
 interface NameDraft {
@@ -29,7 +30,7 @@ export class NameScene implements Scene {
   private readonly input: HTMLInputElement;
   private readonly error: HTMLElement;
   private readonly cards: { id: ProfileId; el: HTMLButtonElement }[];
-  private readonly langButtons: { lang: Lang; el: HTMLButtonElement }[];
+  private readonly langButtons: { lang: Lang; el: HTMLButtonElement; label: HTMLElement }[];
   private picked: ProfileId = DEFAULT_PROFILE;
   private busy = false;
 
@@ -55,7 +56,12 @@ export class NameScene implements Scene {
     this.langButtons = LANGS.map((lang) => {
       const el = document.createElement('button');
       el.className = 'btn lang-btn';
-      el.textContent = ENDONYM[lang];
+      // 글씨를 따로 감싼다. **버튼 자체를 재면 안 된다** — 버튼은 격자 칸 폭으로
+      // 늘어나 있어서 넘쳤는지가 안 보인다 (`app/fit-text.ts`).
+      const label = document.createElement('span');
+      label.className = 'lang-label';
+      label.textContent = ENDONYM[lang];
+      el.append(label);
       el.addEventListener('click', () => {
         if (getLang() === lang) return;
         setLang(lang);
@@ -66,7 +72,7 @@ export class NameScene implements Scene {
         this.paint();
       });
       langRow.appendChild(el);
-      return { lang, el };
+      return { lang, el, label };
     });
 
     this.cards = PROFILE_IDS.map((id) => {
@@ -103,6 +109,8 @@ export class NameScene implements Scene {
     this.error.textContent = '';
     this.paint();
     this.root.hidden = false;
+    // **화면을 띄운 뒤에 잰다.** `hidden` 인 동안은 폭이 0 이라 아무것도 못 맞춘다.
+    for (const { label } of this.langButtons) fitText(label);
     // 모바일에서 자동 포커스가 키보드를 띄워 화면을 덮는 경우가 있어 강제하지 않는다.
     if (!/Android|iPhone|iPad/i.test(navigator.userAgent)) this.input.focus();
   }

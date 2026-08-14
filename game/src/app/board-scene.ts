@@ -124,6 +124,13 @@ export class BoardScene implements Scene {
      * 그 밖에 있으면 서버가 내 줄을 안 준다. 값 자체는 계정에 이미 있다.
      */
     private readonly myAccount: () => { name: string; profile: string; rating: number },
+    /**
+     * 로비에서 미리 받아 둔 표. 없으면 `null`.
+     *
+     * **이것이 있으면 기다리지 않고 곧바로 그린다.** 누른 순간부터 왕복을 시작하면
+     * 조금만 밀려도 빈 화면이 오래 남는다 (2026-08-10 사용자 신고).
+     */
+    private readonly cachedBoard: () => BoardResult | null,
   ) {
     const list = root.querySelector<HTMLElement>('#board-list');
     const podium = root.querySelector<HTMLElement>('#board-podium');
@@ -212,14 +219,26 @@ export class BoardScene implements Scene {
     this.load();
   }
 
-  /** 표를 받아 그린다. [다시 시도] 도 이것을 부른다. */
+  /**
+   * 표를 받아 그린다. [다시 시도] 도 이것을 부른다.
+   *
+   * **미리 받아 둔 것이 있으면 그것을 먼저 띄운다.** 뒤에서 새로 받아 조용히 갈아
+   * 끼운다 — 순위는 판이 끝나야 움직이므로 잠깐 낡아도 틀린 화면이 아니다.
+   */
   private load(): void {
     const mine = ++this.opened;
     this.list.replaceChildren();
     this.podium.replaceChildren();
-    this.show(null, t().boardLoading);
+    const cached = this.cachedBoard();
+    this.show(cached, cached ? '' : t().boardLoading);
     void this.fetchBoard().then((board) => {
       if (mine !== this.opened) return;
+      // 못 받았는데 띄워 둔 표가 있으면 그대로 둔다. 낡은 순위가 빈 화면보다 낫다 —
+      // 대신 [다시 시도] 는 남긴다.
+      if (board === null && cached) {
+        this.retryBtn.hidden = false;
+        return;
+      }
       this.show(board, board === null ? t().boardOffline : '');
     });
   }

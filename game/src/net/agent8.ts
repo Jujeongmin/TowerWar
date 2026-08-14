@@ -149,6 +149,15 @@ const REMATCH_CALL_TIMEOUT_MS = 3000;
  * 같은 시간에 묶어 둘 이유가 없다.
  */
 const COIN_CALL_TIMEOUT_MS = 15000;
+/**
+ * 순위표 읽기. 기본값(8초)보다 길게 잡는다 (2026-08-10 사용자 신고 — "한 번에 잘 안 뜰
+ * 때가 있다").
+ *
+ * **읽기지만 가볍지 않다.** 서버가 이 호출 하나에서 옛 표 이사 검사, 내 칸 최신화
+ * (`$lock` + 조회 + 갱신), 표 읽기, 등수·총원 세기를 잇달아 한다
+ * (`server.js` 의 `getLeaderboard`). 남과 자물쇠가 겹치면 8초를 그냥 넘긴다.
+ */
+const BOARD_CALL_TIMEOUT_MS = 15000;
 
 function withTimeout<T>(p: Promise<T>, what: string, timeoutMs = CALL_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -531,7 +540,11 @@ export class Agent8Client {
    * 안 깨져야 한다 — 옛 모양이면 내 등수를 모르는 것으로 다룬다.
    */
   async getLeaderboard(): Promise<BoardResult> {
-    const res = await withTimeout(this.server.remoteFunction('getLeaderboard', []), '순위 불러오기');
+    const res = await withTimeout(
+      this.server.remoteFunction('getLeaderboard', []),
+      '순위 불러오기',
+      BOARD_CALL_TIMEOUT_MS,
+    );
     if (Array.isArray(res)) {
       const rows = res as BoardEntry[];
       return { rows, myRank: null, total: rows.length };

@@ -139,6 +139,7 @@ const board = new BoardScene(
     profile: store.current.profile,
     rating: store.current.rating,
   }),
+  () => store.cachedLeaderboard,
 );
 const pvp = new PvpScene(
   need('pvp'),
@@ -216,6 +217,9 @@ function switchTo(next: Scene): void {
   // 것만으로 음악이 계속 끊긴다 (`audio.setBgm` 이 같은 곡은 무시한다).
   audio.setBgm(next === match ? 'match' : 'lobby');
   current.enter();
+  // 로비에 서 있는 동안 순위표를 미리 받아 둔다. **결과를 안 기다린다** — 로비가 이것
+  // 때문에 늦게 뜨면 안 된다. 너무 잦은 호출은 `prefetchLeaderboard` 가 막는다.
+  if (next === lobby) store.prefetchLeaderboard();
 }
 
 /** 이름이 없으면 로비보다 먼저 설정 화면. 서버 계정을 읽은 뒤에도 한 번 더 본다. */
@@ -261,7 +265,12 @@ function afterConnect(): void {
     return;
   }
   // 같은 화면이면 값만 새로 읽는다. 닉네임 화면은 입력 중일 수 있어 다시 안 부른다.
-  if (current === lobby) lobby.enter();
+  if (current === lobby) {
+    lobby.enter();
+    // 붙기 전에 한 미리 받기는 실패했다. 이제 붙었으니 다시 받아 둔다 —
+    // `switchTo` 를 안 거치는 길이라 여기서 따로 불러야 한다.
+    store.prefetchLeaderboard();
+  }
 }
 
 /**

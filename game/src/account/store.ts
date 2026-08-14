@@ -74,6 +74,15 @@ const DEV_BOARD: BoardEntry[] | null = import.meta.env.DEV
     ]
   : null;
 
+/**
+ * 미리 받아 둔 표를 이 시간(ms) 안에는 다시 안 받는다.
+ *
+ * 로비에 들를 때마다 부르면 판 하나 끝날 때마다 서버 컬렉션을 두드리게 된다 —
+ * `getLeaderboard` 는 `$lock` 까지 잡는 무거운 호출이다(`server.js`). 30초면 판 하나가
+ * 끝나고 돌아오는 간격보다 짧아서, 방금 오른 점수는 그대로 새로 받는다.
+ */
+const BOARD_FRESH_MS = 30_000;
+
 /** 개발용 가짜 표를 진짜 응답과 같은 모양으로 감싼다. `me` 로 표시된 줄이 내 등수다. */
 function devBoard(rows: BoardEntry[]): BoardResult {
   const mine = rows.findIndex((e) => e.me);
@@ -108,6 +117,11 @@ export class AccountStore {
    * (`net/agent8.ts` 의 `connect` 주석).
    */
   private connecting: Promise<boolean> | null = null;
+  /** 미리 받아 둔 순위표와 받은 시각. `0` 이면 아직 한 번도 못 받았다. */
+  private cachedBoard: BoardResult | null = null;
+  private cachedAt = 0;
+  /** 지금 도는 순위표 요청. 미리 받기와 화면 열기가 겹치면 하나로 합친다. */
+  private boardInFlight: Promise<BoardResult | null> | null = null;
 
   /** 서버 계정을 쓰고 있는가. UI가 아니라 로그·디버그용이다. */
   get online(): boolean {
@@ -210,24 +224,68 @@ export class AccountStore {
    * 순위가 영영 안 열렸다 — 여기 들어온 것 자체가 "지금 필요하다"는 신호다.
    */
   async leaderboard(): Promise<BoardResult | null> {
+    // 이미 도는 요청이 있으면 그것을 기다린다. 미리 받기와 화면 열기가 겹치면
+    // 무거운 호출이 둘로 늘어난다.
+    if (this.boardInFlight) return await this.boardInFlight;
+    this.boardInFlight = this.loadBoard().finally(() => {
+      this.boardInFlight = null;
+    });
+    return await this.boardInFlight;
+  }
+
+  /**
+   * 미리 받아 둔다. **결과를 안 기다린다** — 로비가 이것 때문에 늦게 뜨면 안 된다.
+   *
+   * 순위 화면은 누르는 순간에야 서버를 부르기 시작했다. 그 한 번이 8초 제한이라
+   * 조금만 밀려도 "연결되지 않아 볼 수 없습니다"가 떴다 (2026-08-10 사용자 신고 —
+   * "한 번에 잘 안 뜰 때가 있다").
+   */
+  prefetchLeaderboard(): void {
+    if (this.cachedAt !== 0 && Date.now() - this.cachedAt < BOARD_FRESH_MS) return;
+    void this.leaderboard();
+  }
+
+  /** 마지막으로 받아 둔 표. 화면이 기다리지 않고 곧바로 그릴 값이다. */
+  get cachedLeaderboard(): BoardResult | null {
+    return this.cachedBoard;
+  }
+
+  private async loadBoard(): Promise<BoardResult | null> {
     await this.ensureOnline();
     const board = await this.fetchBoard();
     // 개발 중에는 빈 표 대신 가짜 줄을 보여준다. **로컬 백엔드는 붙어 있어도 표가
     // 늘 비어 있다** — 순위는 서버가 판마다 고치는 것인데 그 서버가 없다. 진짜 표가
     // 있으면 그쪽이 먼저다.
-    if (DEV_BOARD && (board === null || board.rows.length === 0)) return devBoard(DEV_BOARD);
-    return board;
+    const result =
+      DEV_BOARD && (board === null || board.rows.length === 0) ? devBoard(DEV_BOARD) : board;
+    // **못 받았으면 옛 표를 안 지운다.** 지우면 화면이 캐시를 잃고 빈 칸으로 되돌아간다 —
+    // 낡은 순위가 아무것도 없는 것보다 낫다.
+    if (result) {
+      this.cachedBoard = result;
+      this.cachedAt = Date.now();
+    }
+    return result;
   }
 
+  /**
+   * **한 번 더 시도한다.** 서버가 이 호출 하나에서 컬렉션을 여러 번 두드리고 `$lock`
+   * 까지 잡아서(`server.js` 의 `getLeaderboard`), 남과 겹치면 제한을 넘긴다. 그럴 때
+   * 다시 부르면 대개 통한다 — 전에는 한 번 삐끗하면 그대로 "못 본다"였다.
+   *
+   * 그래서 최악은 제한의 두 배(`BOARD_CALL_TIMEOUT_MS` × 2)를 기다린다. 미리 받아 둔
+   * 표가 있으면 그동안 화면은 그것을 띄우고 있으므로 빈 화면으로 기다리지 않는다.
+   */
   private async fetchBoard(): Promise<BoardResult | null> {
     if (!this.net) return null;
-    try {
-      return await this.net.getLeaderboard();
-    } catch {
-      // 접속은 됐는데 이 호출만 실패한 경우. 오프라인과 같이 다룬다 —
-      // 화면이 할 수 있는 일이 "지금은 못 본다"로 같다.
-      return null;
+    for (let tries = 0; tries < 2; tries++) {
+      try {
+        return await this.net.getLeaderboard();
+      } catch {
+        // 삼킨다. 두 번째도 실패하면 아래에서 `null` 이 나간다 — 화면이 할 수 있는 일이
+        // 오프라인과 같아서 이유를 갈라 봐야 쓸 데가 없다.
+      }
     }
+    return null;
   }
 
   // ── 유료(VX) ───────────────────────────────────────────────────

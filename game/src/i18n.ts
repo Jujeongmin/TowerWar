@@ -114,6 +114,14 @@ export interface Strings {
   boardTitle: string;
   boardLoading: string;
   boardOffline: string;
+  /**
+   * 최신을 못 받아 **미리 받아 둔 표를 그대로 띄우고 있을 때.**
+   *
+   * 전에는 이 경우 아무 글자도 안 띄우고 옛 표만 보여 줬다. 그래서 판을 이겨
+   * 점수가 올랐는데도 순위표는 옛 값 그대로였고, 그것이 낡은 화면인지 점수가
+   * 반영이 안 된 것인지 알 길이 없었다 (2026-08-22·23 테스터 신고).
+   */
+  boardStale: string;
   boardEmpty: string;
   /** 다시 붙어 보는 버튼. 순위가 안 열렸을 때만 뜬다. */
   boardRetry: string;
@@ -196,6 +204,14 @@ export interface Strings {
   rewardDoubled: (gained: number) => string;
   adUnavailable: string;
   adFailed: string;
+  /**
+   * 광고가 **보상 없이 끝났지만 사용자 잘못이 아닌** 경우.
+   *
+   * SDK가 돌려주는 실패는 대부분 이쪽이다 (`busy` · `timeout` · `no_fill` ·
+   * `ssv_timeout`). 전에는 이것까지 `adFailed` 로 묶여서, 광고를 끝까지 본 사람이
+   * "끝까지 안 봐서 보상이 없습니다"를 봤다 (2026-08-23 테스터 신고).
+   */
+  adError: string;
   adLimit: string;
   adCooldown: string;
 }
@@ -256,6 +272,7 @@ const en: Strings = {
   boardTitle: 'Ranking — by score',
   boardLoading: 'Loading…',
   boardOffline: 'Not connected, so the ranking is unavailable',
+  boardStale: "Couldn't refresh — showing the last ranking you loaded",
   boardEmpty: 'Nobody has made the ranking yet',
   boardRetry: 'Try again',
   boardMyRank: (rank, total) => `Your rank #${rank} of ${total}`,
@@ -361,6 +378,7 @@ const en: Strings = {
   rewardDoubled: (gained) => `Ad reward · +${gained} more`,
   adUnavailable: 'No ad available right now',
   adFailed: 'Ad was not finished, so no reward',
+  adError: "Couldn't load the ad — try again in a moment",
   adLimit: "You've claimed all of today's ads",
   adCooldown: 'Try again in a moment',
 };
@@ -421,6 +439,7 @@ const ko: Strings = {
   boardTitle: '순위 — 점수순',
   boardLoading: '불러오는 중…',
   boardOffline: '서버에 연결되지 않아 순위를 볼 수 없습니다',
+  boardStale: '최신 순위를 못 받았습니다. 아래는 마지막으로 받아 둔 순위입니다',
   boardEmpty: '아직 순위에 오른 사람이 없습니다',
   boardRetry: '다시 시도',
   boardMyRank: (rank, total) => `내 순위 ${rank}위 / ${total}명`,
@@ -526,6 +545,7 @@ const ko: Strings = {
   rewardDoubled: (gained) => `광고 보상 · +${gained} 추가`,
   adUnavailable: '지금은 볼 광고가 없습니다',
   adFailed: '광고를 끝까지 안 봐서 보상이 없습니다',
+  adError: '광고를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요',
   adLimit: '오늘 받을 수 있는 광고를 다 받았습니다',
   adCooldown: '조금 뒤에 다시 시도하세요',
 };
@@ -588,6 +608,7 @@ const zh: Strings = {
   boardTitle: '排行榜 — 按积分',
   boardLoading: '加载中…',
   boardOffline: '未连接服务器，无法查看排行榜',
+  boardStale: '未能获取最新排行榜，以下为上次加载的内容',
   boardEmpty: '还没有人登上排行榜',
   boardRetry: '重试',
   boardMyRank: (rank, total) => `我的排名 第${rank}名 / 共${total}人`,
@@ -694,6 +715,7 @@ const zh: Strings = {
   rewardDoubled: (gained) => `广告奖励 · 追加 +${gained}`,
   adUnavailable: '当前没有可观看的广告',
   adFailed: '广告未看完，无法获得奖励',
+  adError: '广告加载失败，请稍后再试',
   adLimit: '今日广告奖励已全部领取',
   adCooldown: '请稍后再试',
 };
@@ -761,6 +783,7 @@ const vi: Strings = {
   boardTitle: 'Bảng xếp hạng — theo điểm',
   boardLoading: 'Đang tải…',
   boardOffline: 'Chưa kết nối nên không xem được bảng xếp hạng',
+  boardStale: 'Không tải được bảng mới — đang hiển thị bảng đã tải lần trước',
   boardEmpty: 'Chưa có ai lên bảng xếp hạng',
   boardRetry: 'Thử lại',
   boardMyRank: (rank, total) => `Hạng của bạn #${rank} / ${total}`,
@@ -867,6 +890,7 @@ const vi: Strings = {
   rewardDoubled: (gained) => `Thưởng quảng cáo · +${gained} thêm`,
   adUnavailable: 'Hiện chưa có quảng cáo nào',
   adFailed: 'Chưa xem hết quảng cáo nên không có thưởng',
+  adError: 'Không tải được quảng cáo, vui lòng thử lại sau',
   adLimit: 'Bạn đã nhận hết quảng cáo hôm nay',
   adCooldown: 'Hãy thử lại sau giây lát',
 };
@@ -928,6 +952,7 @@ const ja: Strings = {
   boardTitle: 'ランキング — スコア順',
   boardLoading: '読み込み中…',
   boardOffline: 'サーバーに接続できないためランキングを表示できません',
+  boardStale: '最新のランキングを取得できませんでした。以下は前回取得した内容です',
   boardEmpty: 'まだランキングに載った人がいません',
   boardRetry: '再試行',
   // 짧게 쓴다. 하단 내 순위 줄은 이 글귀·아바타·이름·점수가 한 줄에 들어가야 한다.
@@ -1037,6 +1062,7 @@ const ja: Strings = {
   rewardDoubled: (gained) => `広告報酬 · +${gained} 追加`,
   adUnavailable: '今は見られる広告がありません',
   adFailed: '広告を最後まで見なかったため報酬はありません',
+  adError: '広告を読み込めませんでした。しばらくしてからもう一度お試しください',
   adLimit: '今日受け取れる広告はすべて受け取りました',
   adCooldown: '少し待ってからもう一度お試しください',
 };
@@ -1099,6 +1125,7 @@ const zhHant: Strings = {
   boardTitle: '排行榜 — 依積分',
   boardLoading: '載入中…',
   boardOffline: '未連線伺服器，無法查看排行榜',
+  boardStale: '未能取得最新排行榜，以下為上次載入的內容',
   boardEmpty: '還沒有人登上排行榜',
   boardRetry: '重試',
   boardMyRank: (rank, total) => `我的排名 第${rank}名 / 共${total}人`,
@@ -1204,6 +1231,7 @@ const zhHant: Strings = {
   rewardDoubled: (gained) => `廣告獎勵 · 追加 +${gained}`,
   adUnavailable: '目前沒有可觀看的廣告',
   adFailed: '廣告未看完，無法獲得獎勵',
+  adError: '廣告載入失敗，請稍後再試',
   adLimit: '今日廣告獎勵已全部領取',
   adCooldown: '請稍後再試',
 };

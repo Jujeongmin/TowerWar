@@ -503,6 +503,9 @@ export class ShopScene implements Scene {
  */
 function adMessage(err: string): string {
   if (err === 'notFinished') return t().adFailed;
+  // 광고 쪽 사정(`busy`·`timeout`·`no_fill`·`ssv_timeout`). 결과 화면의
+  // `adDoubleMessage` 와 같은 규칙이다.
+  if (err === 'adError') return t().adError;
   if (err === 'offline') return t().adUnavailable;
   if (err.includes('ad_limit')) return t().adLimit;
   if (err.includes('ad_cooldown')) return t().adCooldown;

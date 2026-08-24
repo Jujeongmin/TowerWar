@@ -73,6 +73,10 @@ const WAITING_HINT_MS = 400;
 function adDoubleMessage(err: string): string {
   if (err === 'offline') return t().adUnavailable;
   if (err === 'notFinished') return t().adFailed;
+  // **광고 쪽 사정이지 사용자 잘못이 아니다** (2026-08-24). `busy`·`timeout`·
+  // `no_fill`·`ssv_timeout` 이 전부 여기로 온다 — 다 본 사람에게 안 봤다고
+  // 말하는 것이 이 기능에서 제일 나쁜 실패다.
+  if (err === 'adError') return t().adError;
   if (err.includes('already_claimed')) return t().adLimit;
   // 남은 것은 청구할 판이 없거나(`no_reward`·`not_finished_match`) 통신 오류다.
   return t().adFailed;

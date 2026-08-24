@@ -43,12 +43,54 @@ import { Verse8Ads } from '@verse8/ads';
  */
 const AD_PLACEMENT_ID = 'towerwar-rewarded';
 
+/**
+ * 광고 한 번의 제한 시간(ms).
+ *
+ * **다시 넣었다** (2026-08-24). 0.5.0 안내를 따라 이 값을 빼 뒀었는데
+ * (`fix: 광고 제한 시간을 없앤다`), 설치된 SDK 번들을 직접 읽어 보니 **빼면 타이머
+ * 자체가 안 걸린다** — `typeof timeoutMs === 'number'` 일 때만 타이머를 건다.
+ * 그리고 SDK는 **세션당 진행 중인 요청을 하나만** 허용한다: 대기 표가 비어 있지
+ * 않으면 다음 `showRewarded` 가 곧바로 `{ status: 'failed', code: 'busy' }` 로 떨어진다.
+ *
+ * 둘을 합치면, 호스트가 한 번이라도 답을 안 주는 순간 그 약속은 **영원히 안 끝나고**
+ * 그 세션의 남은 광고가 전부 `busy` 가 된다. 화면에는 그것이 전부 "끝까지 안 봤다"로
+ * 떴다 — 2026-08-23 테스터 신고("광고 다 보고도 안 봤다는 문구가 더 많았다")의
+ * 가장 큰 몫이 여기다.
+ *
+ * 제한 시간이 있으면 최악이 "이 한 번을 놓친다"이고 다음 광고는 멀쩡히 돈다.
+ * 5분은 실물 보상형 광고(대개 30초 안팎)의 열 배라 끝까지 본 사람이 걸릴 일이 없다.
+ */
+const AD_TIMEOUT_MS = 300_000;
+
+/**
+ * 광고가 왜 그렇게 끝났는가. **화면 문구를 이 값으로 가른다.**
+ *
+ * 전에는 `watched: boolean` 하나였고, 참이 아니면 전부 "끝까지 안 봤습니다"로 떴다.
+ * 그런데 SDK가 돌려주는 실패는 대부분 **사용자 잘못이 아니다** — `busy`(앞 요청이
+ * 안 끝남) · `timeout` · `platform_error`(광고 미수급 `no_fill`, 서버 검증 지연
+ * `ssv_timeout`)가 그렇다. 다 본 사람에게 안 봤다고 말하는 것이 이 기능에서 제일
+ * 나쁜 실패라 (2026-08-23 신고) 여기서 갈라 둔다.
+ *
+ * **`dismissed` 만이 "중간에 닫았다"이다.**
+ */
+export type AdOutcome =
+  | 'rewarded'
+  | 'dismissed'
+  | 'busy'
+  | 'timeout'
+  | 'unsupported_env'
+  | 'platform_error';
+
 /** 광고를 한 번 튼 결과. `requestId` 가 빈 문자열이면 서버가 검증할 실물 요청이 없다. */
 export interface AdWatch {
   /** 끝까지 봤는가. `false` 면 `requestId` 도 의미가 없다 — 보상을 청구하지 않는다. */
   watched: boolean;
   /** 서버의 `claimAdCoins`/`claimDoubleReward` 에 그대로 실어 보낼 값. */
   requestId: string;
+  /** 왜 그렇게 끝났는가. 화면이 문구를 고르는 데 쓴다. */
+  outcome: AdOutcome;
+  /** 진단용 원문(`no_fill` · `ssv_timeout` 등). 화면에는 안 쓰고 콘솔에만 남긴다. */
+  detail: string;
 }
 
 /**
@@ -86,21 +128,30 @@ export function verse8AdProvider(): AdProvider {
   return {
     ready: () => !unsupported,
     show: async () => {
-      // **제한 시간을 안 준다** (2026-08-21 Verse8 안내, `@verse8/ads` 0.5.0 기준).
-      // 호스트가 답할 때까지 기다린다.
-      //
-      // 이 값은 원래 "광고가 이만큼 안에 안 끝나면 실패로 본다"는 뜻이었고, 짧으면
-      // 끝까지 본 사람이 보상을 못 받았다 — 그래서 120초에서 300초까지 늘려 왔다.
-      // 기다려서 손해 보는 쪽은 없다: 사용자가 닫으면 `dismissed` 가 즉시 오고,
-      // 기다리는 것은 이미 광고를 보고 있는 동안뿐이다.
-      const result = await Verse8Ads.showRewarded({ placementId: AD_PLACEMENT_ID });
-      // **결과를 남긴다.** 실패했을 때 화면은 "끝까지 안 봤다"로만 말하는데, 그것이
-      // `dismissed` 인지 `failed`(어떤 코드인지)인지에 따라 손댈 곳이 완전히 다르다.
+      // **제한 시간을 다시 준다** (`AD_TIMEOUT_MS` 주석에 이유를 적어 뒀다). 안 주면
+      // 타이머가 아예 안 걸리고, 답 없는 요청 하나가 그 세션의 남은 광고를 전부
+      // `busy` 로 만든다.
+      const result = await Verse8Ads.showRewarded({
+        placementId: AD_PLACEMENT_ID,
+        timeoutMs: AD_TIMEOUT_MS,
+      });
+      // **결과를 남긴다.** 어디서 끊겼는지는 이 줄로만 알 수 있다.
       console.info('[ads] result', result.status, result);
       if (result.status === 'failed' && result.error.code === 'unsupported_env') {
         unsupported = true;
       }
-      return { watched: result.status === 'rewarded', requestId: result.requestId };
+      if (result.status === 'rewarded') {
+        return { watched: true, requestId: result.requestId, outcome: 'rewarded', detail: '' };
+      }
+      if (result.status === 'dismissed') {
+        return { watched: false, requestId: result.requestId, outcome: 'dismissed', detail: '' };
+      }
+      return {
+        watched: false,
+        requestId: result.requestId,
+        outcome: result.error.code,
+        detail: result.error.message ?? result.error.code,
+      };
     },
   };
 }
@@ -138,11 +189,21 @@ export function isAdReady(): boolean {
  * 여기서도 막을 수 있는 것은 막는다.)
  */
 export async function watchRewardedAd(): Promise<AdWatch> {
-  if (!provider) return { watched: false, requestId: '' };
+  // **여기도 `dismissed` 가 아니다.** 제공자가 없거나 던진 것은 사용자가 광고를
+  // 중간에 닫은 것과 다르다 — 화면이 "끝까지 안 봤다"로 말하면 거짓말이 된다.
+  if (!provider) {
+    return { watched: false, requestId: '', outcome: 'unsupported_env', detail: 'no_provider' };
+  }
   try {
     return await provider.show();
-  } catch {
-    return { watched: false, requestId: '' };
+  } catch (e) {
+    console.warn('[ads] show() 가 던졌습니다:', e);
+    return {
+      watched: false,
+      requestId: '',
+      outcome: 'platform_error',
+      detail: String((e as Error)?.message ?? e),
+    };
   }
 }
 
@@ -162,7 +223,10 @@ export function devAdProvider(): AdProvider {
     ready: () => true,
     show: () =>
       new Promise((resolve) => {
-        setTimeout(() => resolve({ watched: true, requestId: '' }), 800);
+        setTimeout(
+          () => resolve({ watched: true, requestId: '', outcome: 'rewarded', detail: '' }),
+          800,
+        );
       }),
   };
 }

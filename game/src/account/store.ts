@@ -15,7 +15,7 @@
  * 씬들은 `current` 를 읽고 콜백으로 사기만 한다. 온라인/오프라인 분기는 이 파일에만 있다.
  */
 import type { Agent8Client, BoardEntry, BoardResult } from '../net/agent8';
-import { watchRewardedAd } from '../net/ads';
+import { watchRewardedAd, type AdWatch } from '../net/ads';
 import { PROFILE_IDS, type ProfileId } from '../profiles';
 import type { UnitKind } from '../units';
 import type { TowerKind } from '../towers';
@@ -96,6 +96,23 @@ function devBoard(rows: BoardEntry[]): BoardResult {
  * 실패면 이유를 그대로 준다 (`'offline'` · `'notFinished'` · 서버가 던진 코드).
  */
 export type AdDoubleResult = { gained: number } | { error: string };
+
+/**
+ * 광고가 보상 없이 끝난 이유를 **화면이 쓸 코드로** 바꾼다.
+ *
+ * **`'notFinished'` 는 `dismissed` 에만 준다** (2026-08-24). 전에는 보상이 안 나온
+ * 모든 경우가 그리로 갔고, 그래서 광고를 끝까지 본 사람이 "끝까지 안 봐서 보상이
+ * 없습니다"를 봤다 (2026-08-23 테스터 신고). 나머지(`busy`·`timeout`·`no_fill`·
+ * `ssv_timeout` 등)는 광고를 트는 쪽 사정이라 `'adError'` 로 묶는다 — 사람이 할 수
+ * 있는 일이 "잠시 뒤 다시"로 같아서 더 갈라 봐야 쓸 데가 없다.
+ *
+ * 원문은 콘솔에만 남긴다. 어디서 끊겼는지는 그 줄로만 알 수 있다.
+ */
+function adFailure(watch: AdWatch): string {
+  if (watch.outcome === 'dismissed') return 'notFinished';
+  console.warn('[ads] 보상 없이 끝났습니다:', watch.outcome, watch.detail);
+  return 'adError';
+}
 
 /** 한 판으로 점수가 어떻게 움직였는가. 결과 화면이 그대로 보여준다. */
 export interface RatingChange {
@@ -309,8 +326,9 @@ export class AccountStore {
    */
   async watchAdForCoins(): Promise<string | null> {
     if (!this.net) return 'offline';
-    const { watched, requestId } = await watchRewardedAd();
-    if (!watched) return 'notFinished';
+    const watch = await watchRewardedAd();
+    const { watched, requestId } = watch;
+    if (!watched) return adFailure(watch);
     try {
       // 서버가 검증 없이 바로 지급한다 (net/ads.ts · server.js). `requestId` 는
       // 옛 시그니처 호환으로 넘기기만 하고 서버는 안 쓴다.
@@ -381,8 +399,9 @@ export class AccountStore {
    */
   async watchAdForDouble(): Promise<AdDoubleResult> {
     if (!this.net) return { error: 'offline' };
-    const { watched, requestId } = await watchRewardedAd();
-    if (!watched) return { error: 'notFinished' };
+    const watch = await watchRewardedAd();
+    const { watched, requestId } = watch;
+    if (!watched) return { error: adFailure(watch) };
     const before = this.account.coins;
     try {
       this.setLocal(fromRemote(await this.net.claimDoubleReward(requestId)));
@@ -457,12 +476,36 @@ export class AccountStore {
         return { before, after: this.account.rating };
       } catch (e) {
         console.warn('[account] 결과 보고 실패:', String((e as Error)?.message ?? e));
-        return null; // 로컬로 대신 주지 않는다. 서버가 나중에 줄 수도 있어 두 번 받게 된다
+        // **로컬로 대신 주지 않는다.** 서버가 나중에 줄 수도 있어 두 번 받게 된다.
+        // 대신 **서버 값을 다시 읽는다** (2026-08-24). 제한 시간을 넘긴 호출도 서버
+        // 쪽에서는 끝까지 도는 일이 많아서, 여기서 그냥 포기하면 코인·전적·점수가
+        // 전부 서버에는 반영됐는데 화면만 옛 값에 멈춘다 — 그 다음 서버 응답이
+        // 한꺼번에 덮어써서 "판수가 안 올랐다"·"코인이 2배가 아니다"로 보인다
+        // (2026-08-23 테스터 기록). 읽기라 두 번 받을 위험은 없다.
+        return await this.resyncAfterReport(before);
       }
     }
     // 오프라인. 코인은 로컬로 주지만 점수는 안 건드린다 (`Account.rating` 주석).
     this.setLocal(applyReward(this.account, reward));
     return null;
+  }
+
+  /**
+   * 결과 보고가 실패한 뒤 서버 계정을 다시 읽어 화면을 맞춘다.
+   *
+   * **점수가 실제로 움직였을 때만 변동을 돌려준다.** 서버가 보고를 못 받았으면
+   * 값이 그대로일 텐데, 그때 `{ before, after }` 를 주면 결과 화면이 "±0" 을 띄운다 —
+   * 안 움직인 것과 못 잰 것은 다르다 (`showRating` 주석과 같은 규칙).
+   */
+  private async resyncAfterReport(before: number): Promise<RatingChange | null> {
+    if (!this.net) return null;
+    try {
+      this.setLocal(fromRemote(await this.net.getAccount()));
+    } catch (e) {
+      console.warn('[account] 보고 뒤 계정 다시 읽기 실패:', String((e as Error)?.message ?? e));
+      return null;
+    }
+    return this.account.rating === before ? null : { before, after: this.account.rating };
   }
 
   /** 온라인이면 서버 호출, 아니면 로컬 계산. 결과는 항상 사본에 남긴다. */

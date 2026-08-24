@@ -573,6 +573,40 @@ class Server {
     return { ok: true, at: Date.now(), account: $sender.account };
   }
 
+  /**
+   * 진단. **운영 장애(2026-08-24: 매칭·순위표 무응답)의 원인을 서버 눈으로 보기 위한
+   * 임시 창이다.** 방이 몇 개나 살아 있는지, phase 별로 몇 개인지 센다 — `$roomTick`
+   * 이 죽은 방 수백 개에 파묻혀 있다는 가설을 이 숫자가 확정하거나 기각한다.
+   *
+   * 읽기뿐이라 위험이 없고, 계정 정보를 안 내려주므로 아무나 불러도 새는 것이 없다.
+   * 방이 아주 많으면 `limit` 까지만 보고 `truncated` 로 알린다 — 진단 함수가
+   * 그 자체로 스캔 폭풍이 되면 안 된다.
+   */
+  async diag(limit) {
+    const started = Date.now();
+    const ids = (await $global.getAllRoomIds()) || [];
+    const cap = Math.min(Math.max(num(limit) || 100, 1), 300);
+    const phases = {};
+    let scanned = 0;
+    for (const id of ids.slice(0, cap)) {
+      const state = await $global.getRoomState(id);
+      const phase = state ? state.phase || 'none' : 'missing';
+      phases[phase] = (phases[phase] || 0) + 1;
+      scanned++;
+    }
+    const g = (await $global.getGlobalState()) || {};
+    return {
+      ok: true,
+      tookMs: Date.now() - started,
+      totalRooms: ids.length,
+      scanned,
+      truncated: ids.length > cap,
+      phases,
+      queueSize: Object.keys(g.mm || {}).length,
+      codeCount: Object.keys(g.codes || {}).length,
+    };
+  }
+
   // ── 계정 ───────────────────────────────────────────────────────
 
   /** 내 계정. 없으면 만들어서 돌려준다. */
@@ -975,8 +1009,12 @@ class Server {
     // 이제 글로벌 상태의 대기방 큐(`mm`)만 본다 — 어느 순간이든 "지금 상대를
     // 기다리는 공개 방"뿐이라 몇 개 안 된다. 죽은 항목(닫힌 방·시작된 방)은
     // 여기서 발견하는 즉시 큐에서 뺀다.
+    // 진단 계측 (2026-08-24 운영 장애: 이 호출이 12초 안에 안 끝난다는 신고).
+    // 어디까지 왔는지·얼마나 걸렸는지 서버 로그에 남긴다. 원인이 잡히면 지운다.
+    const t0 = Date.now();
     const g = (await $global.getGlobalState()) || {};
     const queued = Object.keys(g.mm || {});
+    console.log('[tw:diag] findMatch start', { retry: !!retry, queue: queued.length, readMs: Date.now() - t0 });
     const me = await this.#loadAccount();
     const now = Date.now();
     const myWaited = Math.min(num(waitedMs), SOLO_FALLBACK_MS);
@@ -1003,11 +1041,15 @@ class Server {
       }
       return await this.#enterRoom(id);
     }
-    if (retry) return null;
+    if (retry) {
+      console.log('[tw:diag] findMatch retry-miss', { tookMs: Date.now() - t0 });
+      return null;
+    }
     const entered = await this.#enterRoom(undefined);
     // 새로 판 방을 큐에 올린다. 코드 방(`createRoom`)은 여기 안 온다 — 사적 방은
     // 무작위 매칭 후보가 아니다.
     await this.#mmAdd(entered.roomId);
+    console.log('[tw:diag] findMatch created', { roomId: entered.roomId, tookMs: Date.now() - t0 });
     return entered;
   }
 
@@ -1309,6 +1351,13 @@ class Server {
   async $roomTick(deltaMillis, roomId) {
     const state = await $global.getRoomState(roomId);
     if (!state) return;
+
+    // 진단 샘플 로그 (2026-08-24 운영 장애). 플랫폼이 tick 을 도는 방이 얼마나 되는지
+    // 서버 로그에서 보기 위한 것 — 2%만 찍어도 폭풍이면 로그가 도배된다.
+    // 원인이 잡히면 지운다.
+    if (Math.random() < 0.02) {
+      console.log('[tw:diag] tick', roomId, state.phase || 'none');
+    }
 
     const now = Date.now();
     const users = state.$users || [];

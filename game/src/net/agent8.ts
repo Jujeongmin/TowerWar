@@ -597,6 +597,15 @@ export class Agent8Client {
    * **승패와 타워 수는 클라이언트가 보고한 값이다.** 서버가 시뮬레이션을 안 돌려서
    * 검증할 방법이 없다. 지금은 타워 수 상한으로 자르는 정도가 전부다.
    */
+  /**
+   * 서버 진단 (2026-08-24 운영 장애 조사용). 방 개수·phase 분포·대기 큐 크기를 받아
+   * 온다. `main.ts` 가 부팅 뒤 한 번 불러 콘솔에 찍는다 — F12 게임 프레임 콘솔에서
+   * `[diag]` 로 검색하면 나온다. 원인이 잡히면 지운다.
+   */
+  async diag(): Promise<unknown> {
+    return await withTimeout(this.server.remoteFunction('diag', [300]), '진단', 30000);
+  }
+
   async reportResult(winner: number, towers: number): Promise<RemoteAccount | null> {
     // **이 호출에 기본 8초를 쓰고 있었다** (2026-08-24). 서버가 여기서 하는 일은
     // 계정 자물쇠 + 계정 읽기·쓰기 + 방 상태 갱신 + 순위표 자물쇠 + 컬렉션 조회·갱신이다

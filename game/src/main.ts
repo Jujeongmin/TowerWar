@@ -301,6 +301,13 @@ function wait(ms: number): Promise<void> {
 async function bootAccount(): Promise<void> {
   if (await connectWithRetry()) {
     afterConnect();
+    // 진단 (2026-08-24 운영 장애 조사용). 서버의 방 개수·phase 분포·대기 큐 크기를
+    // 부팅마다 한 번 콘솔에 찍는다 — F12 게임 프레임에서 `[diag]` 로 찾는다.
+    // 실패해도 게임에는 아무 영향이 없다. 원인이 잡히면 지운다.
+    net
+      .diag()
+      .then((d) => console.info('[diag]', JSON.stringify(d)))
+      .catch((e) => console.warn('[diag] 실패:', String((e as Error)?.message ?? e)));
     // 결제가 다른 탭에서 끝나므로 언제 끝나는지 우리가 모른다. 구독해 두고
     // 구매 결과는 서버의 `$onItemPurchased`가 지급한다. 결제창이 닫히면
     // 서버 계정을 다시 읽어 상점과 인게임 버튼에 즉시 반영한다.

@@ -175,6 +175,15 @@ export interface ServerBackend {
   connected?: boolean;
   connect(): Promise<boolean>;
   remoteFunction(fn: string, args?: unknown[], opts?: unknown): Promise<any>;
+  /**
+   * 방 소켓(RS)에 붙는다 (gameserver 2.x). **서버가 정한 방 id 를 받아 클라이언트가
+   * 직접 붙는 구조다** — 서버 쪽 `$global.joinRoom` 은 2.x 에서 없어졌다.
+   * 방 안 원격 함수(`setReady`·`sendInputs`·`reportResult`)는 이걸 거쳐야
+   * `$sender.roomId` 가 잡힌다.
+   */
+  joinRoom(roomId: string): Promise<string>;
+  /** 방 소켓을 끊는다. `joinRoom` 의 짝. */
+  leaveRoom(): void;
   subscribeRoomState(roomId: string, cb: (state: any) => void): () => void;
   onRoomMessage(roomId: string, type: string, cb: (message: any) => void): () => void;
 }
@@ -220,6 +229,19 @@ export class Agent8Client {
     return this.roomId;
   }
 
+  /**
+   * 방 소켓에 붙고 나서야 방 id 를 확정한다.
+   *
+   * gameserver 2.x 부터 방 참가는 서버가 못 해 준다 — 서버는 id 만 정하고
+   * (`server.js` 의 `#platformJoin`), 클라이언트가 여기서 RS 에 직접 붙는다.
+   * 이게 끝나야 `setReady` 같은 방 안 호출이 `$sender.roomId` 를 갖는다.
+   */
+  private async enterRs(roomId: string): Promise<string> {
+    await withTimeout(this.server.joinRoom(roomId), '방 연결', ROOM_CALL_TIMEOUT_MS);
+    this.roomId = roomId;
+    return roomId;
+  }
+
   /** 무작위 매칭. 빈 방을 찾거나 새로 판다. 서버가 `roomId` 를 정한다. */
   async findMatch(): Promise<string> {
     const res = await withTimeout(
@@ -227,8 +249,7 @@ export class Agent8Client {
       '매칭',
       MATCH_CALL_TIMEOUT_MS,
     );
-    this.roomId = res.roomId;
-    return res.roomId;
+    return await this.enterRs(res.roomId);
   }
 
   /**
@@ -248,8 +269,7 @@ export class Agent8Client {
       REMATCH_CALL_TIMEOUT_MS,
     );
     if (!res || typeof res.roomId !== 'string') return null;
-    this.roomId = res.roomId;
-    return res.roomId;
+    return await this.enterRs(res.roomId);
   }
 
   /** 친구를 부를 방을 판다. 코드는 서버가 발급한다 (락 안에서). */
@@ -262,7 +282,7 @@ export class Agent8Client {
     if (typeof res?.roomId !== 'string' || typeof res?.code !== 'string' || !res.code.trim()) {
       throw new Error('서버가 방 코드를 보내지 않았습니다. 다시 시도해 주세요.');
     }
-    this.roomId = res.roomId;
+    await this.enterRs(res.roomId);
     return { roomId: res.roomId, code: res.code.trim().toUpperCase() };
   }
 
@@ -272,8 +292,7 @@ export class Agent8Client {
       this.server.remoteFunction('joinRoomByCode', [code]),
       '방 참가',
     );
-    this.roomId = res.roomId;
-    return res.roomId;
+    return await this.enterRs(res.roomId);
   }
 
   /**
@@ -297,8 +316,16 @@ export class Agent8Client {
     // 여기에도 타임아웃이 필요하다. 서버가 없으면 이 호출이 안 끝나서,
     // 방을 옮기려고 이걸 먼저 기다리는 화면이 통째로 멈춘다.
     try {
+      // **원격 정리를 먼저, 소켓 끊기를 나중에.** `leaveMatch` 는 방 상태 정리에
+      // `$room`(= 지금 붙어 있는 RS)을 쓰므로 먼저 끊으면 정리가 헛돈다.
       await withTimeout(this.server.remoteFunction('leaveMatch', []), '방 나가기');
     } finally {
+      // 원격이 실패했어도 소켓은 끊는다 — 방 두 개에 발을 걸치면 유령이 남는다.
+      try {
+        this.server.leaveRoom();
+      } catch {
+        // 이미 끊겨 있으면 그만이다.
+      }
       this.roomId = null;
     }
   }
@@ -450,8 +477,13 @@ export class Agent8Client {
         stopRoom = null;
         bindBatch();
         bindRoom();
-        void server
-          .remoteFunction('rejoinRoom', [roomId])
+        // **방 소켓(RS)부터 다시 붙인다** (gameserver 2.x). SDK 재연결은 GS 만
+        // 살리므로 RS 는 우리가 다시 붙어야 방 안 호출이 통한다. 실패해도
+        // `rejoinRoom` 은 시도한다 — GS 로도 판정(닫힌 방 여부)은 받을 수 있다.
+        void Promise.resolve()
+          .then(() => server.joinRoom(roomId))
+          .catch((e: unknown) => console.warn('[net] RS 재접속 실패:', e))
+          .then(() => server.remoteFunction('rejoinRoom', [roomId]))
           .then((res: unknown) => {
             // **결과를 반드시 본다.** 예전에는 예외만 봤는데, 닫힌 방은 예외가 아니라
             // "못 들어감"으로 조용히 돌아온다 — 그래서 복구가 헛도는데도 로그가 한 줄도

@@ -94,6 +94,15 @@ const SOLO_FALLBACK_MS = 12000;
 /** 시작도 못 하고 이만큼 방치된 방은 닫는다. */
 const LOBBY_TIMEOUT_MS = 120000;
 
+/**
+ * 갓 만든 빈 방을 `abandoned` 로 닫지 않고 기다려 주는 시간(ms).
+ *
+ * v2 런타임(@agent8-dev)에서는 서버가 방 id 를 정하고 **클라이언트가 SDK
+ * `joinRoom` 으로 뒤따라 붙는다** — 라우팅·RS 접속에 몇 초가 걸리는 동안
+ * `$users` 는 비어 있다. `$roomTick` 이 그 창에서 방을 닫으면 아무도 판을 못 연다.
+ */
+const JOIN_GRACE_MS = 15000;
+
 const PHASE_WAITING = 'waiting';
 const PHASE_PLAYING = 'playing';
 const PHASE_FINISHED = 'finished';
@@ -1166,7 +1175,7 @@ class Server {
         await $room.updateRoomState({ players });
       }
     }
-    return await $global.leaveRoom();
+    return await this.#platformLeave();
   }
 
   /**
@@ -1300,10 +1309,11 @@ class Server {
       return { ok: false, phase, winnerSlot: 0 };
     }
 
-    await $global.joinRoom(roomId);
+    await this.#platformJoin(roomId);
     // `seenAt` 을 지금으로 되돌린다. 끊겨 있는 동안 안 갱신됐으므로 그대로 두면
     // 돌아오자마자 `$roomTick` 이 나를 조용한 쪽으로 보고 부전패로 닫는다.
-    await $room.updateRoomState({
+    // **id 로 짚는다** — v2 에서는 이 호출이 방 밖(GS)에서 올 수 있다.
+    await $global.updateRoomState(roomId, {
       players: this.#patchPlayer(state, $sender.account, { seenAt: Date.now() }),
     });
     return { ok: true, phase, winnerSlot: 0 };
@@ -1446,8 +1456,21 @@ class Server {
 
     // 아무도 안 오는 방은 오래 두지 않는다. 코드 방도 여기서 정리된다 —
     // 안 그러면 코드 표가 영원히 자란다.
+    // **빈 방도 소켓 참가를 기다리는 동안은 봐준다** (2026-08-24, v2 런타임).
+    // v2 에서는 서버가 방 id 만 정하고 클라이언트가 SDK `joinRoom` 으로 뒤따라
+    // 붙는다 — 그 사이 몇 초는 `$users` 가 비어 있는 게 정상이다. 유예 없이 닫으면
+    // 만들어지자마자 모든 방이 `abandoned` 로 죽는다.
+    //
+    // 유예는 **players 에 아직 사람이 적혀 있을 때만** 준다. `leaveMatch` 는 자기
+    // 칸을 지우므로, players 가 비었는데 유저도 0이면 "다 들어왔다 나간 방"이다 —
+    // 그건 바로 닫아야 코드가 회수된다. players 에 남았는데 유저가 0인 것은
+    // (1) 갓 만들어 RS 참가 대기 중이거나 (2) 클라이언트가 죽은 것 — 가장 최근
+    // joinedAt 에서 유예만큼만 기다린다.
+    const seats = Object.values(players);
+    const newestJoin = seats.reduce((m, p) => Math.max(m, p.joinedAt || 0), 0);
+    const joinGraceOver = seats.length === 0 || now - newestJoin > JOIN_GRACE_MS;
     const idleTooLong = now - (state.createdAt || now) > LOBBY_TIMEOUT_MS;
-    if (users.length === 0 || idleTooLong) {
+    if ((users.length === 0 && joinGraceOver) || idleTooLong) {
       await this.#releaseCode(state.code);
       await $global.updateRoomState(roomId, { phase: PHASE_FINISHED, reason: 'abandoned' });
       await this.#mmRemove(roomId);
@@ -1471,9 +1494,44 @@ class Server {
 
   // ── 내부 ───────────────────────────────────────────────────────
 
+  /**
+   * 방 소속을 플랫폼에 등록한다. **v1/v2 런타임을 모두 받는다** (2026-08-24).
+   *
+   * v2(@agent8-dev/gameserver 2.x)는 `$global.joinRoom` 을 없앴다 — 방 참가는
+   * 클라이언트가 `server.joinRoom(roomId)` 로 직접 한다(RS 소켓). 서버는 방 id 를
+   * **정해서 돌려주기만** 하면 된다. v1 은 여전히 서버가 넣어 줘야 `$room` 과
+   * 하네스가 돈다. 그래서 되면 부르고, "not available" 이면 id 만 만든다.
+   */
+  async #platformJoin(roomId) {
+    try {
+      return await $global.joinRoom(roomId);
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      if (!msg.includes('not available')) throw e;
+    }
+    // v2: 서버는 id 만 정한다. 유일하면 되고, RS 라우팅은 어떤 문자열이든 받는다.
+    return (
+      roomId ||
+      `tw-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xffffff).toString(36)}`
+    );
+  }
+
+  /** `#platformJoin` 의 짝. v2 에서는 클라이언트가 SDK `leaveRoom()` 으로 나간다. */
+  async #platformLeave() {
+    try {
+      return await $global.leaveRoom();
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      if (!msg.includes('not available')) throw e;
+      return null;
+    }
+  }
+
   async #enterRoom(roomId) {
-    const id = await $global.joinRoom(roomId);
-    const state = (await $room.getRoomState()) || {};
+    const id = await this.#platformJoin(roomId);
+    // **`$room` 이 아니라 id 로 짚는다** (2026-08-24). v2 에서는 서버가 방에 안
+    // 들어가므로 `$sender.roomId` 가 아직 없다 — `$room.*` 은 빈 곳을 가리킨다.
+    const state = (await $global.getRoomState(id)) || {};
 
     // 방이 갓 만들어졌으면 초기화한다. 이미 있으면 남의 판 정보를 덮어쓰지 않는다.
     const now = Date.now();
@@ -1492,7 +1550,7 @@ class Server {
       patch.createdAt = Date.now();
       patch.slots = {};
     }
-    await $room.updateRoomState(patch);
+    await $global.updateRoomState(id, patch);
     return { roomId: id, account: $sender.account };
   }
 

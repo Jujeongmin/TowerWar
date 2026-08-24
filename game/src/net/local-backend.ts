@@ -37,6 +37,13 @@ export interface ServerLike {
   connected: boolean;
   connect(): Promise<boolean>;
   remoteFunction(fn: string, args?: unknown[], opts?: unknown): Promise<any>;
+  /**
+   * gameserver 2.x 표면 맞추기. **로컬에서는 사실상 no-op 다** — 이 백엔드의
+   * `server.js` 는 v1 스텁(`$global.joinRoom`)으로 돌아서 방 소속을 서버 쪽에서
+   * 이미 잡는다. 실물 2.x 는 여기서 RS 소켓을 새로 붙인다.
+   */
+  joinRoom(roomId: string): Promise<string>;
+  leaveRoom(): void;
   subscribeRoomState(roomId: string, cb: (state: any) => void): () => void;
   onRoomMessage(roomId: string, type: string, cb: (message: any) => void): () => void;
 }
@@ -308,6 +315,13 @@ export async function createLocalBackend(): Promise<ServerLike> {
           reject(new Error('로컬 백엔드 호스트가 응답하지 않습니다 (탭을 닫았나요?)'));
         }, 5000);
       });
+    },
+    async joinRoom(roomId: string) {
+      // 방 소속은 이 백엔드의 v1 스텁이 서버 쪽에서 이미 잡았다 (`ServerLike` 주석).
+      return roomId;
+    },
+    leaveRoom() {
+      // 위와 같은 이유로 할 일이 없다.
     },
     subscribeRoomState(roomId, cb) {
       const s = { roomId, cb };

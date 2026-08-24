@@ -1025,91 +1025,78 @@ class Server {
       return await this.#saveAccount({ ...a, towerKind: kind });
     });
   }
-
   /**
-   * 무작위 매칭. 대기 중이고 자리가 남은 방에 들어가거나, 없으면 새로 판다.
+   * 무작위 매칭. **대기 큐 하나만 본다 — 남의 방 상태는 안 읽는다.**
    *
-   * `countRoomUsers` 는 **Promise를 돌려준다.** await 없이 비교하면 항상 false가 되어
-   * 꽉 찬 방을 그대로 통과시킨다.
+   * gameserver 2.x 런타임은 서버에서 임의의 방을 들여다보는 API를 안 준다
+   * (`$global.getRoomState`/`getAllRoomIds`/`countRoomUsers` 전부 없다). `$room` 은
+   * **내가 그 방에 있을 때만** 쓸 수 있다. 그래서 매칭에 필요한 정보를 방이 아니라
+   * 글로벌 큐 항목에 적어 둔다: 누가 열었는지, 점수, 언제부터 기다렸는지.
    *
-   * 코드 방(`private`)은 후보에서 뺀다. 친구를 기다리는 방에 낯선 사람을 넣으면 안 된다.
-   */
-  /**
-   * 점수가 너무 다른 상대와는 즉시 안 붙는다. 방을 만든 사람이 오래 기다렸을수록
-   * 대역을 넓힌다 (`ratingBandFor`) — 실력차 매칭과 "그래도 봇보다는 사람"이라는
-   * §-7의 우선순위를 함께 만족시키는 지점이다.
+   * 짝이 맞으면 그 항목을 큐에서 빼고 방 id 를 돌려준다 — **방에 실제로 붙는 것은
+   * 클라이언트다** (`server.joinRoom`). 서버가 방 상태를 처음 만지는 곳은
+   * `setReady` 이고, 그때는 `$sender.roomId` 가 잡혀 있어 `$room` 이 쓸 수 있다.
    *
-   * 대역 밖이면 이 방은 건너뛰고 계속 찾는다. 끝까지 못 찾으면 전과 같이 내가
-   * 새 대기방을 판다 — 그 방은 나중에 다른 사람의 findMatch 후보가 된다.
-   */
-  /**
-   * 빈 방을 찾아 들어간다. 없으면 새로 판다.
-   *
-   * @param waitedMs  내가 지금까지 매칭을 기다린 시간. **클라이언트가 보낸 값이라
-   *   `SOLO_FALLBACK_MS` 로 자른다** — 부풀려도 12초 뒤에 저절로 되는 것보다 더 얻을 게 없다.
-   *   대역 판정에 **상대의 대기와 내 대기 중 큰 쪽**을 쓴다. 전에는 상대 것만 봐서,
-   *   늦게 들어온 사람은 아무리 오래 기다려도 대역이 안 넓어졌다 — 두 사람이 동시에
-   *   대기 중인데도 서로를 지나치는 원인이었다.
-   * @param retry  주기 재시도인가. **참이면 후보가 없을 때 새 방을 안 판다** —
-   *   이미 내 방에서 기다리는 중이라, 새로 파면 그때까지 쌓인 대기가 통째로 날아간다.
-   *   그때는 `null` 을 돌려주고 클라이언트는 그냥 하던 대기를 이어 간다.
+   * @param waitedMs  내가 기다린 시간. **클라이언트 값이라 `SOLO_FALLBACK_MS` 로 자른다.**
+   *   대역 판정에 상대의 대기와 내 대기 중 큰 쪽을 쓴다 — 늦게 들어온 사람도 대역이 넓어진다.
+   * @param retry  주기 재시도인가. 참이면 후보가 없을 때 새 방을 안 판다.
    */
   async findMatch(waitedMs, retry) {
-    // **역대 방 전체를 훑지 않는다** (2026-08-24, 운영 장애로 확인).
-    //
-    // 전에는 `getAllRoomIds()` 로 받은 **모든 방**을 방당 왕복 1~2번씩 직렬로
-    // 검사했다. 운영 verse 에는 판이 끝난 방 문서가 플레이 수만큼 쌓여 있어서
-    // (수백 개), 이 호출 하나가 수십 초를 먹었다 — 12초 타임아웃에 반드시 걸리고,
-    // 클라이언트의 1.5초 재훑기가 그 스캔을 서버에 계속 쌓아 **서버가 ping 에도
-    // 못 답할 만큼** 굶었다 (`Socket did not respond to ping`). 매칭·순위표·팔로우가
-    // 시간대에 따라 다 같이 죽던 신고(8/22·8/23)의 뿌리가 이것이다.
-    //
-    // 이제 글로벌 상태의 대기방 큐(`mm`)만 본다 — 어느 순간이든 "지금 상대를
-    // 기다리는 공개 방"뿐이라 몇 개 안 된다. 죽은 항목(닫힌 방·시작된 방)은
-    // 여기서 발견하는 즉시 큐에서 뺀다.
-    // 진단 계측 (2026-08-24 운영 장애: 이 호출이 12초 안에 안 끝난다는 신고).
-    // 어디까지 왔는지·얼마나 걸렸는지 서버 로그에 남긴다. 원인이 잡히면 지운다.
-    const t0 = Date.now();
-    const g = (await $global.getGlobalState()) || {};
-    const queued = Object.keys(g.mm || {});
-    console.log('[tw:diag] findMatch start', { retry: !!retry, queue: queued.length, readMs: Date.now() - t0 });
     const me = await this.#loadAccount();
+    const account = $sender.account;
     const now = Date.now();
     const myWaited = Math.min(num(waitedMs), SOLO_FALLBACK_MS);
-    for (const id of queued) {
-      const state = await $global.getRoomState(id);
-      // 죽은 항목 청소: 방이 사라졌거나, 사적으로 바뀌었거나, 이미 시작·종료됐다.
-      if (!state || state.private || (state.phase && state.phase !== PHASE_WAITING)) {
-        await this.#mmRemove(id);
-        continue;
-      }
-      if ((await $global.countRoomUsers(id)) >= ROOM_MAX_USER) continue;
 
-      const players = state.players || {};
-      // **내가 이미 있는 방은 건너뛴다.** 재시도에서 자기 방을 다시 집으면
-      // `#enterRoom` 이 `joinedAt` 을 지금으로 덮어써 대기 시간이 초기화되고,
-      // 봇 폴백 타이머와 대역 확장이 함께 리셋된다.
-      if (players[$sender.account]) continue;
+    const picked = await $lock(MM_LOCK, async () => {
+      const g = (await $global.getGlobalState()) || {};
+      const mm = { ...(g.mm || {}) };
+      let dirty = false;
 
-      const creator = Object.keys(players)[0];
-      if (creator) {
-        const waited = Math.max(now - (players[creator].joinedAt || 0), myWaited);
-        const creatorRating = numOr(players[creator].rating, DEFAULT_RATING);
-        if (Math.abs(me.rating - creatorRating) > ratingBandFor(waited)) continue;
+      // **먼저 상한 지난 항목을 버린다.** 큐에 넣어 놓고 사라진 사람(탭을 닫는 등)이
+      // 영원히 후보로 남으면, 새로 온 사람이 아무도 없는 방에 들어가 계속 기다린다.
+      for (const id of Object.keys(mm)) {
+        if (now - num((mm[id] || {}).joinedAt) > LOBBY_TIMEOUT_MS) {
+          delete mm[id];
+          dirty = true;
+        }
       }
-      return await this.#enterRoom(id);
+
+      let mine = null;
+      for (const id of Object.keys(mm)) {
+        const e = mm[id] || {};
+        if (!e.host) continue;
+        // 내가 이미 판 방은 후보가 아니다 — 기다리던 자리를 그대로 지킨다.
+        if (e.host === account) {
+          mine = id;
+          continue;
+        }
+        const waited = Math.max(now - num(e.joinedAt), myWaited);
+        if (Math.abs(me.rating - numOr(e.rating, DEFAULT_RATING)) > ratingBandFor(waited)) continue;
+        // 짝이 찼다. 큐에서 빼야 세 번째 사람이 끼어들지 않는다.
+        delete mm[id];
+        await $global.updateGlobalState({ mm });
+        return { roomId: id, fresh: false };
+      }
+
+      if (dirty) await $global.updateGlobalState({ mm });
+      // 재시도는 새 방을 안 판다. 이미 기다리는 중이라 새로 파면 대기가 통째로 날아간다.
+      if (retry) return mine ? null : null;
+      if (mine) return { roomId: mine, fresh: false };
+      return { roomId: null, fresh: true };
+    });
+
+    if (!picked) return null;
+
+    // 방 id 를 확정한다. v1 은 플랫폼이 정해 주고, v2 는 여기서 만든다
+    // (`#platformJoin`). 짝을 찾은 경우에는 그 방 id 를 그대로 쓴다.
+    const roomId = await this.#platformJoin(picked.roomId || undefined);
+    // 새로 판 방만 큐에 올린다. 남의 방에 들어간 경우는 이미 빼 놨다.
+    if (picked.fresh) {
+      await this.#mmAdd(roomId, { host: account, rating: me.rating, joinedAt: now });
     }
-    if (retry) {
-      console.log('[tw:diag] findMatch retry-miss', { tookMs: Date.now() - t0 });
-      return null;
-    }
-    const entered = await this.#enterRoom(undefined);
-    // 새로 판 방을 큐에 올린다. 코드 방(`createRoom`)은 여기 안 온다 — 사적 방은
-    // 무작위 매칭 후보가 아니다.
-    await this.#mmAdd(entered.roomId);
-    console.log('[tw:diag] findMatch created', { roomId: entered.roomId, tookMs: Date.now() - t0 });
-    return entered;
+    return { roomId, account };
   }
+
 
   /**
    * 대기방 큐에 방을 올린다. 시작·종료되면 `#mmRemove` 가 내린다.
@@ -1120,11 +1107,15 @@ class Server {
    * 등록이 빠져도 12초 뒤 서버 봇 확정은 그대로 되고, 죽은 항목은 `findMatch` 가
    * 훑으면서 치운다.
    */
-  async #mmAdd(roomId) {
+  async #mmAdd(roomId, entry) {
     try {
       await $lock(MM_LOCK, async () => {
         const g = (await $global.getGlobalState()) || {};
-        await $global.updateGlobalState({ mm: { ...(g.mm || {}), [roomId]: Date.now() } });
+        // **항목에 매칭 판정에 필요한 것을 다 적어 둔다.** v2 에서는 남의 방 상태를
+        // 못 읽으므로, 이 세 값(연 사람·점수·대기 시작)이 유일한 판단 근거다.
+        await $global.updateGlobalState({
+          mm: { ...(g.mm || {}), [roomId]: { ...entry, joinedAt: num(entry.joinedAt) || Date.now() } },
+        });
       });
     } catch (e) {
       console.warn('[tw] 대기방 큐 등록 실패 (매칭은 계속된다):', String((e && e.message) || e));
@@ -1161,7 +1152,10 @@ class Server {
    * 친구를 기다리는 중에 판이 시작돼 버리면 코드를 준 의미가 없다.
    */
   async createRoom() {
-    const entered = await this.#enterRoom(undefined);
+    // 방 id 만 확정한다. **방 상태는 아직 못 만진다** — v2 에서는 클라이언트가
+    // `server.joinRoom` 으로 붙은 뒤에야 `$room` 이 열린다. 초기화는 `setReady` 몫이고,
+    // 이 방이 코드 방이라는 사실은 아래 코드 표가 기억한다 (`#codeOf`).
+    const roomId = await this.#platformJoin(undefined);
     const code = await $lock(CODE_LOCK, async () => {
       const g = (await $global.getGlobalState()) || {};
       const codes = { ...(g.codes || {}) };
@@ -1174,13 +1168,12 @@ class Server {
         }
       }
       if (!picked) throw new Error('방 코드를 만들지 못했습니다');
-      codes[picked] = entered.roomId;
+      codes[picked] = roomId;
       await $global.updateGlobalState({ codes });
       return picked;
     });
 
-    await $room.updateRoomState({ code, private: true });
-    return { ...entered, code };
+    return { roomId, account: $sender.account, code };
   }
 
   /** 코드로 친구 방에 들어간다. 실패는 전부 던진다 — 왜 못 들어갔는지 화면에 보여야 한다. */
@@ -1192,14 +1185,12 @@ class Server {
     const roomId = (g.codes || {})[code];
     if (!roomId) throw new Error('그런 방이 없습니다');
 
-    const state = await $global.getRoomState(roomId);
-    if (state && state.phase && state.phase !== PHASE_WAITING) {
-      throw new Error('이미 시작된 방입니다');
-    }
-    if ((await $global.countRoomUsers(roomId)) >= ROOM_MAX_USER) {
-      throw new Error('방이 가득 찼습니다');
-    }
-    return await this.#enterRoom(roomId);
+    // **자리가 있는지·이미 시작했는지는 여기서 못 본다** (v2). 그 방에 아직 안 붙어서
+    // 상태를 읽을 수 없다 — 붙고 나서 `setReady` 가 같은 검사를 하고 던진다.
+    // 코드가 표에 있으면 방이 아직 살아 있다는 뜻이라(닫히면 `#releaseCode` 가 지운다)
+    // 여기서 걸러야 할 것은 "그런 방이 없다" 하나뿐이다.
+    const id = await this.#platformJoin(roomId);
+    return { roomId: id, account: $sender.account };
   }
 
   /**
@@ -1207,6 +1198,11 @@ class Server {
    * 그냥 두면 남은 쪽이 오지 않는 입력을 계속 기다린다.
    */
   async leaveMatch() {
+    const roomId = $sender.roomId;
+    // **대기 큐에서 먼저 뺀다** (v2). 내가 열어 둔 방을 두고 나가면, 큐에 남은 그
+    // 항목이 다음 사람을 아무도 없는 방으로 보낸다 — 그 사람은 12초를 기다렸다
+    // 봇전으로 떨어진다. 방 상태 정리보다 이게 먼저다.
+    await this.#mmRemove(roomId);
     const state = await $room.getRoomState();
     if (state) {
       const players = { ...(state.players || {}) };
@@ -1238,11 +1234,28 @@ class Server {
    * 생산속도를 타워 외형이 이어받으면 그 종류 이름이 유닛 종류 옆에 들어온다.)
    */
   async setReady(ready) {
+    const roomId = $sender.roomId;
     const state = (await $room.getRoomState()) || {};
     // **강화 단계는 서버 계정에서 읽는다.** 클라이언트가 보낸 값을 쓰면 만렙을 자칭할 수 있다.
     const me = await this.#loadAccount();
-    await $room.updateRoomState({
-      players: this.#patchPlayer(state, $sender.account, {
+    const account = $sender.account;
+    const now = Date.now();
+    const seated = state.players || {};
+    const isNew = !seated[account];
+
+    // **정원 검사가 여기로 왔다** (v2). 방에 붙기 전에는 상태를 못 읽으므로
+    // `joinRoomByCode` 가 이걸 못 한다 — 붙고 나서 처음 상태를 보는 자리가 여기다.
+    if (isNew && Object.keys(seated).length >= ROOM_MAX_USER) {
+      throw new Error('방이 가득 찼습니다');
+    }
+    if (isNew && state.phase && state.phase !== PHASE_WAITING) {
+      throw new Error('이미 시작된 방입니다');
+    }
+
+    // **방 초기화도 여기로 왔다.** v2 에서는 `findMatch`/`createRoom` 이 방 상태를
+    // 못 만진다 (그 방에 아직 안 붙었다). 처음 들어온 사람이 방을 세운다.
+    const patch = {
+      players: this.#patchPlayer(state, account, {
         ready: !!ready,
         // 유닛 종류도 서버 계정에서 읽는다. 2026-07-31부터 종류가 유닛의 힘을 정하므로
         // (`units.ts` 의 `power`) 클라이언트가 보내면 안 산 유닛의 힘을 자칭할 수 있다.
@@ -1258,9 +1271,44 @@ class Server {
         rating: me.rating,
         // 유료 소유. `#start` 가 여기서 읽어 방 상태의 `tempo` 를 만든다.
         entitlements: me.entitlements,
-        seenAt: Date.now(),
+        seenAt: now,
+        // joinedAt 은 봇 폴백 타이머의 기준이다. 방 createdAt 을 쓰면, 오래된 방에
+        // 뒤늦게 들어온 사람이 기다리지도 않고 곧바로 봇전으로 떨어진다.
+        // **처음 앉을 때만 찍는다** — 준비를 껐다 켜도 대기가 초기화되면 안 된다.
+        joinedAt: isNew ? now : num(seated[account].joinedAt) || now,
+        ackTick: isNew ? 0 : num(seated[account].ackTick),
       }),
-    });
+    };
+
+    if (!state.phase) {
+      patch.phase = PHASE_WAITING;
+      patch.createdAt = now;
+      patch.slots = {};
+      // 코드 방이면 여기서 표시한다. 이 값이 보상·매칭 후보 판정을 모두 가른다.
+      const code = await this.#codeOf(roomId);
+      if (code) {
+        patch.private = true;
+        patch.code = code;
+      }
+    }
+
+    await $room.updateRoomState(patch);
+
+    // **둘 다 준비됐으면 여기서 시작한다** (v2). 전에는 `$roomTick` 이 방을 훑어
+    // 시작시켰는데, v2 런타임은 tick 에서 임의 방 상태를 못 읽는다. 마지막으로
+    // 준비를 누른 사람의 이 호출이 방 맥락을 쥐고 있으므로 여기가 가장 확실하다.
+    const merged = { ...state, ...patch };
+    const seats = Object.keys(merged.players || {});
+    if (
+      (merged.phase || PHASE_WAITING) === PHASE_WAITING &&
+      seats.length >= ROOM_MAX_USER &&
+      seats.every((a) => merged.players[a] && merged.players[a].ready)
+    ) {
+      // 판이 열리면 코드는 쓸모가 없다. 일찍 놓아 줘야 코드 공간이 안 마른다.
+      await this.#releaseCode(merged.code);
+      await this.#mmRemove(roomId);
+      await this.#start(roomId, seats, merged.players);
+    }
     return true;
   }
 
@@ -1275,10 +1323,12 @@ class Server {
 
     const state = (await $room.getRoomState()) || {};
     const player = (state.players || {})[$sender.account];
+    // **인원은 방 상태의 `players` 로 센다** (v2). `countRoomUsers` 가 없어졌고,
+    // 어차피 `setReady` 를 거친 사람만 이 맵에 앉으므로 판정 근거로 더 정확하다.
     if (
       state.phase !== PHASE_WAITING ||
       state.private ||
-      (await $global.countRoomUsers(roomId)) !== 1 ||
+      Object.keys(state.players || {}).length !== 1 ||
       !player ||
       !player.ready
     ) return false;
@@ -1340,7 +1390,18 @@ class Server {
    * 인원 상한도 안 본다: 이미 자기 자리가 있는 사람이라 새로 차지하는 것이 없다.
    */
   async rejoinRoom(roomId) {
-    const state = await $global.getRoomState(roomId);
+    // **클라이언트가 먼저 방 소켓에 다시 붙고 이걸 부른다** (`net/agent8.ts` 의
+    // `recover`). 그래서 `$room` 이 열려 있다 — v2 에는 방을 id 로 들여다보는
+    // API 가 없으므로 이 순서가 유일한 길이다.
+    //
+    // **여기서 방에 넣어 주지 않는다.** 넣어 주면 남의 방 id 로 불러 그 방에 발을
+    // 걸칠 수 있고, 없는 id 로 부르면 빈 방이 생기면서 **부른 사람이 자기 판에서
+    // 떨어져 나간다** — 그 뒤 명령·결과 보고가 통째로 엉뚱한 방으로 간다.
+    // 붙어 있는 방과 물어보는 방이 다르면 그냥 거절한다.
+    if (!roomId || $sender.roomId !== roomId) {
+      return { ok: false, phase: null, winnerSlot: 0 };
+    }
+    const state = await $room.getRoomState();
     if (!state) return { ok: false, phase: null, winnerSlot: 0 };
 
     // **닫힌 방은 되살리지 않는다. 대신 판정을 돌려준다.**
@@ -1358,11 +1419,9 @@ class Server {
       return { ok: false, phase, winnerSlot: 0 };
     }
 
-    await this.#platformJoin(roomId);
     // `seenAt` 을 지금으로 되돌린다. 끊겨 있는 동안 안 갱신됐으므로 그대로 두면
     // 돌아오자마자 `$roomTick` 이 나를 조용한 쪽으로 보고 부전패로 닫는다.
-    // **id 로 짚는다** — v2 에서는 이 호출이 방 밖(GS)에서 올 수 있다.
-    await $global.updateRoomState(roomId, {
+    await $room.updateRoomState({
       players: this.#patchPlayer(state, $sender.account, { seenAt: Date.now() }),
     });
     return { ok: true, phase, winnerSlot: 0 };
@@ -1426,9 +1485,26 @@ class Server {
    * 시간에 걸린 판단은 전부 여기 있다.
    *
    * `$sender` 도 `$room` 도 없다. 방은 `$global` 로 지목한다.
+   *
+   * ── **v2 런타임에서는 통째로 안 돌 수 있다** (2026-08-24) ──────
+   *
+   * gameserver 2.x 는 서버에서 임의 방을 읽는 API 를 안 준다. 그러면 아래 판단은
+   * 전부 불가능한데, **그래도 게임은 굴러가야 한다.** 그래서 시간에 걸린 판단을
+   * 전부 방 맥락이 있는 호출로 옮겨 뒀다:
+   *   - 판 시작 → `setReady` (마지막으로 준비를 누른 사람이 연다)
+   *   - 봇전 확정 → `requestSoloFallback` (클라이언트가 12초에 부른다)
+   *   - 이탈 처리 → `leaveMatch`
+   * 여기 남은 것은 **끊긴 상대 부전승·버려진 방 청소**뿐이고, 그건 v1 에서만 돈다.
+   * v2 에서는 상대가 끊기면 클라이언트의 정지 감지(`STALL_GIVEUP_MS`)가 대신 끝낸다.
    */
   async $roomTick(deltaMillis, roomId) {
-    const state = await $global.getRoomState(roomId);
+    if (typeof $global.getRoomState !== 'function') return;
+    let state = null;
+    try {
+      state = await $global.getRoomState(roomId);
+    } catch {
+      return; // v2: 방을 id 로 못 읽는다. 위 주석의 대체 경로가 맡는다.
+    }
     if (!state) return;
 
     // 진단 샘플 로그 (2026-08-24 운영 장애). 플랫폼이 tick 을 도는 방이 얼마나 되는지
@@ -1480,28 +1556,10 @@ class Server {
 
     if (state.phase === PHASE_FINISHED) return;
 
-    // 대기 중: 둘 다 들어와 있고 둘 다 준비했으면 시작한다.
-    if (users.length >= ROOM_MAX_USER) {
-      const ready = users.filter((a) => players[a] && players[a].ready);
-      if (ready.length >= ROOM_MAX_USER) {
-        // 판이 열리면 코드는 쓸모가 없다. 일찍 놓아 줘야 코드 공간이 안 마른다.
-        await this.#releaseCode(state.code);
-        await this.#start(roomId, users, players);
-        return;
-      }
-    }
-
-    // 혼자 오래 기다렸으면 봇전으로 확정한다. 여기서 정해야 상대가 같은 순간에
-    // 들어오는 경합이 안 생긴다 (SOLO_FALLBACK_MS 주석 참고).
-    // 코드 방은 예외다 — 친구를 기다리는 중에 판이 시작되면 코드를 준 의미가 없다.
-    if (!state.private && users.length === 1 && players[users[0]] && players[users[0]].ready) {
-      const waited = now - (players[users[0]].joinedAt || state.createdAt || now);
-      if (waited >= SOLO_FALLBACK_MS) {
-        await this.#releaseCode(state.code);
-        await this.#startSolo(roomId, users[0]);
-        return;
-      }
-    }
+    // **판 시작과 봇전 확정은 여기서 안 한다** (2026-08-24, v2). 둘 다 `#start`/
+    // `#startSolo` 를 부르는데 그 함수들은 이제 `$room` 으로 쓴다 — 여기에는
+    // `$sender` 도 `$room` 도 없다. 판정은 방 맥락이 있는 호출로 옮겼다:
+    // 시작은 `setReady`, 봇전 확정은 `requestSoloFallback`.
 
     // 아무도 안 오는 방은 오래 두지 않는다. 코드 방도 여기서 정리된다 —
     // 안 그러면 코드 표가 영원히 자란다.
@@ -1576,31 +1634,19 @@ class Server {
     }
   }
 
-  async #enterRoom(roomId) {
-    const id = await this.#platformJoin(roomId);
-    // **`$room` 이 아니라 id 로 짚는다** (2026-08-24). v2 에서는 서버가 방에 안
-    // 들어가므로 `$sender.roomId` 가 아직 없다 — `$room.*` 은 빈 곳을 가리킨다.
-    const state = (await $global.getRoomState(id)) || {};
-
-    // 방이 갓 만들어졌으면 초기화한다. 이미 있으면 남의 판 정보를 덮어쓰지 않는다.
-    const now = Date.now();
-    // joinedAt 은 봇 폴백 타이머의 기준이다. 방 createdAt 을 쓰면, 오래된 방에
-    // 뒤늦게 들어온 사람이 기다리지도 않고 곧바로 봇전으로 떨어진다.
-    const patch = {
-      players: this.#patchPlayer(state, $sender.account, {
-        ready: false,
-        ackTick: 0,
-        seenAt: now,
-        joinedAt: now,
-      }),
-    };
-    if (!state.phase) {
-      patch.phase = PHASE_WAITING;
-      patch.createdAt = Date.now();
-      patch.slots = {};
-    }
-    await $global.updateRoomState(id, patch);
-    return { roomId: id, account: $sender.account };
+  /**
+   * 이 방이 코드로 만든 친구 방인가. **글로벌 코드 표를 뒤집어 본다.**
+   *
+   * v2 에서는 `createRoom` 시점에 방 상태를 못 만진다 (그 방에 아직 안 붙었다).
+   * 그래서 `private: true` 를 방에 찍는 것은 `setReady` 로 미루는데, 그때
+   * "이게 코드 방이었나"를 알 길이 이 표뿐이다. 표는 살아 있는 코드 방만큼만
+   * 크고 `#releaseCode` 가 치우므로 훑어도 싸다.
+   */
+  async #codeOf(roomId) {
+    const g = (await $global.getGlobalState()) || {};
+    const codes = g.codes || {};
+    for (const c of Object.keys(codes)) if (codes[c] === roomId) return c;
+    return null;
   }
 
   /**
@@ -1648,7 +1694,9 @@ class Server {
         ((players[account] || {}).entitlements || []).includes(TEMPO_ITEM);
     });
 
-    await $global.updateRoomState(roomId, {
+    // **`$room` 으로 쓴다.** 이 함수는 `setReady` 안에서 불리므로 방 맥락이 있다 —
+    // v2 에는 방을 id 로 고치는 API 가 없다.
+    await $room.updateRoomState({
       phase: PHASE_PLAYING,
       solo: false,
       names,
@@ -1687,10 +1735,11 @@ class Server {
    * 한쪽에만 있는 버그가 생긴다.
    */
   async #startSolo(roomId, account) {
-    const state = (await $global.getRoomState(roomId)) || {};
+    // `requestSoloFallback` 안에서 불리므로 방 맥락이 있다 (`#start` 와 같은 이유).
+    const state = (await $room.getRoomState()) || {};
     const mine = cleanName(((state.players || {})[account] || {}).name);
     const seed = Math.floor(Math.random() * 0x10000);
-    await $global.updateRoomState(roomId, {
+    await $room.updateRoomState({
       phase: PHASE_PLAYING,
       solo: true,
       seed,

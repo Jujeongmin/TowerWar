@@ -220,7 +220,8 @@ function open(roomId) {
 as(A);
 const r1 = await server.findMatch();
 check('A가 새 방을 만든다', r1.roomId === 'room-1', r1);
-check('방이 waiting 으로 초기화된다', (await $global.getRoomState('room-1')).phase === 'waiting');
+// v2: 방 상태 초기화는 첫 setReady 가 한다 (findMatch 는 방에 못 붙는다).
+check('매칭이 방 id 를 돌려준다', typeof r1.roomId === 'string' && r1.roomId.length > 0, r1);
 
 // 2) B가 매칭 → 같은 방에 합류 (새로 파지 않는다)
 as(B);
@@ -278,7 +279,11 @@ check('입력 지연이 방 상태에 실린다', started.inputDelayTicks === 12
         '0xBBB': { ready: true, joinedAt: now },
       },
     };
-    await server.$roomTick(300, id);
+    // v2: 판을 여는 것은 마지막 setReady 다 ($roomTick 아님).
+    // **B 를 직접 쓰지 않는다** — 이 방들은 곧 지워지므로 B.roomId 가 죽은 방을
+    // 가리킨 채 남으면 뒤 검사들이 통째로 무너진다.
+    as({ account: '0xBBB', roomId: id });
+    await server.setReady(true);
     seen.add(rooms.get(id).state.slots['0xAAA']);
     rooms.delete(id);
   }
@@ -440,6 +445,8 @@ check('코드는 4자', typeof host.code === 'string' && host.code.length === 4,
 check('코드에 헷갈리는 글자가 없다', !/[IO01]/.test(host.code), host.code);
 check('코드 발급은 락 안에서 돈다', lockCalls.includes('towerwar:roomcode'), lockCalls);
 check('코드 → 방 매핑이 글로벌 상태에 남는다', globalState.codes[host.code] === host.roomId, globalState.codes);
+// v2: private 표시도 첫 setReady 가 찍는다 (createRoom 은 방에 못 붙는다).
+await server.setReady(false);
 check('코드 방은 private 표시', (await $global.getRoomState(host.roomId)).private === true);
 
 as(B);
@@ -474,7 +481,8 @@ check('점수가 멀면 갓 생긴 방을 안 집는다', bandMiss.roomId !== ba
 // ③ B가 재시도해도 **자기 방**은 다시 안 집는다 (대기 0초로 불러 A 방은 여전히 대역 밖)
 const selfRetry = await server.findMatch(0, true);
 check('재시도가 자기 방을 다시 집지 않는다', selfRetry === null, selfRetry);
-const bJoinedAt = rooms.get(bandMiss.roomId).state.players['0xBBB'].joinedAt;
+// v2: 대기 시각은 방이 아니라 **대기 큐 항목**에 산다 (findMatch 는 방에 못 붙는다).
+const bJoinedAt = (globalState.mm || {})[bandMiss.roomId]?.joinedAt;
 check('그래서 joinedAt 이 초기화되지 않는다', typeof bJoinedAt === 'number' && bJoinedAt > 0, bJoinedAt);
 
 // ② 내가 9초 기다렸다고 하면 대역이 600으로 넓어져 A 방에 붙는다.
@@ -517,7 +525,6 @@ check('길이가 모자란 코드는 던진다', err === '방 코드는 4자입�
 as(C);
 await server.joinRoomByCode(host2.code);
 await server.setReady(true);
-await server.$roomTick(300, host2.roomId);
 check('둘 다 준비되면 코드 방도 시작한다', (await $global.getRoomState(host2.roomId)).phase === 'playing');
 check('시작하면 코드가 표에서 빠진다', globalState.codes[host2.code] === undefined, globalState.codes);
 
@@ -526,16 +533,21 @@ as(A); await server.leaveMatch();
 as(B); await server.leaveMatch();
 as(A);
 const host3 = await server.createRoom();
+// v2: 방 상태는 setReady 가 만든다 — 두 사람이 앉아야 '가득 찬' 방이 된다.
+await server.setReady(false);
 as(B);
 await server.joinRoomByCode(host3.code);
+await server.setReady(false);
 as(C);
 err = null;
-try { await server.joinRoomByCode(host3.code); } catch (e) { err = e.message; }
+// v2: joinRoomByCode 는 방 상태를 못 읽는다 — 붙고 나서 setReady 가 정원을 본다.
+try { await server.joinRoomByCode(host3.code); await server.setReady(true); } catch (e) { err = e.message; }
 check('꽉 찬 코드 방은 던진다', err === '방이 가득 찼습니다', err);
 
 // 22) 버려진 코드 방은 코드까지 회수된다
 as(A); await server.leaveMatch();
 as(B); await server.leaveMatch();
+as(C); await server.leaveMatch().catch(() => {}); // 위에서 정원 초과로 튕겼어도 방에는 붙어 있다
 await server.$roomTick(300, host3.roomId);
 check('빈 코드 방은 닫힌다', (await $global.getRoomState(host3.roomId)).phase === 'finished');
 check('닫히면 코드가 회수된다', globalState.codes[host3.code] === undefined, globalState.codes);
@@ -774,7 +786,7 @@ const soloRoom = await server.createRoom();
 await server.setReady(true);
 rooms.get(soloRoom.roomId).state.players['0xCCC'].joinedAt = Date.now() - 60000;
 rooms.get(soloRoom.roomId).state.private = false; // 봇 폴백을 받게 한다
-await server.$roomTick(300, soloRoom.roomId);
+await server.requestSoloFallback();
 const ss = await $global.getRoomState(soloRoom.roomId);
 check('혼자면 봇전으로 확정', ss.solo === true, ss);
 const paidC = await server.reportResult(1, 9999);
@@ -834,7 +846,7 @@ const sroom = await server.createRoom();
 await server.setReady(true);
 rooms.get(sroom.roomId).state.players['0xCCC'].joinedAt = Date.now() - 60000;
 rooms.get(sroom.roomId).state.private = false;
-await server.$roomTick(300, sroom.roomId);
+await server.requestSoloFallback();
 const sst = await $global.getRoomState(sroom.roomId);
 check('봇전은 내 이름만', sst.solo === true && sst.names[1] === '캐럴' && sst.names[2] === undefined, sst.names);
 
@@ -878,7 +890,8 @@ async function soloMatch(who, winner) {
   await server.setReady(true);
   rooms.get(r.roomId).state.players[who.account].joinedAt = Date.now() - 60000;
   rooms.get(r.roomId).state.private = false; // 봇 폴백을 받게 한다
-  await server.$roomTick(300, r.roomId);
+  // v2: 봇전 확정은 $roomTick 이 아니라 클라이언트가 부르는 requestSoloFallback 이다.
+  await server.requestSoloFallback();
   age(r.roomId);
   return await server.reportResult(winner, 0);
 }
@@ -914,7 +927,8 @@ as(B);
 const far = await server.findMatch();
 check('점수 차 600은 즉시 안 붙는다', far.roomId !== waitRoom.roomId, { far: far.roomId, waitRoom: waitRoom.roomId });
 as(B); await server.leaveMatch();
-rooms.get(waitRoom.roomId).state.players['0xAAA'].joinedAt = Date.now() - 11000;
+// v2: 대기 시각은 대기 큐 항목에 있다 (위 §16 과 같은 이유).
+globalState.mm[waitRoom.roomId].joinedAt = Date.now() - 11000;
 as(B);
 const near = await server.findMatch();
 check('11초 기다린 방은 대역이 열린다', near.roomId === waitRoom.roomId, { near: near.roomId, waitRoom: waitRoom.roomId });

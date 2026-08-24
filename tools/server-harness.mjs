@@ -1381,6 +1381,112 @@ check('잘린 표 밖에서는 내 줄이 안 온다', !cut.rows.some((e) => e.m
 check('그래도 등수는 온다', cut.myRank === 56, cut.myRank);
 check('총원은 잘린 뒤에도 전체다', cut.total === 57, cut.total);
 
+// ── 2026-08-24 회귀: 보상·순위표가 갈라지던 자리 ──────────────────
+//
+// 신고(테스터 기록 8/22~8/23): 같은 기기에서 판마다 결과가 달랐다 — 점수만 안 오르고,
+// 순위표만 옛 값에 멈춰 있고, 광고를 다 봐도 2배가 안 들어왔다. 아래 넷은 그 중
+// **서버에서 재현 가능한** 경로다.
+
+// 61) 방 기록이 던져도 순위표는 갱신된다.
+//
+// 전에는 `#grantReward` 가 계정을 저장한 뒤 `$room.updateRoomState({paid})` 를
+// 그냥 await 했다. 그것이 던지면 뒤따르는 `#recordOnBoard` 가 통째로 건너뛰어져
+// **계정 점수는 올랐는데 순위표는 옛 값에 멈춘다** (로비 960 / 순위표 956).
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', rating: 1000, coins: 0 });
+for (const [id, row] of collection('rankings')) if (row.account === '0xAAA') collection('rankings').delete(id);
+await $global.addCollectionItem('rankings', {
+  account: '0xAAA', name: '앨리스', rating: 1000, createdAt: 1, updatedAt: 1,
+});
+as(A);
+const brk = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(brk.code);
+await server.setReady(true);
+await server.$roomTick(300, brk.roomId);
+age(brk.roomId);
+const brkState = await $global.getRoomState(brk.roomId);
+as(A);
+const origRoomUpdate = $room.updateRoomState;
+$room.updateRoomState = async (patch) => {
+  if (patch && patch.paid) throw new Error('room write failed');
+  return await origRoomUpdate(patch);
+};
+let brkAcct = null;
+try {
+  brkAcct = await server.reportResult(brkState.slots['0xAAA'], 3);
+} finally {
+  $room.updateRoomState = origRoomUpdate;
+}
+const brkRow = [...collection('rankings').values()].find((r) => r.account === '0xAAA');
+check('방 기록이 던져도 보고는 성공한다', brkAcct && brkAcct.rating > 1000, brkAcct && brkAcct.rating);
+check('방 기록이 던져도 순위표가 따라온다', brkRow && brkRow.rating === brkAcct.rating, {
+  board: brkRow && brkRow.rating, account: brkAcct && brkAcct.rating,
+});
+
+// 62) 두 사람이 각자 보고해도 서로의 `paid` 를 안 지운다.
+//
+// 룸 상태 갱신은 얕은 병합이라 `paid` 객체를 통째로 덮어쓴다. 전에는 각자 자기가
+// 읽어 둔 낡은 사본 위에 자기 칸만 얹어 써서, 나중에 보고한 쪽이 먼저 보고한 쪽의
+// 지불 기록을 지웠다 — 그 사람은 광고를 다 보고도 `no_reward` 를 받았다.
+as(A); await server.leaveMatch().catch(() => {});
+as(B); await server.leaveMatch().catch(() => {});
+userStates.set('0xAAA', { ...defaultsFor('0xAAA'), name: '앨리스', coins: 0 });
+userStates.set('0xBBB', { ...defaultsFor('0xBBB'), name: '밥', coins: 0 });
+as(A);
+const rgRoom = await server.createRoom();
+await server.setReady(true);
+as(B);
+await server.joinRoomByCode(rgRoom.code);
+await server.setReady(true);
+await server.$roomTick(300, rgRoom.roomId);
+age(rgRoom.roomId);
+const rgState = await $global.getRoomState(rgRoom.roomId);
+as(A); await server.reportResult(rgState.slots['0xAAA'], 4);
+as(B); await server.reportResult(rgState.slots['0xAAA'], 2);
+const rgFinal = await $global.getRoomState(rgRoom.roomId);
+check('두 사람의 지불 기록이 모두 남는다',
+  Number(rgFinal.paid['0xAAA']) > 0 && Number(rgFinal.paid['0xBBB']) > 0, rgFinal.paid);
+as(A);
+const aDouble = await server.claimDoubleReward('req-a');
+check('먼저 보고한 쪽도 광고 2배를 받는다', aDouble.coins === (100 + 4 * 8) * 2, aDouble.coins);
+
+// 63) 지급이 실패하면 판당 한 번 자물쇠를 안 채운다.
+//
+// 전에는 `doubled` 를 먼저 찍고 지급했다. 그 사이에 계정 저장이 실패하면 광고는
+// 봤고 코인은 없고 재청구는 `already_claimed` 로 영영 막혔다.
+as(B);
+const bPaid = Number(rgFinal.paid['0xBBB']);
+const origSave = $global.updateMyState;
+$global.updateMyState = async () => { throw new Error('save failed'); };
+let bDoubleErr = null;
+try { await server.claimDoubleReward('req-b'); } catch (e) { bDoubleErr = e.message; }
+$global.updateMyState = origSave;
+check('지급이 실패하면 그 이유가 나온다', bDoubleErr === 'save failed', bDoubleErr);
+const bRetry = await server.claimDoubleReward('req-b2');
+check('지급이 실패한 판은 다시 청구할 수 있다', bRetry.coins === bPaid * 2, {
+  coins: bRetry.coins, bPaid,
+});
+
+// 64) 내 칸 갱신이 던져도 순위표는 내려온다.
+//
+// `#refreshMyBoardRow` 는 장식(이름·장비)이고 `$lock` 까지 잡는다. 남과 겹쳐 한 번
+// 삐끗한 것 때문에 순위표 전체가 "서버 연결 실패"로 뜨면 안 된다 (8/22 · 8/23 신고).
+as(A);
+const origGetItems = $global.getCollectionItems;
+let refreshTried = false;
+$global.getCollectionItems = async (id, opts) => {
+  if (opts && opts.filters && !refreshTried) { refreshTried = true; throw new Error('lock busy'); }
+  return await origGetItems(id, opts);
+};
+let softBoard = null;
+try { softBoard = await server.getLeaderboard(); } finally { $global.getCollectionItems = origGetItems; }
+check('내 칸 갱신이 던져도 표는 온다', softBoard !== null && softBoard.rows.length > 0,
+  softBoard && softBoard.rows.length);
+check('그 사이 갱신이 실제로 시도됐다', refreshTried === true, refreshTried);
+
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  ← ' + JSON.stringify(r.extra)}`);

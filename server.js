@@ -585,14 +585,30 @@ class Server {
    * 옛 클라이언트는 배열을 기대하지만, 새 클라이언트가 두 모양을 다 받아 준다.
    */
   async getLeaderboard() {
-    await this.#migrateLegacyBoard();
     // 내 칸을 먼저 최신으로 맞추고 읽는다. 안 그러면 방금 갈아입은 장비가 다음 판까지
     // 안 보인다 (2026-08-09 사용자 지시).
-    await this.#refreshMyBoardRow();
-    const rows = await $global.getCollectionItems(BOARD_COLLECTION, {
+    //
+    // **던져도 표는 내려 준다** (2026-08-24 사용자 신고: 순위표 열기가 시간대에 따라
+    // 열 번 연속 실패). 이 갱신은 장식(이름·장비)이고 `$lock` 까지 잡는다 — 남과
+    // 겹쳐 한 번 삐끗한 것 때문에 순위표 전체가 "연결 실패"로 뜰 이유가 없다.
+    try {
+      await this.#refreshMyBoardRow();
+    } catch (e) {
+      console.warn('[towerwar] 내 순위 칸 갱신 실패:', e);
+    }
+    const query = {
       orderBy: [{ field: 'rating', direction: 'desc' }],
       limit: BOARD_SIZE,
-    });
+    };
+    let rows = await $global.getCollectionItems(BOARD_COLLECTION, query);
+    // **표가 비었을 때만 옛 기록 이사를 확인한다** (2026-08-24). 전에는 이 함수를
+    // 부를 때마다 `#migrateLegacyBoard` 가 `countCollectionItems` 를 한 번 더 태웠다 —
+    // 이미 끝난 이사에 매 조회마다 왕복을 하나씩 얹는 셈이었고, 이 호출은 그러잖아도
+    // 컬렉션을 대여섯 번 두드려 제한 시간에 가장 먼저 걸리는 자리다.
+    // 이사는 `#recordOnBoard` 가 첫 쓰기 전에 여전히 확인한다 — 옛 기록을 잃지 않는다.
+    if (rows.length === 0 && (await this.#migrateLegacyBoard())) {
+      rows = await $global.getCollectionItems(BOARD_COLLECTION, query);
+    }
     const entries = rows.map((e) => ({
       name: cleanName(e.name),
       rating: numOr(e.rating, DEFAULT_RATING),
@@ -816,18 +832,35 @@ class Server {
     if (!state || state.phase !== PHASE_FINISHED) throw new Error('not_finished_match');
 
     const account = $sender.account;
-    const paid = num((state.paid || {})[account]);
-    if (paid <= 0) throw new Error('no_reward');
 
-    const doubled = { ...(state.doubled || {}) };
-    if (doubled[account]) throw new Error('already_claimed');
+    // **방 자물쇠 안에서 다시 읽는다** (2026-08-24). 위에서 읽은 `state` 는 광고를
+    // 보는 동안(수십 초~수 분) 낡는다. 룸 상태 갱신은 얕은 병합이라 `doubled` 를
+    // 통째로 덮어쓰는데, 두 사람이 비슷한 때 청구하면 늦게 쓴 쪽이 먼저 쓴 쪽의
+    // 칸을 지운다 — 같은 판에서 두 번 받는 길이 열린다.
+    return await $lock(`room:${state.roomId}`, async () => {
+      const fresh = (await $room.getRoomState()) || state;
+      const paid = num((fresh.paid || {})[account]);
+      if (paid <= 0) throw new Error('no_reward');
 
-    doubled[account] = true;
-    await $room.updateRoomState({ doubled });
+      const doubled = { ...(fresh.doubled || {}) };
+      if (doubled[account]) throw new Error('already_claimed');
 
-    return await $lock(`acct:${account}`, async () => {
-      const a = await this.#loadAccount();
-      return await this.#saveAccount({ ...a, coins: a.coins + paid });
+      // **먼저 주고 나중에 잠근다** (2026-08-24 사용자 신고: "광고 다 봤다고 떠도
+      // 재화는 2배를 안 준다"). 전에는 `doubled` 를 먼저 찍고 지급했는데, 그 사이에
+      // 계정 저장이 실패하면 **광고는 봤고 코인은 없고 재청구는 막힌** 상태로 굳었다.
+      // 순서를 뒤집으면 최악이 "지급됐는데 자물쇠를 못 찍음"인데, 그건 아래 갱신이
+      // 같은 자물쇠 안에 있어서 실패해도 다음 청구가 같은 검사를 다시 통과할 뿐이다.
+      //
+      // 자물쇠 순서는 **방 → 계정** 하나로 고정한다. `#grantReward` 는 계정 자물쇠를
+      // 놓은 뒤에야 방 자물쇠를 잡으므로(`#markPaid`) 서로 맞물리지 않는다.
+      const saved = await $lock(`acct:${account}`, async () => {
+        const a = await this.#loadAccount();
+        return await this.#saveAccount({ ...a, coins: a.coins + paid });
+      });
+
+      doubled[account] = true;
+      await $room.updateRoomState({ doubled });
+      return saved;
     });
   }
 
@@ -1512,7 +1545,17 @@ class Server {
     }).then(async (saved) => {
       // **얼마를 줬는지 방에 적어 둔다.** 광고 2배(`claimDoubleReward`)가 이 값을
       // 그대로 한 번 더 준다 — 클라이언트가 액수를 보내면 무한 코인이 된다.
-      await $room.updateRoomState({ paid: { ...(state.paid || {}), [$sender.account]: paid } });
+      //
+      // **던져도 여기서 멈추지 않는다** (2026-08-24 사용자 신고: 로비 점수는 960인데
+      // 순위표는 956에서 안 움직임). 계정 저장은 위 자물쇠 안에서 이미 끝났는데,
+      // 이 방 기록이 던지면 아래 `#recordOnBoard` 가 통째로 건너뛰어져 **계정 점수와
+      // 순위표가 영구히 갈라졌다.** 방 기록은 광고 2배에만 쓰는 부가 정보이므로
+      // 실패해도 순위표까지 같이 잃을 이유가 없다.
+      try {
+        await this.#markPaid(state, paid);
+      } catch (e) {
+        console.warn('[towerwar] paid 기록 실패:', e);
+      }
       // 순위표는 계정 자물쇠 **밖에서** 고친다. 안에서 부르면 계정 락을 쥔 채로
       // 순위표 락을 기다리게 되고, 두 사람이 동시에 보고하면 서로를 막는다.
       //
@@ -1523,6 +1566,22 @@ class Server {
       // `MIN_RATED_MS` 를 세운 의미가 없다.
       if (rated) await this.#recordOnBoard(saved);
       return saved;
+    });
+  }
+
+  /**
+   * 이 판에 얼마를 줬는지 방에 남긴다. 광고 2배(`claimDoubleReward`)가 이 값만 본다.
+   *
+   * **자물쇠 안에서 다시 읽는다.** 룸 상태 갱신은 얕은 병합이라 `paid` 객체를 통째로
+   * 덮어쓴다. PVP는 양쪽이 각자 보고하므로, 낡은 사본 위에 자기 칸만 얹어 쓰면
+   * **먼저 보고한 사람의 지불 기록이 지워진다** — 그 사람은 광고를 다 보고도
+   * `no_reward` 를 받는다 (2026-08-24 신고).
+   */
+  async #markPaid(state, paid) {
+    const account = $sender.account;
+    await $lock(`room:${state.roomId}`, async () => {
+      const fresh = (await $room.getRoomState()) || state;
+      await $room.updateRoomState({ paid: { ...(fresh.paid || {}), [account]: paid } });
     });
   }
 
@@ -1615,12 +1674,18 @@ class Server {
     });
   }
 
-  /** One-time migration for rankings written by builds before Global Collections. */
+  /**
+   * One-time migration for rankings written by builds before Global Collections.
+   *
+   * **옮긴 줄이 있으면 참을 돌려준다.** 부르는 쪽이 표를 다시 읽을지 정한다
+   * (`getLeaderboard`).
+   */
   async #migrateLegacyBoard() {
-    if ((await $global.countCollectionItems(BOARD_COLLECTION)) > 0) return;
-    await $lock('board:migrate', async () => {
-      if ((await $global.countCollectionItems(BOARD_COLLECTION)) > 0) return;
+    if ((await $global.countCollectionItems(BOARD_COLLECTION)) > 0) return false;
+    return await $lock('board:migrate', async () => {
+      if ((await $global.countCollectionItems(BOARD_COLLECTION)) > 0) return false;
       const g = (await $global.getGlobalState()) || {};
+      let moved = 0;
       for (const row of Array.isArray(g.board) ? g.board : []) {
         if (!row || !row.account || !cleanName(row.name)) continue;
         await $global.addCollectionItem(BOARD_COLLECTION, {
@@ -1630,7 +1695,9 @@ class Server {
           createdAt: Date.now(),
           updatedAt: Date.now(),
         });
+        moved++;
       }
+      return moved > 0;
     });
   }
 

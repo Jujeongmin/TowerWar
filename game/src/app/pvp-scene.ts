@@ -9,9 +9,14 @@
  *
  * | 길 | 실패하면 |
  * |---|---|
- * | 무작위 매칭 (들어오자마자) | **조용히 봇전.** 화면에 안 드러낸다 |
+ * | 무작위 매칭 (들어오자마자) | 한 번 더 시도 → 그래도 안 되면 **화면에 오류** |
  * | [방 만들기] | 화면에 오류. 친구를 부르려던 것이라 침묵하면 안 된다 |
  * | 코드로 [참가] | 화면에 오류. 그 사람은 *그 방*에 가려던 것이다 |
+ *
+ * **로컬 봇전은 없다** (2026-08-24 사용자 지시). 전에는 무작위 매칭이 실패하면
+ * 서버 없이 봇전을 열었는데, 그 판은 보상이 반쪽이라(점수·순위표·광고 없음, 코인은
+ * 다음 동기화에 증발) "이겼는데 점수가 안 오른다"로만 보였다. 이제 봇전도 전부
+ * 서버가 연 방(`requestSoloFallback` 시드)이다.
  *
  * ── 자동 매칭의 AI 대체 안내 ─────────────────────────────────
  *
@@ -76,13 +81,17 @@ function titleText(mode: PvpMode): string {
 const REMATCH_INTERVAL_MS = 1500;
 
 /**
- * 서버 방 잡기를 다시 시도하는 동안 로컬 봇전을 미뤄 두는 한계(초).
+ * 자동 매칭을 포기하고 오류를 띄우는 한계(초).
  *
- * 이 값을 넘으면 재시도가 아직 돌고 있어도 로컬 봇전을 시작한다 — 매칭 화면에
- * 갇히는 것이 보상 없는 판보다 나쁘다. 첫 호출(12초)이 실패하고 재시도가 또
- * 12초를 쓰는 최악을 담되(24초), 그보다 조금 더 준다.
+ * **로컬 봇전은 없다** (2026-08-24 사용자 지시: "로컬 봇전 자체를 없애 무조건
+ * 서버 봇전으로"). 로컬 판은 보상이 반쪽이라(점수·순위표·광고 전부 없음) 사용자에게
+ * "이겼는데 점수가 안 오른다"로만 보였다. 서버 봇 확정(`requestSoloFallback`)까지
+ * 못 가면 판을 몰래 여는 대신 **못 열었다고 말한다** — 잘못된 판보다 정직한 실패가
+ * 낫다.
+ *
+ * 첫 호출(12초)이 실패하고 재시도가 또 12초를 쓰는 최악을 담되(24초), 조금 더 준다.
  */
-const LOCAL_FALLBACK_CEILING_S = 27;
+const SEARCH_GIVEUP_S = 27;
 
 /** 경과 시간을 `0:07` 로. 분이 넘어가도 자리가 안 흔들리게 초를 두 자리로 채운다. */
 function formatElapsed(sec: number): string {
@@ -154,11 +163,13 @@ export class PvpScene implements Scene {
     private readonly root: HTMLElement,
     private readonly startPvp: (setup: MatchSetup, transport: MatchTransport) => void,
     /**
-     * 상대를 못 구했을 때. 무작위 매칭에서는 화면상 PVP와 구분되지 않는다.
-     * `seed` 가 있으면 서버가 연 방(봇 확정)이고, 없으면 서버에 아예 못 붙은 것이다 —
-     * 보상을 서버에 보고할지 로컬에 넣을지가 그 차이로 갈린다.
+     * 상대를 못 구해 서버가 봇전으로 확정했을 때. 화면상 PVP와 구분되지 않는다.
+     *
+     * **`seed` 는 항상 서버가 준 값이다** (2026-08-24). 시드 없는 호출 = 서버 없이
+     * 여는 로컬 봇전이었는데, 그 길은 사용자 지시로 없앴다 — 서버에 못 붙으면
+     * 판을 몰래 여는 대신 오류를 띄운다. 그래서 이 판은 언제나 보상이 온전하다.
      */
-    private readonly startBot: (seed?: number, towerKind?: TowerKind) => void,
+    private readonly startBot: (seed: number, towerKind?: TowerKind) => void,
     private readonly toLobby: () => void,
     /**
      * 앱이 들고 있는 접속 하나를 그대로 쓴다. 씬이 따로 만들면 계정용과 매칭용
@@ -271,17 +282,13 @@ export class PvpScene implements Scene {
       void this.requestSoloFallback();
     }
 
-    // 12초 요청 자체가 멈추는 경우에도 추가 8초를 기다리지 않는다.
-    //
-    // **서버 방을 다시 잡아 보는 중이면 기다린다** (2026-08-24). 여기서 떨어지는 판은
-    // 서버가 안 연 방이라 점수도 순위표도 안 움직이고 광고 보상 버튼도 안 뜬다 —
-    // 코인과 전적만 로컬에 쌓여서 겉보기에는 정상으로 보인다. 소켓이 잠깐 끊겼다
-    // 붙는 것만으로 그 판이 되는 것이 확인된 원인이었다 (아래 `retryingEntry` 주석).
-    //
-    // 그래도 **바닥은 남긴다**: `LOCAL_FALLBACK_CEILING_S` 를 넘으면 재시도가 돌든
-    // 말든 시작한다. 사용자를 매칭 화면에 가두는 것이 더 나쁘다.
-    const held = this.retryingEntry && elapsed < LOCAL_FALLBACK_CEILING_S;
-    if (elapsed >= 12.5 && !this.handedOff && !held) this.startLocalFallback();
+    // **한계를 넘으면 포기하고 말한다.** 로컬 봇전은 없다 (`SEARCH_GIVEUP_S` 주석).
+    // 서버 봇 확정은 12초에 `requestSoloFallback` 이 맡고, 그것이 계속 실패하면
+    // 여기서 오류 화면으로 끝낸다. `retryingEntry` 중에는 그 재시도가 자기 시계를
+    // 다시 0으로 돌리므로 겹칠 일이 없지만, 겹쳐도 오류가 판을 여는 것보다 낫다.
+    if (elapsed >= SEARCH_GIVEUP_S && !this.handedOff && !this.retryingEntry) {
+      this.failSearch(t().matchServerDown);
+    }
   }
 
   /**
@@ -317,10 +324,17 @@ export class PvpScene implements Scene {
     }
   }
 
-  private startLocalFallback(): void {
+  /**
+   * 자동 매칭 포기. 방을 비우고 오류를 띄운다.
+   *
+   * 전에는 여기서 **로컬 봇전**을 열었다 (`startLocalFallback`). 그 판은 서버가 안 연
+   * 방이라 코인·전적만 로컬에 쌓이고(다음 동기화에 사라진다) 점수·순위표·광고 보상이
+   * 전부 없었다 — 사용자 지시로 그 길 자체를 없앴다. [뒤로] 로 나가 다시 시도한다.
+   */
+  private failSearch(reason: string): void {
     if (!this.active || this.searchStart === null || this.handedOff) return;
     void this.client.leaveMatch().catch(() => {});
-    this.handOff(() => this.startBot());
+    this.show('error', reason);
   }
 
   /** 서버가 승인한 시드를 받으면 방 상태 구독을 기다리지 않고 즉시 AI전을 시작한다. */
@@ -336,16 +350,11 @@ export class PvpScene implements Scene {
       }
     } catch (e) {
       console.warn('[net] AI 상대 전환 요청 실패:', e);
-      // 서버 코드가 아직 배포되지 않았거나 장애가 있어도 사용자를 매칭 화면에 가두지 않는다.
-      // 서버 방은 비우기를 시도하고, 보상 위조를 피하기 위해 이 판은 로컬 AI전으로 연다.
-      if (
-        this.active &&
-        this.searchStart !== null &&
-        Date.now() - this.searchStart >= 12000 &&
-        !this.handedOff
-      ) {
-        this.startLocalFallback();
-      }
+      // **로컬 AI전으로 안 떨어진다** (2026-08-24 사용자 지시). 소켓이 재연결 중이면
+      // 다음 시도가 대개 통하므로 3초 뒤 다시 요청한다. 끝내 안 되면 `frame` 의
+      // `SEARCH_GIVEUP_S` 가 오류 화면으로 끝낸다 — 몰래 여는 보상 없는 판보다
+      // 정직한 실패가 낫다.
+      this.nextFallbackAttemptAt = Date.now() + 3000;
     } finally {
       this.fallbackRequestInFlight = false;
     }
@@ -460,17 +469,20 @@ export class PvpScene implements Scene {
         // 안쪽 호출은 `show('searching')` 이 시계를 다시 0으로 돌리므로 서버 봇 확정
         // (12초)까지의 창을 온전히 한 번 더 받는다.
         //
-        // 그냥 로컬 봇전으로 떨어뜨리면 **그 판은 보상이 반쪽이 된다** — 코인과 전적은
-        // 로컬에 쌓이는데 점수도 순위표도 안 움직이고 광고 보상 버튼도 안 뜬다.
-        // 사용자에게는 "이겼는데 점수가 안 오른다"로만 보인다.
         if (willRetry) {
           console.warn('[net] 매칭 실패, 서버 방을 한 번 더 잡아 봅니다:', reason);
           await this.enterRoom(phase, silentFallback, go, true);
           return;
         }
 
-        console.warn('[net] 매칭 재시도도 실패, 봇전으로 대체합니다:', reason);
-        this.handOff(() => this.startBot());
+        // **로컬 봇전으로 안 떨어진다** (2026-08-24 사용자 지시). 그 판은 서버가 안 연
+        // 방이라 보상이 반쪽이었다 — 코인·전적만 로컬에 쌓이고(다음 동기화에 사라진다)
+        // 점수도 순위표도 안 움직이며 광고 보상 버튼도 안 뜬다. 몰래 여는 대신
+        // 못 열었다고 말한다. [뒤로] 로 나가 다시 시도한다.
+        console.warn('[net] 매칭 재시도도 실패했습니다:', reason);
+        // 원문(reason)은 콘솔에만. 자동 매칭에서 여기 오는 것은 대부분 회선·서버
+        // 사정이라, 화면에는 "다시 시도해 달라"는 한 문장이 원문보다 쓸모 있다.
+        this.show('error', silentFallback ? t().matchServerDown : reason);
       } finally {
         if (willRetry) this.retryingEntry = false;
       }
@@ -508,8 +520,11 @@ export class PvpScene implements Scene {
         this.show('error', t().roomClosed(state.reason ?? '종료'));
         return;
       }
-      console.warn('[net] 방이 닫혔습니다, 봇전으로 대체합니다:', state.reason);
-      this.handOff(() => this.startBot());
+      // **로컬 봇전으로 안 떨어진다** (2026-08-24 사용자 지시). 시작도 못 한 방이
+      // 닫힌 것뿐이니 서버 매칭을 처음부터 다시 돈다 — `search()` 가 새 방을 잡고,
+      // 상대가 없으면 12초 뒤 서버 봇전으로 확정된다. 그 판은 보상이 온전하다.
+      console.warn('[net] 방이 닫혔습니다, 매칭을 다시 돕니다:', state.reason);
+      if (!this.handedOff) void this.search();
       return;
     }
 

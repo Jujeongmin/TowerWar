@@ -147,10 +147,12 @@ const pvp = new PvpScene(
     plan = { mode: 'pvp', setup, transport };
     switchTo(match);
   },
-  // 상대를 못 구했다. 화면상으로는 PVP와 구분되지 않는다 (app/pvp-scene.ts 참고).
-  // 시드가 있으면 서버가 연 방이라 보상을 서버가 준다.
+  // 상대를 못 구해 서버가 봇전으로 확정했다. 화면상으로는 PVP와 구분되지 않는다.
+  // **시드는 항상 서버가 준 값이다** — 서버 없이 여는 로컬 봇전은 없앴다
+  // (2026-08-24 사용자 지시, `app/pvp-scene.ts` 의 `startBot` 주석). 그래서
+  // 이 판은 언제나 서버가 보상을 준다.
   (seed, towerKind) => {
-    plan = { mode: 'pve', seed, serverRoom: seed !== undefined, towerKind };
+    plan = { mode: 'pve', seed, serverRoom: true, towerKind };
     switchTo(match);
   },
   () => switchTo(lobby),

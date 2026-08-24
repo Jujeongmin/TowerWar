@@ -117,6 +117,12 @@ const ROOM_CODE_LEN = 4;
 /** 코드 발급은 반드시 락 안에서. 두 사람이 같은 코드를 잡으면 남의 방에 끼어든다. */
 const CODE_LOCK = 'towerwar:roomcode';
 
+/**
+ * 대기방 큐의 락. 큐는 글로벌 상태의 map 하나(`mm`)라 갱신이 얕은 병합으로
+ * 통째로 덮어쓴다 — 락 없이 두 사람이 동시에 만지면 한쪽 갱신이 사라진다.
+ */
+const MM_LOCK = 'towerwar:mm';
+
 // ── 계정 ──────────────────────────────────────────────────────────
 //
 // 재화와 강화가 **서버에 산다.** 전에는 클라이언트의 localStorage 가 유일한 저장소라
@@ -957,17 +963,33 @@ class Server {
    *   그때는 `null` 을 돌려주고 클라이언트는 그냥 하던 대기를 이어 간다.
    */
   async findMatch(waitedMs, retry) {
-    const ids = (await $global.getAllRoomIds()) || [];
+    // **역대 방 전체를 훑지 않는다** (2026-08-24, 운영 장애로 확인).
+    //
+    // 전에는 `getAllRoomIds()` 로 받은 **모든 방**을 방당 왕복 1~2번씩 직렬로
+    // 검사했다. 운영 verse 에는 판이 끝난 방 문서가 플레이 수만큼 쌓여 있어서
+    // (수백 개), 이 호출 하나가 수십 초를 먹었다 — 12초 타임아웃에 반드시 걸리고,
+    // 클라이언트의 1.5초 재훑기가 그 스캔을 서버에 계속 쌓아 **서버가 ping 에도
+    // 못 답할 만큼** 굶었다 (`Socket did not respond to ping`). 매칭·순위표·팔로우가
+    // 시간대에 따라 다 같이 죽던 신고(8/22·8/23)의 뿌리가 이것이다.
+    //
+    // 이제 글로벌 상태의 대기방 큐(`mm`)만 본다 — 어느 순간이든 "지금 상대를
+    // 기다리는 공개 방"뿐이라 몇 개 안 된다. 죽은 항목(닫힌 방·시작된 방)은
+    // 여기서 발견하는 즉시 큐에서 뺀다.
+    const g = (await $global.getGlobalState()) || {};
+    const queued = Object.keys(g.mm || {});
     const me = await this.#loadAccount();
     const now = Date.now();
     const myWaited = Math.min(num(waitedMs), SOLO_FALLBACK_MS);
-    for (const id of ids) {
+    for (const id of queued) {
       const state = await $global.getRoomState(id);
-      if (state && state.private) continue;
-      if (state && state.phase && state.phase !== PHASE_WAITING) continue;
+      // 죽은 항목 청소: 방이 사라졌거나, 사적으로 바뀌었거나, 이미 시작·종료됐다.
+      if (!state || state.private || (state.phase && state.phase !== PHASE_WAITING)) {
+        await this.#mmRemove(id);
+        continue;
+      }
       if ((await $global.countRoomUsers(id)) >= ROOM_MAX_USER) continue;
 
-      const players = (state && state.players) || {};
+      const players = state.players || {};
       // **내가 이미 있는 방은 건너뛴다.** 재시도에서 자기 방을 다시 집으면
       // `#enterRoom` 이 `joinedAt` 을 지금으로 덮어써 대기 시간이 초기화되고,
       // 봇 폴백 타이머와 대역 확장이 함께 리셋된다.
@@ -982,7 +1004,31 @@ class Server {
       return await this.#enterRoom(id);
     }
     if (retry) return null;
-    return await this.#enterRoom(undefined);
+    const entered = await this.#enterRoom(undefined);
+    // 새로 판 방을 큐에 올린다. 코드 방(`createRoom`)은 여기 안 온다 — 사적 방은
+    // 무작위 매칭 후보가 아니다.
+    await this.#mmAdd(entered.roomId);
+    return entered;
+  }
+
+  /** 대기방 큐에 방을 올린다. 시작·종료되면 `#mmRemove` 가 내린다. */
+  async #mmAdd(roomId) {
+    await $lock(MM_LOCK, async () => {
+      const g = (await $global.getGlobalState()) || {};
+      await $global.updateGlobalState({ mm: { ...(g.mm || {}), [roomId]: Date.now() } });
+    });
+  }
+
+  /** 대기방 큐에서 방을 내린다. 없으면 아무 일도 안 한다 — 여러 번 불러도 안전하다. */
+  async #mmRemove(roomId) {
+    if (!roomId) return;
+    await $lock(MM_LOCK, async () => {
+      const g = (await $global.getGlobalState()) || {};
+      const mm = { ...(g.mm || {}) };
+      if (!(roomId in mm)) return;
+      delete mm[roomId];
+      await $global.updateGlobalState({ mm });
+    });
   }
 
   /**
@@ -1286,6 +1332,7 @@ class Server {
           phase: PHASE_FINISHED,
           reason: 'abandoned',
         });
+        await this.#mmRemove(roomId);
         return;
       }
 
@@ -1334,6 +1381,7 @@ class Server {
     if (users.length === 0 || idleTooLong) {
       await this.#releaseCode(state.code);
       await $global.updateRoomState(roomId, { phase: PHASE_FINISHED, reason: 'abandoned' });
+      await this.#mmRemove(roomId);
     }
   }
 
@@ -1447,6 +1495,9 @@ class Server {
       // 자물쇠를 따로 둘 이유가 없다 (`#grantReward`).
       rewarded: {},
     });
+    // 판이 열렸다. 더는 대기방이 아니다 — 큐에 남으면 `findMatch` 가 매번 들여다보고
+    // 죽은 항목 청소만 반복한다.
+    await this.#mmRemove(roomId);
   }
 
   /**
@@ -1480,6 +1531,8 @@ class Server {
       winner: null,
       winnerSlot: 0,
     });
+    // 봇전으로 확정됐다. 대기방 큐에서 내린다 (`#start` 와 같은 이유).
+    await this.#mmRemove(roomId);
     return seed;
   }
 

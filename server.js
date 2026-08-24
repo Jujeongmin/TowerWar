@@ -582,89 +582,6 @@ class Server {
     return { ok: true, at: Date.now(), account: $sender.account };
   }
 
-  /**
-   * 진단. **운영 장애(2026-08-24: 매칭·순위표 무응답)의 원인을 서버 눈으로 보기 위한
-   * 임시 창이다.** 방이 몇 개나 살아 있는지, phase 별로 몇 개인지 센다 — `$roomTick`
-   * 이 죽은 방 수백 개에 파묻혀 있다는 가설을 이 숫자가 확정하거나 기각한다.
-   *
-   * 읽기뿐이라 위험이 없고, 계정 정보를 안 내려주므로 아무나 불러도 새는 것이 없다.
-   * 방이 아주 많으면 `limit` 까지만 보고 `truncated` 로 알린다 — 진단 함수가
-   * 그 자체로 스캔 폭풍이 되면 안 된다.
-   */
-  async diag() {
-    const started = Date.now();
-
-    // 객체 하나의 호출 가능한 이름을 모은다. 런타임이 프록시를 물릴 수 있어
-    // 열거 방식을 셋 다 시도하고, 던지면 그 사실만 남긴다.
-    const surfaceOf = (obj) => {
-      const names = new Set();
-      try {
-        for (const k in obj) names.add(k);
-      } catch (e) {
-        names.add(`<for-in 실패: ${String((e && e.message) || e)}>`);
-      }
-      try {
-        for (const k of Object.getOwnPropertyNames(obj)) names.add(k);
-      } catch {
-        /* 프록시가 막을 수 있다 */
-      }
-      try {
-        const proto = Object.getPrototypeOf(obj);
-        if (proto && proto !== Object.prototype) {
-          for (const k of Object.getOwnPropertyNames(proto)) names.add(k);
-        }
-      } catch {
-        /* 위와 같다 */
-      }
-      names.delete('constructor');
-      return [...names].sort();
-    };
-
-    const surface = (name, obj) => {
-      try {
-        if (obj === undefined || obj === null) return { name, exists: false };
-        if (typeof obj !== 'object' && typeof obj !== 'function') {
-          return { name, exists: true, type: typeof obj };
-        }
-        return { name, exists: true, keys: surfaceOf(obj) };
-      } catch (e) {
-        return { name, exists: true, error: String((e && e.message) || e) };
-      }
-    };
-
-    // `server.js` 는 sandbox 전역으로 실행된다. `$` 로 시작하는 전역이 런타임이
-    // 넣어 준 것들이다 — 이름을 모르면 위 `surface` 를 부를 수도 없다.
-    let injected = [];
-    try {
-      injected = Object.getOwnPropertyNames(globalThis).filter((k) => k.startsWith('$'));
-    } catch (e) {
-      injected = [`<열거 실패: ${String((e && e.message) || e)}>`];
-    }
-
-    // 글로벌 상태 읽기는 v1/v2 양쪽에 있을 확률이 높지만, 없어도 진단은 살아야 한다.
-    let globalState = null;
-    let globalStateError = null;
-    try {
-      globalState = (await $global.getGlobalState()) || {};
-    } catch (e) {
-      globalStateError = String((e && e.message) || e);
-    }
-
-    return {
-      ok: true,
-      tookMs: Date.now() - started,
-      injectedGlobals: injected,
-      global: surface('$global', typeof $global === 'undefined' ? null : $global),
-      room: surface('$room', typeof $room === 'undefined' ? null : $room),
-      sender: surface('$sender', typeof $sender === 'undefined' ? null : $sender),
-      senderRoomId:
-        typeof $sender !== 'undefined' && $sender ? String($sender.roomId ?? 'null') : 'no-$sender',
-      globalStateError,
-      queueSize: globalState ? Object.keys(globalState.mm || {}).length : null,
-      codeCount: globalState ? Object.keys(globalState.codes || {}).length : null,
-    };
-  }
-
   // ── 계정 ───────────────────────────────────────────────────────
 
   /** 내 계정. 없으면 만들어서 돌려준다. */
@@ -1506,13 +1423,6 @@ class Server {
       return; // v2: 방을 id 로 못 읽는다. 위 주석의 대체 경로가 맡는다.
     }
     if (!state) return;
-
-    // 진단 샘플 로그 (2026-08-24 운영 장애). 플랫폼이 tick 을 도는 방이 얼마나 되는지
-    // 서버 로그에서 보기 위한 것 — 2%만 찍어도 폭풍이면 로그가 도배된다.
-    // 원인이 잡히면 지운다.
-    if (Math.random() < 0.02) {
-      console.log('[tw:diag] tick', roomId, state.phase || 'none');
-    }
 
     const now = Date.now();
     const users = state.$users || [];

@@ -115,6 +115,22 @@ const RESEARCH_BASE_MS = 5000;
 /** 자동 재시도 간격의 상한(ms). 이 위로는 안 벌린다 — 복귀가 너무 늦어진다. */
 const RESEARCH_MAX_MS = 15000;
 
+/**
+ * 실패한 원격 호출을 다시 부르기 전에 두는 간격(ms).
+ *
+ * SDK 는 원격 함수를 **롤링 1초에 10회**로 묶고, 넘기면
+ * `Too many calls to the function. Use throttle option.` 을 던진다
+ * (2026-08-24 운영 콘솔). 실패가 즉시 돌아오는 종류면 재시도·정리 호출이 같은 초에
+ * 겹쳐 쌓여서, 고치려던 실패 대신 **한도 초과**를 만든다 — 그러면 원래 원인이
+ * 로그에서 가려진다. 한 박자 쉬면 한도에 안 걸리고 원인도 그대로 보인다.
+ */
+const RPC_SPACING_MS = 900;
+
+/** `setTimeout` 을 약속으로. 재시도 사이 간격에만 쓴다. */
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** 경과 시간을 `0:07` 로. 분이 넘어가도 자리가 안 흔들리게 초를 두 자리로 채운다. */
 function formatElapsed(sec: number): string {
   const t = Math.max(0, Math.floor(sec));
@@ -321,8 +337,19 @@ export class PvpScene implements Scene {
     // 4초에 미리 호출하면 서버가 구버전이라 RPC 자체가 응답하지 않는 경우에도
     // 8초 타임아웃이 정확히 12초 무렵 끝난다. 정상 서버는 아직 이르므로 null을 즉시
     // 돌려주고, 아래 메서드가 12초 시점으로 다음 요청을 예약한다.
-    if (elapsed >= 4 && this.client.inRoom && !this.fallbackRequestInFlight && now >= this.nextFallbackAttemptAt) {
-      this.nextFallbackAttemptAt = now + 1000;
+    // **방을 다시 잡는 중에는 쏘지 않는다** (2026-08-24). 그때는 방 자체가
+    // 바뀌는 중이라 요청이 의미가 없고, `enterRoom` 의 호출과 같은 초에 겹쳐
+    // SDK 호출 한도(롤링 1초 10회)를 넘긴다.
+    if (
+      elapsed >= 4 &&
+      this.client.inRoom &&
+      !this.retryingEntry &&
+      !this.fallbackRequestInFlight &&
+      now >= this.nextFallbackAttemptAt
+    ) {
+      // 간격을 1초에서 2초로 넓혔다 — 12초 창에서 네 번이면 충분하고,
+      // 재훑기(1.5초)와 겹쳐도 한도에 여유가 남는다.
+      this.nextFallbackAttemptAt = now + 2000;
       void this.requestSoloFallback();
     }
 
@@ -397,12 +424,17 @@ export class PvpScene implements Scene {
         this.nextFallbackAttemptAt = this.searchStart + 12000;
       }
     } catch (e) {
-      console.warn('[net] AI 상대 전환 요청 실패:', e);
+      const reason = String((e as Error)?.message ?? e);
+      console.warn('[net] AI 상대 전환 요청 실패:', reason);
       // **로컬 AI전으로 안 떨어진다** (2026-08-24 사용자 지시). 소켓이 재연결 중이면
-      // 다음 시도가 대개 통하므로 3초 뒤 다시 요청한다. 끝내 안 되면 `frame` 의
+      // 다음 시도가 대개 통하므로 잠시 뒤 다시 요청한다. 끝내 안 되면 `frame` 의
       // `SEARCH_GIVEUP_S` 가 오류 화면으로 끝낸다 — 몰래 여는 보상 없는 판보다
       // 정직한 실패가 낫다.
-      this.nextFallbackAttemptAt = Date.now() + 3000;
+      //
+      // **호출 한도에 걸린 것이면 더 길게 쉰다.** 그건 서버가 거절한 것이 아니라
+      // 우리가 너무 자주 부른 것이라, 같은 간격으로 다시 부르면 또 걸린다.
+      const throttled = reason.includes('Too many calls');
+      this.nextFallbackAttemptAt = Date.now() + (throttled ? 6000 : 3000);
     } finally {
       this.fallbackRequestInFlight = false;
     }
@@ -519,6 +551,10 @@ export class PvpScene implements Scene {
         //
         if (willRetry) {
           console.warn('[net] 매칭 실패, 서버 방을 한 번 더 잡아 봅니다:', reason);
+          // 한 박자 쉬고 간다 (`RPC_SPACING_MS`). 실패가 즉시 돌아오는 종류면
+          // 첫 시도 + 정리 + 재시도가 같은 초에 겹쳐 호출 한도를 넘긴다.
+          await wait(RPC_SPACING_MS);
+          if (!alive()) return;
           await this.enterRoom(phase, silentFallback, go, true);
           return;
         }
@@ -553,6 +589,11 @@ export class PvpScene implements Scene {
       await this.client.setReady(true);
     } catch (e) {
       console.warn('[net] 준비 신호 재시도:', String((e as Error)?.message ?? e));
+      // **바로 다시 부르지 않는다** (2026-08-24). SDK 는 원격 함수를 **롤링 1초에
+      // 10회**로 묶고 넘기면 `Too many calls to the function` 을 던진다. 실패가
+      // 즉시 돌아오는 종류(SDK 자체 거절 등)면 재시도가 같은 초에 겹쳐서, 고치려던
+      // 실패 대신 한도 초과를 만든다.
+      await wait(RPC_SPACING_MS);
       await this.client.setReady(true);
     }
   }

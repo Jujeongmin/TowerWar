@@ -8,7 +8,7 @@
  * 서버 쪽 짝은 저장소 루트의 `server.js` 다. 함수 이름과 메시지 타입이 양쪽에 하드코딩되므로
  * 여기 상수와 `server.js` 의 상수가 어긋나면 조용히 아무 일도 안 일어난다.
  */
-import { GameServer } from '@agent8/gameserver';
+import { GameServer } from '@agent8-dev/gameserver';
 import { DEFAULT_RATING } from '../account/account';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
 import type { PlayerId } from '../sim/types';

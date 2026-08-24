@@ -258,6 +258,19 @@ void bootAccount();
  * 매치 중이면 건드리지 않는다 — 판을 하다 화면이 튕기는 게 더 나쁘다.
  */
 function afterConnect(): void {
+  // **순위표를 여기서 받아 둔다** (2026-08-24 사용자 지시: "리더보드 데이터도
+  // 게임 시작할 때 서버에 저장된 데이터 가져와서 연동해").
+  //
+  // 전에는 **로비에 서 있을 때만** 미리 받았다 (`switchTo` 와 아래 `lobby` 분기).
+  // 그래서 접속이 끝나는 순간 닉네임 화면이거나 이미 매치 중이면 부팅 내내 한 번도
+  // 안 받았고, 순위 화면을 처음 여는 그 순간에야 무거운 호출이 시작됐다 — 그것이
+  // 제한 시간에 걸리면 "서버 연결 실패"였다 (8/22 · 8/23 신고).
+  //
+  // 화면 판단보다 **먼저**, 그리고 **어느 화면이든** 부른다. 결과를 안 기다리는 것은
+  // 전과 같다 — 받아 두면 `AccountStore.cachedLeaderboard` 에 앉아 있다가 순위
+  // 화면이 열리는 즉시 그려진다.
+  store.prefetchLeaderboard();
+
   if (current !== nameScene && current !== lobby) return;
   const want = store.current.name ? lobby : nameScene;
   if (current !== want) {
@@ -267,9 +280,6 @@ function afterConnect(): void {
   // 같은 화면이면 값만 새로 읽는다. 닉네임 화면은 입력 중일 수 있어 다시 안 부른다.
   if (current === lobby) {
     lobby.enter();
-    // 붙기 전에 한 미리 받기는 실패했다. 이제 붙었으니 다시 받아 둔다 —
-    // `switchTo` 를 안 거치는 길이라 여기서 따로 불러야 한다.
-    store.prefetchLeaderboard();
   }
 }
 

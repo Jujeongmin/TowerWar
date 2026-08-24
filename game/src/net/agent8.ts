@@ -598,9 +598,18 @@ export class Agent8Client {
    * 검증할 방법이 없다. 지금은 타워 수 상한으로 자르는 정도가 전부다.
    */
   async reportResult(winner: number, towers: number): Promise<RemoteAccount | null> {
+    // **이 호출에 기본 8초를 쓰고 있었다** (2026-08-24). 서버가 여기서 하는 일은
+    // 계정 자물쇠 + 계정 읽기·쓰기 + 방 상태 갱신 + 순위표 자물쇠 + 컬렉션 조회·갱신이다
+    // — 광고 보상(`COIN_CALL_TIMEOUT_MS`)이나 순위표 읽기(`BOARD_CALL_TIMEOUT_MS`)보다
+    // 무거운데, 저장소에서 **가장 짧은** 제한을 달고 있었다.
+    //
+    // 8초를 넘기면 클라이언트는 `null` 을 보고, 결과 화면은 점수 줄을 안 띄운다.
+    // 그런데 **서버는 그대로 끝까지 돈다** — "점수 안내가 안 떴는데 나중에 보면
+    // 올라 있다"가 정확히 이 모양이다 (2026-08-23 신고).
     const res = await withTimeout(
       this.server.remoteFunction('reportResult', [winner, towers]),
       '결과 보고',
+      COIN_CALL_TIMEOUT_MS,
     );
     return res && typeof res === 'object' ? (res as RemoteAccount) : null;
   }

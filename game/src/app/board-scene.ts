@@ -235,8 +235,15 @@ export class BoardScene implements Scene {
       if (mine !== this.opened) return;
       // 못 받았는데 띄워 둔 표가 있으면 그대로 둔다. 낡은 순위가 빈 화면보다 낫다 —
       // 대신 [다시 시도] 는 남긴다.
+      //
+      // **낡았다고 말한다** (2026-08-24). 전에는 아무 글자도 안 띄웠다. 그래서 판을
+      // 이겨 점수가 올랐는데 순위표가 옛 값 그대로면, 그게 "화면이 낡은 것"인지
+      // "점수가 반영이 안 된 것"인지 구분할 길이 없었다 — 테스터가 8/22·8/23에
+      // 본 것이 정확히 이 상태다 (로비 960 / 순위표 956).
       if (board === null && cached) {
         this.retryBtn.hidden = false;
+        this.note.textContent = t().boardStale;
+        this.note.hidden = false;
         return;
       }
       this.show(board, board === null ? t().boardOffline : '');

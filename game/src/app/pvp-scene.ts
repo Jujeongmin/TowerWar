@@ -382,7 +382,15 @@ export class PvpScene implements Scene {
       if (!alive()) return;
 
       // 강화 단계는 안 보낸다 — 서버가 자기 계정에서 읽는다 (server.js setReady).
-      await this.client.setReady(true);
+      //
+      // **한 번 더 시도한다** (2026-08-24). 방은 위 `go()` 에서 이미 잡혔다 — 여기서
+      // 한 번 삐끗했다고 그 방을 버리면 **서버가 안 연 로컬 봇전**으로 떨어지고,
+      // 그 판은 코인과 전적만 로컬에 쌓이고 점수도 순위표도 안 움직인다
+      // (`account/store.ts` 의 `grantReward` 오프라인 경로). 테스터가 본 "재화·판수는
+      // 반영되는데 점수만 미반영"이 정확히 그 모양이다 (2026-08-23 기록).
+      //
+      // 잡아 둔 서버 방을 버리는 대가에 비하면 재시도 한 번이 훨씬 싸다.
+      await this.setReadyWithRetry();
       if (!alive()) return;
 
       this.roomAttempt = mine;
@@ -399,7 +407,30 @@ export class PvpScene implements Scene {
       // 배포 전이라면 대개 VITE_AGENT8_VERSE가 없어서 여기로 온다.
       // 화면에는 안 드러낸다 — 판별은 이 경고로만 된다.
       console.warn('[net] 매칭 실패, 봇전으로 대체합니다:', reason);
+      // **잡아 둔 서버 방을 놓고 간다** (2026-08-24). `go()` 는 성공했는데 그 뒤가
+      // 실패한 경우가 여기로 오는데, 그대로 두면 서버 방에 발을 걸친 채 로컬 봇전을
+      // 돌게 된다 — 상대가 들어오면 그 사람은 영영 안 오는 입력을 기다리다 부전승을
+      // 받고, 나는 그 판을 아예 모른다.
+      if (this.client.inRoom) await this.client.leaveMatch().catch(() => {});
+      if (!alive()) return;
       this.handOff(() => this.startBot());
+    }
+  }
+
+  /**
+   * `setReady` 를 한 번 더 시도한다. 두 번째도 실패하면 그대로 던진다 —
+   * 부르는 쪽(`enterRoom`)이 봇전 대체를 정한다.
+   *
+   * 재시도가 **안전한 이유**: 서버의 `setReady` 는 방 상태의 내 칸에 같은 값을 다시
+   * 쓸 뿐이라 두 번 들어가도 결과가 같다. 첫 호출이 사실은 도착했는데 응답만 늦은
+   * 경우에도 잘못될 것이 없다.
+   */
+  private async setReadyWithRetry(): Promise<void> {
+    try {
+      await this.client.setReady(true);
+    } catch (e) {
+      console.warn('[net] 준비 신호 재시도:', String((e as Error)?.message ?? e));
+      await this.client.setReady(true);
     }
   }
 

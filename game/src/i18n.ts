@@ -103,6 +103,10 @@ export interface Strings {
    * 사용자 지시) — 보상 반쪽짜리 판을 몰래 여는 대신 이 문구로 정직하게 실패한다.
    */
   matchServerDown: string;
+  /** 자동 매칭 자동 재시도 상태 줄. 오류가 아니라 "기다리면 이어진다"는 안내다. */
+  reconnecting: string;
+  /** 자동 재시도 횟수 곁줄. 몇 번째 시도인지 보여 준다. */
+  reconnectAttempt: (n: number) => string;
   roomClosed: (reason: string) => string;
   // 상점
   shopTowers: string;
@@ -264,6 +268,8 @@ const en: Strings = {
   couldNotJoin: 'Could not join',
   connectionRefused: 'Connection refused',
   matchServerDown: "Couldn't reach the server — try again in a moment",
+  reconnecting: 'Connection unstable — reconnecting…',
+  reconnectAttempt: (n) => "Retry " + n,
   roomClosed: (reason) => `Room closed (${reason})`,
   shopTowers: 'Towers — pricier means faster production',
   shopUnits: 'Units — pricier means more health and attack',
@@ -432,6 +438,8 @@ const ko: Strings = {
   couldNotJoin: '들어가지 못했습니다',
   connectionRefused: '연결이 거부되었습니다',
   matchServerDown: '서버에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요',
+  reconnecting: '연결이 불안정합니다. 재연결 중…',
+  reconnectAttempt: (n) => n + '번째 시도',
   roomClosed: (reason) => `방이 닫혔습니다 (${reason})`,
   shopTowers: '타워 — 비쌀수록 생산이 빠르다',
   shopUnits: '유닛 — 비쌀수록 체력과 공격력이 높다',
@@ -602,6 +610,8 @@ const zh: Strings = {
   couldNotJoin: '无法加入',
   connectionRefused: '连接被拒绝',
   matchServerDown: '无法连接服务器，请稍后再试',
+  reconnecting: '连接不稳定，正在重连…',
+  reconnectAttempt: (n) => '第 ' + n + ' 次重试',
   roomClosed: (reason) => `房间已关闭（${reason}）`,
   shopTowers: '塔 — 越贵产量越快',
   shopUnits: '单位 — 越贵，生命与攻击越高',
@@ -778,6 +788,8 @@ const vi: Strings = {
   couldNotJoin: 'Không vào được',
   connectionRefused: 'Kết nối bị từ chối',
   matchServerDown: 'Không kết nối được máy chủ, vui lòng thử lại sau',
+  reconnecting: 'Kết nối không ổn định — đang kết nối lại…',
+  reconnectAttempt: (n) => 'Lần thử ' + n,
   roomClosed: (reason) => `Phòng đã đóng (${reason})`,
   shopTowers: 'Tháp — càng đắt càng sản xuất nhanh',
   shopUnits: 'Quân — càng đắt thì máu và sát thương càng cao',
@@ -948,6 +960,8 @@ const ja: Strings = {
   couldNotJoin: '参加できませんでした',
   connectionRefused: '接続が拒否されました',
   matchServerDown: 'サーバーに接続できませんでした。しばらくしてからもう一度お試しください',
+  reconnecting: '接続が不安定です。再接続中…',
+  reconnectAttempt: (n) => n + ' 回目の再試行',
   roomClosed: (reason) => `ルームが閉じました（${reason}）`,
   shopTowers: 'タワー — 高いほど生産が速い',
   shopUnits: 'ユニット — 高いほど体力と攻撃が高い',
@@ -1122,6 +1136,8 @@ const zhHant: Strings = {
   couldNotJoin: '無法加入',
   connectionRefused: '連線遭拒',
   matchServerDown: '無法連線伺服器，請稍後再試',
+  reconnecting: '連線不穩定，正在重連…',
+  reconnectAttempt: (n) => '第 ' + n + ' 次重試',
   roomClosed: (reason) => `房間已關閉（${reason}）`,
   shopTowers: '塔 — 越貴產量越快',
   shopUnits: '單位 — 越貴，生命與攻擊越高',

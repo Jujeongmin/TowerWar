@@ -40,7 +40,15 @@ import type { Scene } from './scene';
  */
 export type PvpMode = 'auto' | 'friend';
 
-type Phase = 'idle' | 'searching' | 'creating' | 'hosting' | 'joining' | 'starting' | 'error';
+type Phase =
+  | 'idle'
+  | 'searching'
+  | 'creating'
+  | 'hosting'
+  | 'joining'
+  | 'starting'
+  | 'reconnecting'
+  | 'error';
 
 /**
  * **함수여야 한다.** 전에는 모듈 최상단 상수였는데, 그러면 `t()` 가 **앱이 처음
@@ -58,6 +66,7 @@ function statusText(phase: Phase): string {
     creating: s.creatingRoom,
     hosting: s.waitingFriend,
     joining: s.joiningRoom,
+    reconnecting: s.reconnecting,
     starting: s.startingSoon,
     error: s.couldNotJoin,
   }[phase];
@@ -92,6 +101,19 @@ const REMATCH_INTERVAL_MS = 1500;
  * 첫 호출(12초)이 실패하고 재시도가 또 12초를 쓰는 최악을 담되(24초), 조금 더 준다.
  */
 const SEARCH_GIVEUP_S = 27;
+
+/**
+ * 자동 매칭이 포기된 뒤 다음 자동 재시도까지의 간격(ms). 시도 횟수에 곱해 벌린다.
+ *
+ * **막다른 오류 화면을 없앤다** (2026-08-24 사용자 결정). Verse8 소켓은 창 전환·
+ * 화면 꺼짐마다 끊었다 붙고 대부분 몇 초 만에 돌아오는데, 오류 화면에서 멈추면
+ * 사용자가 [뒤로] → [빠른 대전] 을 손으로 반복해야 한다 — 테스터가 실제로 수동
+ * 재시도 10회를 했다 (8/22 기록). 자동으로 다시 돌면 짧은 끊김은 사용자가 모르게
+ * 지나간다. 진짜 장애면 간격이 벌어져 서버를 두드리지 않고, [뒤로] 는 늘 열려 있다.
+ */
+const RESEARCH_BASE_MS = 5000;
+/** 자동 재시도 간격의 상한(ms). 이 위로는 안 벌린다 — 복귀가 너무 늦어진다. */
+const RESEARCH_MAX_MS = 15000;
 
 /** 경과 시간을 `0:07` 로. 분이 넘어가도 자리가 안 흔들리게 초를 두 자리로 채운다. */
 function formatElapsed(sec: number): string {
@@ -158,6 +180,10 @@ export class PvpScene implements Scene {
    * 광고 보상 버튼도 안 뜬다. 코인과 전적만 로컬에 쌓여 겉보기에는 정상이다.
    */
   private retryingEntry = false;
+  /** 다음 자동 재시도 시각(`Date.now`). 안 잡혀 있으면 null. `frame` 이 본다. */
+  private researchAt: number | null = null;
+  /** 이번 끊김에서 몇 번째 자동 재시도인가. 성공(`handOff`)하면 0으로 돌아간다. */
+  private researchAttempt = 0;
 
   constructor(
     private readonly root: HTMLElement,
@@ -225,6 +251,9 @@ export class PvpScene implements Scene {
   enter(): void {
     this.active = true;
     this.handedOff = false;
+    // 새로 들어온 화면이다. 앞선 끊김의 재시도 예약·횟수를 끌고 오지 않는다.
+    this.researchAt = null;
+    this.researchAttempt = 0;
     this.codeInput.value = '';
     this.codeShown.hidden = true;
     this.title.textContent = titleText(this.mode);
@@ -241,6 +270,7 @@ export class PvpScene implements Scene {
     this.active = false;
     // `show` 를 안 거치고 나가는 길도 있다. 여기서 확실히 멈춘다.
     this.searchStart = null;
+    this.researchAt = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
     // 매치로 넘어간 것이 아니라 취소한 것이면 방을 비워 줘야 한다.
@@ -250,6 +280,20 @@ export class PvpScene implements Scene {
   }
 
   frame(): void {
+    // 자동 재시도 예약이 걸려 있으면 그 시각에 매칭을 처음부터 다시 돈다.
+    // `searchStart` 와 무관하게 본다 — 재접속 대기 화면에서는 시계가 서 있다.
+    if (
+      this.researchAt !== null &&
+      Date.now() >= this.researchAt &&
+      this.active &&
+      !this.handedOff &&
+      this.mode === 'auto'
+    ) {
+      this.researchAt = null;
+      void this.search();
+      return;
+    }
+
     if (this.searchStart === null) return;
     const now = Date.now();
     const elapsed = (now - this.searchStart) / 1000;
@@ -282,12 +326,12 @@ export class PvpScene implements Scene {
       void this.requestSoloFallback();
     }
 
-    // **한계를 넘으면 포기하고 말한다.** 로컬 봇전은 없다 (`SEARCH_GIVEUP_S` 주석).
-    // 서버 봇 확정은 12초에 `requestSoloFallback` 이 맡고, 그것이 계속 실패하면
-    // 여기서 오류 화면으로 끝낸다. `retryingEntry` 중에는 그 재시도가 자기 시계를
-    // 다시 0으로 돌리므로 겹칠 일이 없지만, 겹쳐도 오류가 판을 여는 것보다 낫다.
+    // **한계를 넘으면 이번 시도를 접고 자동 재시도를 예약한다.** 로컬 봇전은 없다
+    // (`SEARCH_GIVEUP_S` 주석). 서버 봇 확정은 12초에 `requestSoloFallback` 이 맡고,
+    // 그것이 계속 실패하면 여기로 온다. `retryingEntry` 중에는 그 재시도가 자기
+    // 시계를 다시 0으로 돌리므로 겹칠 일이 없다.
     if (elapsed >= SEARCH_GIVEUP_S && !this.handedOff && !this.retryingEntry) {
-      this.failSearch(t().matchServerDown);
+      this.scheduleResearch();
     }
   }
 
@@ -325,16 +369,20 @@ export class PvpScene implements Scene {
   }
 
   /**
-   * 자동 매칭 포기. 방을 비우고 오류를 띄운다.
+   * 이번 매칭 시도를 접고 **자동 재시도를 예약한다.**
    *
-   * 전에는 여기서 **로컬 봇전**을 열었다 (`startLocalFallback`). 그 판은 서버가 안 연
-   * 방이라 코인·전적만 로컬에 쌓이고(다음 동기화에 사라진다) 점수·순위표·광고 보상이
-   * 전부 없었다 — 사용자 지시로 그 길 자체를 없앴다. [뒤로] 로 나가 다시 시도한다.
+   * 전에는 여기서 로컬 봇전을 열었고(사용자 지시로 제거 — 보상 반쪽짜리 판),
+   * 그다음엔 막다른 오류 화면이었다(사용자 결정으로 제거 — 수동 재시도 강요).
+   * 이제 "재연결 중… (n번째 시도)"를 띄우고 백오프 간격 뒤 `frame` 이 `search()` 를
+   * 다시 돈다. [뒤로] 는 계속 살아 있다 — 사용자를 가두지 않는다.
    */
-  private failSearch(reason: string): void {
-    if (!this.active || this.searchStart === null || this.handedOff) return;
+  private scheduleResearch(): void {
+    if (!this.active || this.handedOff) return;
     void this.client.leaveMatch().catch(() => {});
-    this.show('error', reason);
+    this.researchAttempt++;
+    this.researchAt =
+      Date.now() + Math.min(RESEARCH_MAX_MS, RESEARCH_BASE_MS * this.researchAttempt);
+    this.show('reconnecting', t().reconnectAttempt(this.researchAttempt));
   }
 
   /** 서버가 승인한 시드를 받으면 방 상태 구독을 기다리지 않고 즉시 AI전을 시작한다. */
@@ -477,12 +525,15 @@ export class PvpScene implements Scene {
 
         // **로컬 봇전으로 안 떨어진다** (2026-08-24 사용자 지시). 그 판은 서버가 안 연
         // 방이라 보상이 반쪽이었다 — 코인·전적만 로컬에 쌓이고(다음 동기화에 사라진다)
-        // 점수도 순위표도 안 움직이며 광고 보상 버튼도 안 뜬다. 몰래 여는 대신
-        // 못 열었다고 말한다. [뒤로] 로 나가 다시 시도한다.
+        // 점수도 순위표도 안 움직이며 광고 보상 버튼도 안 뜬다.
+        //
+        // 자동 매칭은 **자동 재시도를 예약한다** (`scheduleResearch`) — 여기 오는 것은
+        // 대부분 몇 초짜리 소켓 끊김이라, 백오프 뒤에 다시 돌면 사용자가 아무것도
+        // 안 눌러도 이어진다. 친구 방은 오류를 그대로 띄운다 — 그 사람은 *그 방*에
+        // 가려던 것이라 몰래 딴 데로 가면 안 된다. 원문(reason)은 콘솔에만.
         console.warn('[net] 매칭 재시도도 실패했습니다:', reason);
-        // 원문(reason)은 콘솔에만. 자동 매칭에서 여기 오는 것은 대부분 회선·서버
-        // 사정이라, 화면에는 "다시 시도해 달라"는 한 문장이 원문보다 쓸모 있다.
-        this.show('error', silentFallback ? t().matchServerDown : reason);
+        if (silentFallback) this.scheduleResearch();
+        else this.show('error', reason);
       } finally {
         if (willRetry) this.retryingEntry = false;
       }
@@ -551,6 +602,9 @@ export class PvpScene implements Scene {
 
   /** 판을 넘기고 이 씬의 일을 끝낸다. 무작위 매칭이면 넘기는 이유를 화면에 남기지 않는다. */
   private handOff(go: () => void): void {
+    // 판이 잡혔다. 끊김 카운터는 여기서 끝난다 — 다음 끊김은 1번째부터 다시 센다.
+    this.researchAt = null;
+    this.researchAttempt = 0;
     this.show('starting');
     this.codeShown.hidden = true;
     this.handedOff = true;

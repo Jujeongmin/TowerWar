@@ -1250,7 +1250,16 @@ class Server {
       !player.ready
     ) return false;
 
-    if (Date.now() - (player.joinedAt || state.createdAt || Date.now()) < SOLO_FALLBACK_MS) {
+    // **대기 시작은 큐 항목이 더 정확하다** (2026-08-24). `player.joinedAt` 은
+    // `setReady` 가 찍는데, 그건 `findMatch` 응답을 받고 방 소켓에 붙은 뒤라 한 왕복
+    // 늦다. 그만큼 봇전이 늦게 열려서 클라이언트가 12초에 물어봐도 계속 거절당했다
+    // (실측 14초, 그 사이 재요청이 호출 한도까지 갔다). 둘 중 이른 쪽을 쓴다.
+    let since = num(player.joinedAt) || num(state.createdAt) || Date.now();
+    const g = (await $global.getGlobalState()) || {};
+    const queued = num(((g.mm || {})[roomId] || {}).joinedAt);
+    if (queued > 0 && queued < since) since = queued;
+
+    if (Date.now() - since < SOLO_FALLBACK_MS) {
       return false;
     }
 

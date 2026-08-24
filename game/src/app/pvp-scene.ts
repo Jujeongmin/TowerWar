@@ -347,9 +347,11 @@ export class PvpScene implements Scene {
       !this.fallbackRequestInFlight &&
       now >= this.nextFallbackAttemptAt
     ) {
-      // 간격을 1초에서 2초로 넓혔다 — 12초 창에서 네 번이면 충분하고,
-      // 재훑기(1.5초)와 겹쳐도 한도에 여유가 남는다.
-      this.nextFallbackAttemptAt = now + 2000;
+      // **1초로 되돌렸다** (2026-08-24). 2초로 넓혔더니 봇전이 열리는 시각이
+      // 14초에서 18초로 밀렸다 — 폭풍의 원인은 간격이 아니라 아래 `requestSoloFallback`
+      // 의 과거 타임스탬프였고, 그걸 막은 뒤에는 1초가 한도에 한참 못 미친다
+      // (같은 함수 롤링 1초 10회).
+      this.nextFallbackAttemptAt = now + 1000;
       void this.requestSoloFallback();
     }
 
@@ -421,7 +423,14 @@ export class PvpScene implements Scene {
         this.handOff(() => this.startBot(seed));
       } else if (this.searchStart !== null) {
         // 정상 서버의 조기 거절(null)이면 정확히 12초에 다시 요청한다.
-        this.nextFallbackAttemptAt = this.searchStart + 12000;
+        //
+        // **반드시 앞으로 가는 시각이어야 한다** (2026-08-24). 12초를 이미 넘긴 뒤에
+        // 거절당하면 `searchStart + 12000` 은 **과거**라, `frame` 이 다음 프레임에
+        // 곧바로 또 부른다 — 60fps 로 쏟아져 SDK 호출 한도(같은 함수 롤링 1초 10회)를
+        // 즉시 넘긴다. 콘솔의 `Too many calls to the function` 이 이것이었다.
+        // 서버는 자기 시계로 12초를 재므로(계정의 `joinedAt`) 클라이언트 12초보다
+        // 조금 늦게 열리는 것이 정상이고, 그 구간이 바로 이 폭풍 구간이었다.
+        this.nextFallbackAttemptAt = Math.max(this.searchStart + 12000, Date.now() + 1000);
       }
     } catch (e) {
       const reason = String((e as Error)?.message ?? e);
@@ -433,8 +442,10 @@ export class PvpScene implements Scene {
       //
       // **호출 한도에 걸린 것이면 더 길게 쉰다.** 그건 서버가 거절한 것이 아니라
       // 우리가 너무 자주 부른 것이라, 같은 간격으로 다시 부르면 또 걸린다.
+      // 한도 초과는 서버 거절이 아니라 우리가 자주 부른 것이다. 그래도 오래 쉬면
+      // **봇전이 그만큼 늦게 열린다** — 폭풍의 원인은 위에서 막았으므로 짧게만 쉰다.
       const throttled = reason.includes('Too many calls');
-      this.nextFallbackAttemptAt = Date.now() + (throttled ? 6000 : 3000);
+      this.nextFallbackAttemptAt = Date.now() + (throttled ? 1500 : 2000);
     } finally {
       this.fallbackRequestInFlight = false;
     }

@@ -1053,24 +1053,44 @@ class Server {
     return entered;
   }
 
-  /** 대기방 큐에 방을 올린다. 시작·종료되면 `#mmRemove` 가 내린다. */
+  /**
+   * 대기방 큐에 방을 올린다. 시작·종료되면 `#mmRemove` 가 내린다.
+   *
+   * **던지지 않는다** (2026-08-24 운영 실측). 백엔드 Redis 가 가득 차면 `$lock` 이
+   * `OOM command not allowed` 로 터지는데, 그때 여기서 던지면 **방은 이미 잘 잡아
+   * 놓고 큐 등록 하나 때문에 판 전체가 무산**된다. 큐는 발견용 최적화일 뿐이다 —
+   * 등록이 빠져도 12초 뒤 서버 봇 확정은 그대로 되고, 죽은 항목은 `findMatch` 가
+   * 훑으면서 치운다.
+   */
   async #mmAdd(roomId) {
-    await $lock(MM_LOCK, async () => {
-      const g = (await $global.getGlobalState()) || {};
-      await $global.updateGlobalState({ mm: { ...(g.mm || {}), [roomId]: Date.now() } });
-    });
+    try {
+      await $lock(MM_LOCK, async () => {
+        const g = (await $global.getGlobalState()) || {};
+        await $global.updateGlobalState({ mm: { ...(g.mm || {}), [roomId]: Date.now() } });
+      });
+    } catch (e) {
+      console.warn('[tw] 대기방 큐 등록 실패 (매칭은 계속된다):', String((e && e.message) || e));
+    }
   }
 
-  /** 대기방 큐에서 방을 내린다. 없으면 아무 일도 안 한다 — 여러 번 불러도 안전하다. */
+  /**
+   * 대기방 큐에서 방을 내린다. 없으면 아무 일도 안 한다 — 여러 번 불러도 안전하다.
+   * `#mmAdd` 와 같은 이유로 **던지지 않는다** — 내리기가 실패해도 죽은 항목은
+   * `findMatch` 의 게으른 청소가 다음에 치운다.
+   */
   async #mmRemove(roomId) {
     if (!roomId) return;
-    await $lock(MM_LOCK, async () => {
-      const g = (await $global.getGlobalState()) || {};
-      const mm = { ...(g.mm || {}) };
-      if (!(roomId in mm)) return;
-      delete mm[roomId];
-      await $global.updateGlobalState({ mm });
-    });
+    try {
+      await $lock(MM_LOCK, async () => {
+        const g = (await $global.getGlobalState()) || {};
+        const mm = { ...(g.mm || {}) };
+        if (!(roomId in mm)) return;
+        delete mm[roomId];
+        await $global.updateGlobalState({ mm });
+      });
+    } catch (e) {
+      console.warn('[tw] 대기방 큐 제거 실패 (다음 훑기가 치운다):', String((e && e.message) || e));
+    }
   }
 
   /**

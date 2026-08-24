@@ -75,6 +75,15 @@ function titleText(mode: PvpMode): string {
  */
 const REMATCH_INTERVAL_MS = 1500;
 
+/**
+ * 서버 방 잡기를 다시 시도하는 동안 로컬 봇전을 미뤄 두는 한계(초).
+ *
+ * 이 값을 넘으면 재시도가 아직 돌고 있어도 로컬 봇전을 시작한다 — 매칭 화면에
+ * 갇히는 것이 보상 없는 판보다 나쁘다. 첫 호출(12초)이 실패하고 재시도가 또
+ * 12초를 쓰는 최악을 담되(24초), 그보다 조금 더 준다.
+ */
+const LOCAL_FALLBACK_CEILING_S = 27;
+
 /** 경과 시간을 `0:07` 로. 분이 넘어가도 자리가 안 흔들리게 초를 두 자리로 채운다. */
 function formatElapsed(sec: number): string {
   const t = Math.max(0, Math.floor(sec));
@@ -129,6 +138,17 @@ export class PvpScene implements Scene {
   private rematchInFlight = false;
   /** 느린 요청 위에 다음 요청이 겹치지 않게 한다. */
   private fallbackRequestInFlight = false;
+  /**
+   * 서버 방 잡기를 **다시** 시도하는 중인가. `frame` 이 이걸 보고 로컬 봇전을 미룬다.
+   *
+   * 이게 필요한 이유 (2026-08-24, 실기 재현): Verse8 소켓은 창 포커스·네트워크
+   * 변화마다 끊었다 붙는다. 그 사이에 나간 `findMatch` 는 **응답이 영영 안 온다** —
+   * 콘솔에 `Socket did not respond to ping within 3 seconds` 다음
+   * `매칭 응답이 없습니다 (12초)` 가 찍힌다. 그러면 `enterRoom` 이 로컬 봇전으로
+   * 떨어지는데, 그 판은 서버가 연 방이 아니라서 점수도 순위표도 안 움직이고
+   * 광고 보상 버튼도 안 뜬다. 코인과 전적만 로컬에 쌓여 겉보기에는 정상이다.
+   */
+  private retryingEntry = false;
 
   constructor(
     private readonly root: HTMLElement,
@@ -252,7 +272,16 @@ export class PvpScene implements Scene {
     }
 
     // 12초 요청 자체가 멈추는 경우에도 추가 8초를 기다리지 않는다.
-    if (elapsed >= 12.5 && !this.handedOff) this.startLocalFallback();
+    //
+    // **서버 방을 다시 잡아 보는 중이면 기다린다** (2026-08-24). 여기서 떨어지는 판은
+    // 서버가 안 연 방이라 점수도 순위표도 안 움직이고 광고 보상 버튼도 안 뜬다 —
+    // 코인과 전적만 로컬에 쌓여서 겉보기에는 정상으로 보인다. 소켓이 잠깐 끊겼다
+    // 붙는 것만으로 그 판이 되는 것이 확인된 원인이었다 (아래 `retryingEntry` 주석).
+    //
+    // 그래도 **바닥은 남긴다**: `LOCAL_FALLBACK_CEILING_S` 를 넘으면 재시도가 돌든
+    // 말든 시작한다. 사용자를 매칭 화면에 가두는 것이 더 나쁘다.
+    const held = this.retryingEntry && elapsed < LOCAL_FALLBACK_CEILING_S;
+    if (elapsed >= 12.5 && !this.handedOff && !held) this.startLocalFallback();
   }
 
   /**
@@ -359,6 +388,11 @@ export class PvpScene implements Scene {
     phase: Phase,
     silentFallback: boolean,
     go: (c: Agent8Client) => Promise<unknown>,
+    /**
+     * 이 호출이 이미 재시도인가. **재시도는 다시 재시도하지 않는다** — 서버가 정말
+     * 없을 때 무한히 도는 것을 막는다.
+     */
+    isRetry = false,
   ): Promise<void> {
     const mine = ++this.attempt;
     const alive = () => this.active && this.attempt === mine;
@@ -406,14 +440,40 @@ export class PvpScene implements Scene {
       }
       // 배포 전이라면 대개 VITE_AGENT8_VERSE가 없어서 여기로 온다.
       // 화면에는 안 드러낸다 — 판별은 이 경고로만 된다.
-      console.warn('[net] 매칭 실패, 봇전으로 대체합니다:', reason);
-      // **잡아 둔 서버 방을 놓고 간다** (2026-08-24). `go()` 는 성공했는데 그 뒤가
-      // 실패한 경우가 여기로 오는데, 그대로 두면 서버 방에 발을 걸친 채 로컬 봇전을
-      // 돌게 된다 — 상대가 들어오면 그 사람은 영영 안 오는 입력을 기다리다 부전승을
-      // 받고, 나는 그 판을 아예 모른다.
-      if (this.client.inRoom) await this.client.leaveMatch().catch(() => {});
-      if (!alive()) return;
-      this.handOff(() => this.startBot());
+      // **깃발을 먼저 세운다.** 아래 `leaveMatch` 는 최대 8초를 쓰는데, 그 사이
+      // `frame` 의 12.5초 로컬 폴백이 먼저 터지면 재시도는 시작도 못 해 본다.
+      const willRetry = !isRetry;
+      if (willRetry) this.retryingEntry = true;
+      try {
+        // **잡아 둔 서버 방을 놓고 간다** (2026-08-24). `go()` 는 성공했는데 그 뒤가
+        // 실패한 경우가 여기로 오는데, 그대로 두면 서버 방에 발을 걸친 채 로컬 봇전을
+        // 돌게 된다 — 상대가 들어오면 그 사람은 영영 안 오는 입력을 기다리다 부전승을
+        // 받고, 나는 그 판을 아예 모른다.
+        if (this.client.inRoom) await this.client.leaveMatch().catch(() => {});
+        if (!alive()) return;
+
+        // **한 번 더 서버 방을 잡아 본다** (2026-08-24, 실기 재현).
+        //
+        // 여기로 오는 가장 흔한 이유는 서버가 없는 것이 아니라 **소켓이 끊겼다 붙는
+        // 중**이라 호출이 무응답인 것이다 (`retryingEntry` 주석의 콘솔 두 줄). SDK는
+        // 1·2·4초 백오프로 스스로 다시 붙으므로, 그대로 한 번 더 부르면 대개 통한다.
+        // 안쪽 호출은 `show('searching')` 이 시계를 다시 0으로 돌리므로 서버 봇 확정
+        // (12초)까지의 창을 온전히 한 번 더 받는다.
+        //
+        // 그냥 로컬 봇전으로 떨어뜨리면 **그 판은 보상이 반쪽이 된다** — 코인과 전적은
+        // 로컬에 쌓이는데 점수도 순위표도 안 움직이고 광고 보상 버튼도 안 뜬다.
+        // 사용자에게는 "이겼는데 점수가 안 오른다"로만 보인다.
+        if (willRetry) {
+          console.warn('[net] 매칭 실패, 서버 방을 한 번 더 잡아 봅니다:', reason);
+          await this.enterRoom(phase, silentFallback, go, true);
+          return;
+        }
+
+        console.warn('[net] 매칭 재시도도 실패, 봇전으로 대체합니다:', reason);
+        this.handOff(() => this.startBot());
+      } finally {
+        if (willRetry) this.retryingEntry = false;
+      }
     }
   }
 

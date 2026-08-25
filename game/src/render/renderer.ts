@@ -295,11 +295,22 @@ export class Renderer {
   private profileIds: Record<PlayerId, ProfileId> = { 1: DEFAULT_PROFILE, 2: DEFAULT_PROFILE };
   /** Battlefield-only BeerGang art, drawn below every route, unit, and tower. */
   private readonly battlefieldMascot = new Image();
+  /**
+   * Mascot art with the CSS filter baked in.
+   *
+   * `ctx.filter` re-runs the whole filter pipeline on every draw, which on mobile
+   * is the single most expensive thing in the frame. It is baked once into a canvas
+   * so the per-frame draw is a plain, cheap `drawImage` — the "screen"/"source-atop"
+   * compositing and alpha stay in the frame (those are cheap; only the filter was not).
+   */
+  private mascotBaked: HTMLCanvasElement | null = null;
+  private echoBaked: HTMLCanvasElement | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('2D 컨텍스트를 만들 수 없습니다');
     this.ctx = ctx;
+    this.battlefieldMascot.onload = () => this.bakeMascot();
     this.battlefieldMascot.src = '/assets/profile/beergang.png';
     this.resize();
 
@@ -564,8 +575,8 @@ export class Renderer {
    * stays visible on every aspect ratio without competing with game objects.
    */
   private drawBattlefieldMascot(w: number, h: number): void {
-    const img = this.battlefieldMascot;
-    if (!img.complete || img.naturalWidth === 0) return;
+    const main = this.mascotBaked;
+    if (!main) return;
 
     const ctx = this.ctx;
     const fieldTop = this.safeTop + HUD_H;
@@ -595,25 +606,56 @@ export class Renderer {
     // Main watermark. Luminosity blending keeps its colours moody and subtle.
     ctx.globalCompositeOperation = 'screen';
     ctx.globalAlpha = 0.115;
-    ctx.filter = 'grayscale(45%) saturate(70%) contrast(115%)';
-    ctx.drawImage(img, -size / 2, -size / 2, size, size);
+    ctx.drawImage(main, -size / 2, -size / 2, size, size);
     ctx.restore();
 
     // Faded faction echoes in the lower corners give wide screens more detail.
     const echo = Math.min(w * 0.31, fieldH * 0.27, 150);
     const echoY = h - this.safeBottom - echo * 0.54;
+    const echoBase = this.echoBaked;
     for (const [x, tint] of [
       [echo * 0.28, 'rgba(63,189,241,0.055)'],
       [w - echo * 1.28, 'rgba(242,85,95,0.045)'],
     ] as const) {
       ctx.save();
       ctx.globalAlpha = 0.09;
-      ctx.filter = 'grayscale(70%) contrast(120%)';
-      ctx.drawImage(img, x, echoY, echo, echo);
+      if (echoBase) ctx.drawImage(echoBase, x, echoY, echo, echo);
       ctx.globalCompositeOperation = 'source-atop';
       ctx.fillStyle = tint;
       ctx.fillRect(x, echoY, echo, echo);
       ctx.restore();
+    }
+  }
+
+  /**
+   * Bake the BeerGang mascot once, filter applied, into two offscreen canvases:
+   * the main portrait and the grayscale echo base. See `mascotBaked` for why.
+   *
+   * Baked larger than the biggest on-screen size (360 / 150) so retina (DPR 2)
+   * draws downscale instead of upscale and stays sharp.
+   */
+  private bakeMascot(): void {
+    const img = this.battlefieldMascot;
+    if (!img.complete || img.naturalWidth === 0 || this.mascotBaked) return;
+
+    const main = document.createElement('canvas');
+    main.width = 720;
+    main.height = 720;
+    const mg = main.getContext('2d');
+    if (mg) {
+      mg.filter = 'grayscale(45%) saturate(70%) contrast(115%)';
+      mg.drawImage(img, 0, 0, main.width, main.height);
+      this.mascotBaked = main;
+    }
+
+    const echo = document.createElement('canvas');
+    echo.width = 300;
+    echo.height = 300;
+    const eg = echo.getContext('2d');
+    if (eg) {
+      eg.filter = 'grayscale(70%) contrast(120%)';
+      eg.drawImage(img, 0, 0, echo.width, echo.height);
+      this.echoBaked = echo;
     }
   }
 

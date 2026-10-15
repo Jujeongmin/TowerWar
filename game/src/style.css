@@ -1998,77 +1998,556 @@ body {
   gap: 6px;
 }
 
-/* ── 캠페인 스테이지 목록 ─────────────────────────────────────────
-   장마다 5칸 한 줄. **좁은 화면에서도 5열 그대로다** — 줄을 접으면 장의 끝(보스 판)이
-   어디인지 안 보인다. 칸 안쪽 글자만 줄인다. */
-.campaign-list {
-  display: flex;
-  flex-direction: column;
+/* ── 캠페인 — 작전 지도 ───────────────────────────────────────────
+   로비와 같은 지휘소 언어로 짠다: 남색 바닥 + 시안 선, 모노스페이스 키커, 잘린 모서리.
+   빨강은 **적**에만 쓴다 (보스 노드·적 정보 칸) — 판에서 빨강이 적인 것과 같은 뜻이다.
+
+   세로 예산(375×812 기준): 머리 52 · 진행 12 · 탭 46 · 작전로 132 · 브리핑 ~330.
+   스크롤 없이 한 화면에 들어간다. 짧은 창은 맨 아래 미디어 쿼리가 줄인다. */
+#campaign {
+  isolation: isolate;
+  justify-content: flex-start;
   gap: calc(10px * var(--ui-scale));
-  width: min(320px, 100%);
+  padding: calc(12px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 50% 24%, rgba(34, 78, 104, 0.3), transparent 42%),
+    linear-gradient(180deg, #0c141e 0%, #091019 58%, #070c12 100%);
 }
 
-.stage-grid {
+#campaign > :not(.cmp-decor) {
+  width: min(420px, 100%);
+  flex-shrink: 0;
+}
+
+.cmp-decor {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: -1;
+  pointer-events: none;
+}
+
+#campaign .lobby-grid { inset: 0; }
+
+.cmp-head {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 14px 6px 6px;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(18, 35, 48, 0.96), rgba(10, 18, 27, 0.82));
+  box-shadow: inset 3px 0 #3fbdf1, 0 10px 32px rgba(0, 0, 0, 0.28);
 }
 
-.stage-card {
+.cmp-back {
   appearance: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  min-height: calc(52px * var(--ui-scale));
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(20, 26, 34, 0.92);
-  color: #dbe6ef;
-  font: inherit;
-  padding: 4px 2px;
-  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0 0 3px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 3px;
+  background: rgba(12, 22, 31, 0.9);
+  color: #7dd3fc;
+  font: 400 28px/1 ui-sans-serif, system-ui, sans-serif;
   cursor: pointer;
   touch-action: manipulation;
 }
 
-.stage-card:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.34);
-}
+.cmp-back:hover { border-color: rgba(125, 211, 252, 0.7); color: #dff6ff; }
 
-.stage-card:active:not(:disabled) {
-  transform: translateY(1px);
-}
+.cmp-head-title { min-width: 0; }
+.cmp-head-title .lobby-kicker { text-indent: 0; letter-spacing: 0.22em; font-size: 9px; }
 
-.stage-card:disabled {
-  cursor: default;
-  opacity: 0.38;
-}
-
-/* 지금 할 판. 상점의 "착용 중" 카드와 같은 파랑이라 "여기가 내 자리"로 읽힌다. */
-.stage-card.is-next {
-  border-color: #3fbdf1;
-  background: rgba(63, 189, 241, 0.12);
-}
-
-.stage-card.is-cleared .stage-sub {
-  color: #34d399;
-}
-
-.stage-label {
-  font-weight: 800;
-  font-size: calc(15px * var(--ui-scale));
-  font-variant-numeric: tabular-nums;
-}
-
-.stage-sub {
-  font-size: calc(10px * var(--ui-scale));
-  color: #f5c542;
-  min-height: 1.2em;
+.cmp-head-title h2 {
+  color: #f4f9fc;
+  font-size: 20px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.cmp-progress { display: flex; align-items: center; gap: 10px; }
+
+.cmp-progress-text {
+  flex: 0 0 auto;
+  color: #8fa7b9;
+  font: 700 11px/1 ui-monospace, monospace;
+  letter-spacing: 0.06em;
+}
+
+.cmp-progress-bar {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.cmp-progress-bar i {
+  height: 6px;
+  background: rgba(125, 211, 252, 0.1);
+  clip-path: polygon(2px 0, 100% 0, calc(100% - 2px) 100%, 0 100%);
+}
+
+/* 장 경계마다 틈을 조금 더 벌린다 — 20칸이 5칸씩 네 덩어리로 읽힌다. */
+.cmp-progress-bar i:nth-child(5n):not(:last-child) { margin-right: 3px; }
+.cmp-progress-bar i.is-done { background: #3fbdf1; }
+.cmp-progress-bar i.is-next { background: rgba(125, 211, 252, 0.55); animation: cmp-blink 1.4s ease-in-out infinite; }
+
+.cmp-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cmp-tab {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 8px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(25, 39, 52, 0.92), rgba(13, 21, 30, 0.92));
+  color: #8fa7b9;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cmp-tab:hover { border-color: rgba(125, 211, 252, 0.45); }
+
+.cmp-tab-no {
+  color: rgba(125, 211, 252, 0.55);
+  font: 700 10px/1 ui-monospace, monospace;
+  letter-spacing: 0.12em;
+}
+
+.cmp-tab-name {
   max-width: 100%;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmp-tab.is-active {
+  border-color: #3fbdf1;
+  color: #f2f7fb;
+  background: linear-gradient(180deg, rgba(24, 91, 116, 0.92), rgba(16, 45, 61, 0.94));
+  box-shadow: inset 0 -2px #7dd3fc;
+}
+
+.cmp-tab.is-active .cmp-tab-no { color: #7dd3fc; }
+.cmp-tab.is-done .cmp-tab-no::after { content: ' ✓'; color: #5ee6a8; }
+.cmp-tab.is-locked { opacity: 0.45; }
+
+/* 작전로. 노드 자리는 % 라 폭이 바뀌어도 같은 모양이다. */
+/* **남는 세로를 이 칸이 먹는다** — 브리핑은 내용만큼, 작전로는 나머지. 키 큰 폰에서
+   아래가 휑하게 비지 않고, 짧은 창에서는 최소 높이까지 줄어든다. */
+#campaign > .cmp-track {
+  flex: 1 1 150px;
+  max-height: 240px;
+}
+
+.cmp-track {
+  position: relative;
+  min-height: 104px;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(63, 189, 241, 0.07), transparent 70%),
+    linear-gradient(180deg, rgba(14, 24, 34, 0.85), rgba(8, 14, 21, 0.9));
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+
+.cmp-path { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.cmp-track-label {
+  position: absolute;
+  left: 12px;
+  top: 9px;
+  color: rgba(125, 211, 252, 0.4);
+  font: 700 9px/1 ui-monospace, monospace;
+  letter-spacing: 0.2em;
+  pointer-events: none;
+}
+.cmp-path line { stroke: rgba(125, 211, 252, 0.3); stroke-width: 2; stroke-dasharray: 4 5; }
+.cmp-path line.is-done { stroke: #3fbdf1; stroke-dasharray: none; }
+
+.cmp-node {
+  --hex: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+  appearance: none;
+  position: absolute;
+  width: 48px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #dbe6ef;
+  font: inherit;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* 육각 테두리 = 바깥 육각(테두리색) 위에 2px 안쪽 육각(바닥색). `clip-path` 는
+   `border` 를 같이 자르므로 두 겹으로 그린다. */
+.cmp-node-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(125, 211, 252, 0.35);
+  clip-path: var(--hex);
+}
+
+.cmp-node-face::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: linear-gradient(180deg, #132433, #0a131c);
+  clip-path: var(--hex);
+}
+
+.cmp-node-no { position: relative; font: 800 13px/1 ui-monospace, monospace; }
+
+.cmp-node.is-cleared .cmp-node-face { background: #3fbdf1; }
+.cmp-node.is-cleared .cmp-node-face::before { background: linear-gradient(180deg, #185b74, #0e2c3c); }
+.cmp-node.is-next .cmp-node-face { background: #7dd3fc; }
+.cmp-node.is-next .cmp-node-no { color: #f2f7fb; }
+.cmp-node.is-locked { color: rgba(170, 186, 202, 0.45); }
+.cmp-node.is-locked .cmp-node-face { background: rgba(255, 255, 255, 0.12); }
+
+/* 지금 할 판 — 퍼지는 고리. 어디를 눌러야 할지 첫눈에 보인다. */
+.cmp-node.is-next::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border: 1px solid #3fbdf1;
+  border-radius: 50%;
+  animation: cmp-pulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+
+.cmp-node.is-boss { width: 60px; height: 54px; }
+.cmp-node.is-boss .cmp-node-face { background: rgba(242, 85, 95, 0.75); }
+.cmp-node.is-boss .cmp-node-face::before { background: linear-gradient(180deg, #2c141b, #140a0e); }
+.cmp-node.is-boss.is-cleared .cmp-node-face { background: #3fbdf1; }
+.cmp-node.is-boss.is-cleared .cmp-node-face::before { background: linear-gradient(180deg, #185b74, #0e2c3c); }
+.cmp-node.is-boss .cmp-node-no { font-size: 15px; }
+
+.cmp-node-tag {
+  position: absolute;
+  left: 50%;
+  top: -13px;
+  padding: 2px 5px;
+  border-radius: 2px;
+  background: #f2555f;
+  color: #fff;
+  font: 800 8px/1.1 ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.cmp-node-check {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #5ee6a8;
+  color: #06231a;
+  font: 900 10px/1 ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 0 0 0 2px #0a131c;
+}
+
+/* 고른 판 — 빛 + 밑의 삼각 표식. 브리핑이 이 판 얘기라는 것이 이어져 보인다. */
+.cmp-node.is-selected { filter: drop-shadow(0 0 7px rgba(125, 211, 252, 0.85)); }
+.cmp-node.is-boss.is-selected:not(.is-cleared) { filter: drop-shadow(0 0 8px rgba(242, 85, 95, 0.85)); }
+
+.cmp-node.is-selected::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -13px;
+  border: 5px solid transparent;
+  border-bottom-color: #7dd3fc;
+  transform: translateX(-50%);
+}
+
+/* ── 브리핑 ── */
+.cmp-brief {
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--ui-scale));
+  padding: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  background: linear-gradient(145deg, rgba(17, 31, 43, 0.97), rgba(6, 13, 21, 0.98));
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.4), inset 3px 0 rgba(63, 189, 241, 0.4);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+
+.cmp-brief.is-boss {
+  border-color: rgba(242, 85, 95, 0.45);
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.4), inset 3px 0 rgba(242, 85, 95, 0.6);
+}
+
+.cmp-brief-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.14);
+}
+
+.cmp-brief-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+
+.cmp-brief-kicker {
+  color: #5ee6a8;
+  font: 700 9px/1.2 ui-monospace, monospace;
+  letter-spacing: 0.16em;
+}
+
+.cmp-brief-title strong {
+  color: #f4f9fc;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmp-chip {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid;
+  border-radius: 2px;
+  font: 700 10px/1 ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.cmp-chip.is-open { color: #7dd3fc; border-color: rgba(125, 211, 252, 0.5); background: rgba(63, 189, 241, 0.1); }
+.cmp-chip.is-done { color: #5ee6a8; border-color: rgba(94, 230, 168, 0.5); background: rgba(94, 230, 168, 0.08); }
+.cmp-chip.is-locked { color: #8fa7b9; border-color: rgba(255, 255, 255, 0.18); }
+.cmp-chip.is-boss { color: #fff; border-color: #f2555f; background: rgba(242, 85, 95, 0.25); }
+
+.cmp-brief-body {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.cmp-map { display: flex; flex-direction: column; gap: 5px; }
+
+/* 판과 같은 620:1000 비율. 캔버스 해상도는 코드가 실제 크기에 맞춘다. */
+.cmp-map canvas {
+  display: block;
+  width: 116px;
+  height: 187px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background: #08111a;
+}
+
+.cmp-map-label {
+  color: #6f8798;
+  font: 700 9px/1 ui-monospace, monospace;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+.cmp-intel { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+
+.cmp-intel-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(242, 85, 95, 0.2);
+  background: linear-gradient(90deg, rgba(64, 20, 27, 0.38), rgba(16, 22, 30, 0.4));
+}
+
+.cmp-intel-art {
+  flex: 0 0 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+
+.cmp-intel-art img {
+  max-width: 40px;
+  max-height: 40px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+.cmp-intel-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.cmp-intel-label {
+  color: #f0a3a8;
+  font: 700 9px/1.2 ui-monospace, monospace;
+  letter-spacing: 0.1em;
+}
+
+.cmp-intel-text strong,
+.cmp-intel-stat {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmp-intel-text strong { color: #f4f9fc; font-size: 13px; }
+.cmp-intel-stat { color: #8fa7b9; font-size: 10px; }
+.cmp-intel-count { color: #8fa7b9; font-size: 11px; }
+
+.cmp-advice {
+  padding: 6px 8px;
+  border-left: 2px solid;
+  font-size: 11px;
+  line-height: 1.35;
+  word-break: keep-all;
+}
+
+.cmp-advice.is-warn { color: #fbbf24; border-color: #fbbf24; background: rgba(251, 191, 36, 0.08); }
+.cmp-advice.is-ok { color: #5ee6a8; border-color: #5ee6a8; background: rgba(94, 230, 168, 0.07); }
+
+.cmp-brief-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(125, 211, 252, 0.14);
+}
+
+.cmp-reward { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; }
+
+.cmp-reward-label {
+  color: #8fa7b9;
+  font: 700 9px/1.2 ui-monospace, monospace;
+  letter-spacing: 0.08em;
+}
+
+.cmp-reward .coins { font-size: 18px; }
+
+.cmp-deploy {
+  flex: 1;
+  min-width: 0;
+  min-height: 50px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(24, 91, 116, 0.98), rgba(16, 45, 61, 0.98));
+  box-shadow: inset 3px 0 #7dd3fc, 0 0 24px rgba(63, 189, 241, 0.15);
+  font-size: 17px;
+  letter-spacing: 0.08em;
+}
+
+.cmp-deploy:hover:not(:disabled) { border-color: #7dd3fc; }
+
+.cmp-brief.is-boss .cmp-deploy:not(:disabled) {
+  border-color: #f2555f;
+  background: linear-gradient(90deg, rgba(122, 30, 41, 0.96), rgba(60, 16, 22, 0.96));
+  box-shadow: inset 3px 0 #ff8b8b, 0 0 24px rgba(242, 85, 95, 0.18);
+}
+
+.cmp-deploy:disabled {
+  cursor: default;
+  opacity: 0.6;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(20, 26, 34, 0.9);
+  box-shadow: none;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.result-stage {
+  color: #7dd3fc;
+  font: 700 11px/1 ui-monospace, monospace;
+  letter-spacing: 0.24em;
+}
+
+@keyframes cmp-pulse {
+  0% { opacity: 0.9; transform: scale(0.85); }
+  100% { opacity: 0; transform: scale(1.35); }
+}
+
+@keyframes cmp-blink {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmp-node.is-next::before,
+  .cmp-progress-bar i.is-next { animation: none; }
+}
+
+/* 짧은 창(가로 폰·노트북 배율)에서는 배치는 그대로 두고 크기만 줄인다. */
+@media (max-height: 700px) {
+  #campaign { gap: 7px; }
+  .cmp-head { min-height: 44px; }
+  .cmp-back { width: 34px; height: 34px; }
+  .cmp-head { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  .cmp-track { height: 104px; }
+  .cmp-brief-body { grid-template-columns: 84px minmax(0, 1fr); }
+  .cmp-map canvas { width: 84px; height: 136px; }
+  .cmp-intel-art { flex-basis: 32px; height: 32px; }
+  .cmp-intel-art img { max-width: 32px; max-height: 32px; }
+  .cmp-deploy { min-height: 44px; }
+}
+
+/* 더 짧은 창(320×568 같은 작은 폰). 배치는 그대로, 여백·글자·그림만 한 번 더 줄인다. */
+@media (max-height: 620px) {
+  #campaign { gap: 6px; padding-top: calc(8px + env(safe-area-inset-top)); padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .cmp-head { min-height: 40px; padding-top: 3px; padding-bottom: 3px; }
+  .cmp-head-title h2 { font-size: 17px; }
+  .cmp-tab { padding: 5px 7px 6px; }
+  .cmp-track { min-height: 92px; }
+  .cmp-brief { gap: 7px; padding: 9px 10px; }
+  .cmp-brief-head { padding-bottom: 6px; }
+  .cmp-brief-title strong { font-size: 16px; }
+  .cmp-brief-body { grid-template-columns: 76px minmax(0, 1fr); gap: 9px; }
+  .cmp-map canvas { width: 76px; height: 122px; }
+  .cmp-intel { gap: 5px; }
+  .cmp-intel-row { padding: 4px 6px; }
+  .cmp-advice { padding: 4px 6px; font-size: 10px; }
+  .cmp-brief-foot { padding-top: 7px; }
+  .cmp-deploy { min-height: 40px; }
+  .cmp-deploy:disabled { font-size: 11px; }
+}
+
+/* 가로로 눕힌 폰처럼 **짧고 넓은** 창: 한 줄로 쌓으면 브리핑이 화면 밖으로 밀려
+   [출격]까지 스크롤해야 한다. 왼쪽에 지도, 오른쪽에 브리핑을 나란히 둔다.
+   순서·요소는 세로와 같다 — 놓는 자리만 바뀐다. */
+@media (orientation: landscape) and (max-height: 560px) and (min-width: 560px) {
+  #campaign {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 7px;
+    align-items: start;
+  }
+  #campaign > :not(.cmp-decor) { width: auto; grid-column: 1; }
+  /* 오른쪽 브리핑이 네 줄을 걸쳐 서므로, 왼쪽 마지막 줄(작전로)이 남는 높이를 먹는다. */
+  #campaign > .cmp-track { max-height: none; height: 100%; align-self: stretch; }
+  #campaign > .cmp-brief { grid-column: 2; grid-row: 1 / -1; }
+}
+
+@media (max-width: 350px) {
+  .cmp-tab-name { font-size: 10px; }
+  .cmp-brief-body { grid-template-columns: 88px minmax(0, 1fr); }
+  .cmp-map canvas { width: 88px; height: 142px; }
 }
 
 .unit-card {

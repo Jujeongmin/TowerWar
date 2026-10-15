@@ -1,17 +1,82 @@
 /**
- * 캠페인 스테이지 목록. DOM만 쓴다 (`lobby-scene.ts` 와 같은 이유).
+ * 캠페인 — 작전 지도. DOM만 쓴다 (`lobby-scene.ts` 와 같은 이유). 맵 미리보기 한 장만
+ * 작은 캔버스에 그린다.
  *
- * 20칸을 장마다 5칸씩 놓는다. **순서대로만 열린다** — 깬 마지막 판 + 1 까지
- * (`canPlayStage`, 서버의 `startCampaign` 과 같은 규칙). 잠긴 칸은 눌리지 않는다.
+ * 구성 (위에서 아래로):
+ *   머리줄  — 뒤로 · 제목 · 코인
+ *   진행도  — 깬 판 수와 20칸 막대
+ *   장 탭   — 4장. 첫 판이 안 열린 장은 잠김
+ *   작전로  — 그 장의 5판을 잇는 경로. 5번째가 보스
+ *   브리핑  — 고른 판의 실제 배치 미리보기 · 적 유닛/타워 · 내 전력과 비교 · 보상 · [출격]
+ *
+ * **순서대로만 열린다** — 깬 마지막 판 + 1 까지 (`canPlayStage`, 서버의 `startCampaign` 과
+ * 같은 규칙). 잠긴 판도 고르면 브리핑은 보여 준다 — 무엇이 기다리는지 보여야 앞 판을
+ * 깰 이유가 생긴다. [출격]만 막는다.
  */
-import { canPlayStage, type Account } from '../account/account';
-import { STAGES, STAGES_PER_CHAPTER, stageLabel } from '../campaign/stages';
+import { canPlayStage, modsFor, type Account } from '../account/account';
+import {
+  CAMPAIGN_REPLAY_WIN,
+  STAGES,
+  STAGES_PER_CHAPTER,
+  stageLabel,
+  stageOf,
+  type Stage,
+} from '../campaign/stages';
+import { FIELD_H, FIELD_W } from '../sim/config';
 import { t } from '../i18n';
+import { spriteKindOf, unitLabelOf, unitPowerOf } from '../units';
+import { TOWER_KIND_META, towerLabelOf, towerSpeedOf, towerSpriteKindOf } from '../towers';
 import type { Scene } from './scene';
 
+const CHAPTERS = Math.ceil(STAGES.length / STAGES_PER_CHAPTER);
+
+/**
+ * 작전로 위 노드 자리(%). 왼쪽 아래에서 시작해 지그재그로 오른쪽 보스까지 간다.
+ * 칸 수가 장당 5판에 맞춰져 있다 — `STAGES_PER_CHAPTER` 를 바꾸면 같이 고칠 것.
+ */
+const NODE_POS: readonly { x: number; y: number }[] = [
+  { x: 11, y: 68 },
+  { x: 31, y: 32 },
+  { x: 50, y: 68 },
+  { x: 69, y: 32 },
+  { x: 88, y: 56 },
+];
+
+/** 진영색. 판의 렌더러와 같은 값이다 — 미리보기가 실제 판과 같은 색이어야 읽힌다. */
+const COLOR_ME = '#3fbdf1';
+const COLOR_ENEMY = '#f2555f';
+const COLOR_NEUTRAL = '#8796a3';
+
+/** 적 그림. 판에서 쓰는 P2(빨강) 파일 그대로다. */
+function enemyUnitSrc(stage: Stage): string {
+  return `/assets/unit/p2/${spriteKindOf(stage.botUnit)}/run0.png`;
+}
+function enemyTowerSrc(stage: Stage): string {
+  return `/assets/tower/p2/${TOWER_KIND_META[towerSpriteKindOf(stage.botTower)].art}.png`;
+}
+
+function chapterOf(n: number): number {
+  return Math.floor((n - 1) / STAGES_PER_CHAPTER);
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
 export class CampaignScene implements Scene {
-  private readonly list: HTMLElement;
   private readonly coins: HTMLElement;
+  private readonly progressText: HTMLElement;
+  private readonly progressBar: HTMLElement;
+  private readonly tabs: HTMLElement;
+  private readonly track: HTMLElement;
+  private readonly brief: HTMLElement;
+  /** 지금 고른 판. 들어올 때마다 "지금 할 판"으로 다시 맞춘다. */
+  private selected = 1;
+  /** 지금 보고 있는 장(0부터). 판을 고르면 그 판의 장으로 따라간다. */
+  private chapter = 0;
 
   constructor(
     private readonly root: HTMLElement,
@@ -20,38 +85,27 @@ export class CampaignScene implements Scene {
     private readonly play: (stage: number) => void,
     back: () => void,
   ) {
-    const list = root.querySelector<HTMLElement>('#campaign-list');
-    const coins = root.querySelector<HTMLElement>('#campaign-coins');
-    const backBtn = root.querySelector<HTMLButtonElement>('#btn-campaign-back');
-    if (!list || !coins || !backBtn) throw new Error('캠페인 DOM이 예상과 다릅니다');
-    this.list = list;
-    this.coins = coins;
-    backBtn.addEventListener('click', back);
+    const q = <T extends HTMLElement>(s: string): T => {
+      const found = root.querySelector<T>(s);
+      if (!found) throw new Error(`캠페인 DOM이 예상과 다릅니다: ${s}`);
+      return found;
+    };
+    this.coins = q('#campaign-coins');
+    this.progressText = q('#campaign-progress');
+    this.progressBar = q('#campaign-progress-bar');
+    this.tabs = q('#campaign-tabs');
+    this.track = q('#campaign-track');
+    this.brief = q('#campaign-brief');
+    q<HTMLButtonElement>('#btn-campaign-back').addEventListener('click', back);
   }
 
   enter(): void {
-    // 판을 깨고 돌아올 때마다 새로 그린다 — 진행도와 언어가 바뀌었을 수 있다.
     const a = this.getAccount();
-    this.coins.textContent = a.coins.toLocaleString();
-    this.list.replaceChildren();
-    const chapters = Math.ceil(STAGES.length / STAGES_PER_CHAPTER);
-    for (let c = 0; c < chapters; c++) {
-      const box = document.createElement('div');
-      box.className = 'shop campaign-chapter';
-      const title = document.createElement('p');
-      title.className = 'shop-title';
-      title.textContent = t().campaignChapter(c + 1);
-      const grid = document.createElement('div');
-      grid.className = 'stage-grid';
-      for (const st of STAGES.slice(c * STAGES_PER_CHAPTER, (c + 1) * STAGES_PER_CHAPTER)) {
-        grid.append(this.card(a, st.n, st.firstClear));
-      }
-      box.append(title, grid);
-      this.list.append(box);
-    }
+    // 지금 할 판을 고른 채로 연다. 다 깼으면 마지막 판(보스)에 둔다.
+    this.selected = Math.min(a.campaignCleared + 1, STAGES.length);
+    this.chapter = chapterOf(this.selected);
     this.root.hidden = false;
-    // 지금 할 판이 화면 밖이면 거기까지 내려 준다. 짧은 창에서 4장이 안 보일 수 있다.
-    this.list.querySelector('.is-next')?.scrollIntoView({ block: 'nearest' });
+    this.render();
   }
 
   exit(): void {
@@ -62,28 +116,267 @@ export class CampaignScene implements Scene {
     // DOM이 알아서 그려진다.
   }
 
-  private card(a: Account, n: number, firstClear: number): HTMLButtonElement {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'stage-card';
-    const cleared = n <= a.campaignCleared;
-    const open = canPlayStage(a, n);
-    if (cleared) b.classList.add('is-cleared');
-    else if (open) b.classList.add('is-next');
-    b.disabled = !open;
+  /** 계정·선택이 바뀔 때마다 통째로 다시 그린다. 칸이 20개뿐이라 부분 갱신할 이유가 없다. */
+  private render(): void {
+    const a = this.getAccount();
+    this.coins.textContent = a.coins.toLocaleString();
+    this.renderProgress(a);
+    this.renderTabs(a);
+    this.renderTrack(a);
+    this.renderBrief(a);
+  }
 
-    const label = document.createElement('span');
-    label.className = 'stage-label';
-    label.textContent = stageLabel(n);
-    // 아랫줄: 깬 판은 표시만, 다음 판은 걸린 코인, 잠긴 판은 비운다.
-    const sub = document.createElement('span');
-    sub.className = 'stage-sub';
-    sub.textContent = cleared ? '✓' : open ? `+${firstClear.toLocaleString()}` : '';
-    b.append(label, sub);
-    b.setAttribute('aria-label', `${t().campaignEnemy(stageLabel(n))}${open ? '' : ` — ${t().campaignLocked}`}`);
-    b.addEventListener('click', () => {
-      if (canPlayStage(this.getAccount(), n)) this.play(n);
+  private renderProgress(a: Account): void {
+    this.progressText.textContent = t().campaignProgress(a.campaignCleared, STAGES.length);
+    this.progressBar.replaceChildren(
+      ...STAGES.map((st) => {
+        const seg = el('i');
+        if (st.n <= a.campaignCleared) seg.className = 'is-done';
+        else if (canPlayStage(a, st.n)) seg.className = 'is-next';
+        return seg;
+      }),
+    );
+  }
+
+  private renderTabs(a: Account): void {
+    const names = t().campaignChapterNames;
+    this.tabs.replaceChildren(
+      ...Array.from({ length: CHAPTERS }, (_, c) => {
+        const first = c * STAGES_PER_CHAPTER + 1;
+        const last = Math.min(first + STAGES_PER_CHAPTER - 1, STAGES.length);
+        const open = canPlayStage(a, first);
+        const done = a.campaignCleared >= last;
+        const b = el('button', 'cmp-tab');
+        b.type = 'button';
+        b.setAttribute('role', 'tab');
+        b.setAttribute('aria-selected', String(c === this.chapter));
+        if (c === this.chapter) b.classList.add('is-active');
+        if (!open) b.classList.add('is-locked');
+        if (done) b.classList.add('is-done');
+        b.append(
+          el('span', 'cmp-tab-no', String(c + 1).padStart(2, '0')),
+          el('span', 'cmp-tab-name', names[c] ?? t().campaignChapter(c + 1)),
+        );
+        b.addEventListener('click', () => {
+          if (c === this.chapter) return;
+          this.chapter = c;
+          // 그 장에서 할 판(없으면 첫 판)으로 고른다.
+          const cur = this.getAccount();
+          const target = Math.min(Math.max(cur.campaignCleared + 1, first), last);
+          this.selected = chapterOf(target) === c ? target : first;
+          this.render();
+        });
+        return b;
+      }),
+    );
+  }
+
+  private renderTrack(a: Account): void {
+    const first = this.chapter * STAGES_PER_CHAPTER + 1;
+    const stages = STAGES.slice(first - 1, first - 1 + STAGES_PER_CHAPTER);
+
+    // 노드를 잇는 선. 깬 구간은 실선, 남은 구간은 점선이다.
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'cmp-path');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < stages.length - 1; i++) {
+      const p = NODE_POS[i];
+      const q = NODE_POS[i + 1];
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', String(p.x));
+      line.setAttribute('y1', String(p.y));
+      line.setAttribute('x2', String(q.x));
+      line.setAttribute('y2', String(q.y));
+      line.setAttribute('vector-effect', 'non-scaling-stroke');
+      line.setAttribute('class', stages[i].n <= a.campaignCleared ? 'is-done' : '');
+      svg.append(line);
+    }
+
+    const nodes = stages.map((st, i) => {
+      const boss = i === STAGES_PER_CHAPTER - 1;
+      const cleared = st.n <= a.campaignCleared;
+      const open = canPlayStage(a, st.n);
+      const b = el('button', 'cmp-node');
+      b.type = 'button';
+      b.style.left = `${NODE_POS[i].x}%`;
+      b.style.top = `${NODE_POS[i].y}%`;
+      if (boss) b.classList.add('is-boss');
+      if (cleared) b.classList.add('is-cleared');
+      else if (open) b.classList.add('is-next');
+      else b.classList.add('is-locked');
+      if (st.n === this.selected) b.classList.add('is-selected');
+      b.setAttribute('aria-label', `${t().campaignEnemy(stageLabel(st.n))}${open ? '' : ` — ${t().campaignLocked}`}`);
+      b.setAttribute('aria-pressed', String(st.n === this.selected));
+
+      const face = el('span', 'cmp-node-face');
+      face.append(el('span', 'cmp-node-no', stageLabel(st.n)));
+      b.append(face);
+      if (boss) b.append(el('span', 'cmp-node-tag', t().campaignBoss));
+      if (cleared) b.append(el('span', 'cmp-node-check', '✓'));
+      b.addEventListener('click', () => {
+        this.selected = st.n;
+        this.render();
+      });
+      return b;
     });
-    return b;
+
+    const label = el('span', 'cmp-track-label', `CHAPTER ${String(this.chapter + 1).padStart(2, '0')}`);
+    label.setAttribute('aria-hidden', 'true');
+    this.track.replaceChildren(svg, label, ...nodes);
+  }
+
+  private renderBrief(a: Account): void {
+    const st = stageOf(this.selected) ?? STAGES[0];
+    const cleared = st.n <= a.campaignCleared;
+    const open = canPlayStage(a, st.n);
+    const boss = (st.n - 1) % STAGES_PER_CHAPTER === STAGES_PER_CHAPTER - 1;
+
+    // ── 머리줄: 판 이름 + 상태 ──
+    const head = el('div', 'cmp-brief-head');
+    const title = el('div', 'cmp-brief-title');
+    title.append(
+      el('span', 'cmp-brief-kicker', `OPERATION ${stageLabel(st.n)}`),
+      el('strong', '', t().campaignEnemy(stageLabel(st.n))),
+    );
+    const chip = el(
+      'span',
+      `cmp-chip ${cleared ? 'is-done' : open ? 'is-open' : 'is-locked'}`,
+      cleared ? t().campaignStatusCleared : open ? t().campaignStatusOpen : t().campaignLocked,
+    );
+    head.append(title);
+    if (boss) head.append(el('span', 'cmp-chip is-boss', t().campaignBoss));
+    head.append(chip);
+
+    // ── 본문: 왼쪽 지도, 오른쪽 정보 ──
+    const body = el('div', 'cmp-brief-body');
+    const mapBox = el('div', 'cmp-map');
+    const canvas = el('canvas');
+    mapBox.append(canvas, el('span', 'cmp-map-label', t().campaignMapIntel));
+
+    const intel = el('div', 'cmp-intel');
+    const enemyPower = unitPowerOf(st.botUnit);
+    const enemySpeed = st.botSpeed ?? towerSpeedOf(st.botTower);
+    intel.append(
+      this.intelRow(t().campaignEnemyUnit, enemyUnitSrc(st), unitLabelOf(st.botUnit), t().unitStats(enemyPower)),
+      this.intelRow(t().campaignEnemyTower, enemyTowerSrc(st), towerLabelOf(st.botTower), t().towerStats(enemySpeed)),
+    );
+    const bases = st.spots.filter((s) => s[2] === 2).length;
+    const neutrals = st.spots.filter((s) => s[2] === 0).length;
+    intel.append(el('p', 'cmp-intel-count', t().campaignForces(bases, neutrals)));
+
+    // 내 전력과 비교. **충돌은 `min(power)` 라 한 단계라도 높은 쪽이 이긴다** —
+    // 그래서 유닛을 먼저 본다 (`difficulty.ts` 의 `botUnitKindFor` 주석).
+    const mine = modsFor(a);
+    const advice =
+      enemyPower > mine.unitPower
+        ? { cls: 'is-warn', text: t().campaignAdviceUnit }
+        : enemySpeed > mine.speedMul
+          ? { cls: 'is-warn', text: t().campaignAdviceTower }
+          : { cls: 'is-ok', text: t().campaignAdviceOk };
+    intel.append(el('p', `cmp-advice ${advice.cls}`, advice.text));
+    body.append(mapBox, intel);
+
+    // ── 발밑: 보상 + 출격 ──
+    const foot = el('div', 'cmp-brief-foot');
+    const reward = el('div', 'cmp-reward');
+    reward.append(
+      el('span', 'cmp-reward-label', cleared ? t().campaignRewardReplay : t().campaignRewardFirst),
+      el('span', 'coins', (cleared ? CAMPAIGN_REPLAY_WIN : st.firstClear).toLocaleString()),
+    );
+    const go = el('button', 'btn btn-primary cmp-deploy', open ? t().campaignDeploy : t().campaignLockedHint);
+    go.type = 'button';
+    go.disabled = !open;
+    go.addEventListener('click', () => {
+      if (canPlayStage(this.getAccount(), st.n)) this.play(st.n);
+    });
+    foot.append(reward, go);
+
+    this.brief.classList.toggle('is-boss', boss);
+    this.brief.replaceChildren(head, body, foot);
+    // 캔버스는 DOM에 붙은 뒤에야 크기를 잴 수 있다.
+    this.drawMap(canvas, st);
+  }
+
+  private intelRow(label: string, src: string, name: string, stat: string): HTMLElement {
+    const row = el('div', 'cmp-intel-row');
+    const art = el('span', 'cmp-intel-art');
+    const img = el('img');
+    img.alt = '';
+    img.src = src;
+    // 그림이 없으면(에셋 없는 클론) 칸만 남긴다 — 판의 폴백과 같은 규칙.
+    img.addEventListener('error', () => img.remove(), { once: true });
+    art.append(img);
+    const text = el('span', 'cmp-intel-text');
+    text.append(el('span', 'cmp-intel-label', label), el('strong', '', name), el('span', 'cmp-intel-stat', stat));
+    row.append(art, text);
+    return row;
+  }
+
+  /**
+   * 실제 배치를 작게 그린다. 판의 좌표계 그대로다 — **아래가 나, 위가 적.**
+   * 숫자는 시작 병력이다. 무엇을 먼저 먹을지가 여기서 읽힌다.
+   */
+  private drawMap(canvas: HTMLCanvasElement, st: Stage): void {
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.round(rect.width));
+    const h = Math.max(1, Math.round(rect.height));
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    const sx = w / FIELD_W;
+    const sy = h / FIELD_H;
+
+    // 격자와 중앙선 — 판 화면의 바닥과 같은 인상.
+    ctx.strokeStyle = 'rgba(125, 211, 252, 0.07)';
+    ctx.lineWidth = 1;
+    for (let gx = 0; gx <= w; gx += 14) {
+      ctx.beginPath();
+      ctx.moveTo(gx + 0.5, 0);
+      ctx.lineTo(gx + 0.5, h);
+      ctx.stroke();
+    }
+    for (let gy = 0; gy <= h; gy += 14) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy + 0.5);
+      ctx.lineTo(w, gy + 0.5);
+      ctx.stroke();
+    }
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = 'rgba(125, 211, 252, 0.22)';
+    ctx.beginPath();
+    ctx.moveTo(0, h / 2);
+    ctx.lineTo(w, h / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const r = Math.max(6, Math.min(10, w / 13));
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 ${Math.round(r * 0.95)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    for (const [x, y, owner, troops] of st.spots) {
+      const cx = x * sx;
+      const cy = y * sy;
+      const color = owner === 1 ? COLOR_ME : owner === 2 ? COLOR_ENEMY : COLOR_NEUTRAL;
+      if (owner !== 0) {
+        ctx.fillStyle = owner === 1 ? 'rgba(63, 189, 241, 0.18)' : 'rgba(242, 85, 95, 0.18)';
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 1.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#0b141d';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = owner === 0 ? 1.5 : 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = owner === 0 ? '#c3ced8' : '#f2f7fb';
+      ctx.fillText(String(troops), cx, cy + 0.5);
+    }
   }
 }

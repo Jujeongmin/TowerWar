@@ -160,6 +160,8 @@ export class MatchScene implements Scene {
   private campaignNext: number | null = null;
   private readonly againBtn: HTMLButtonElement;
   private readonly lobbyBtn: HTMLButtonElement;
+  /** 결과 화면 위 "OPERATION 1-3". 캠페인 판에서만 보인다. */
+  private readonly resultStage: HTMLElement | null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -220,6 +222,7 @@ export class MatchScene implements Scene {
     if (!again || !lobby) throw new Error('결과 화면에 버튼이 없습니다');
     this.againBtn = again;
     this.lobbyBtn = lobby;
+    this.resultStage = resultRoot.querySelector<HTMLElement>('#result-stage');
     // **같은 판을 다시 돌리지 않는다 — 매칭을 다시 잡는다** (2026-08-04 사용자 지시).
     //
     // 전에는 `restart(true)` 로 시드만 새로 뽑아 그 자리에서 봇전을 다시 열었고,
@@ -666,6 +669,10 @@ export class MatchScene implements Scene {
     this.againBtn.hidden = false;
     this.againBtn.textContent = t().playAgain;
     this.lobbyBtn.textContent = t().toLobby;
+    if (this.resultStage) {
+      this.resultStage.hidden = plan.mode !== 'campaign';
+      this.resultStage.textContent = plan.mode === 'campaign' ? `OPERATION ${stageLabel(plan.stage)}` : '';
+    }
     if (plan.mode === 'campaign') {
       this.showCampaignResult(plan.stage, !this.resigned && w === local);
       return;

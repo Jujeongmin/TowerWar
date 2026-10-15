@@ -229,6 +229,27 @@ export interface Strings {
   campaignClearedUnknown: string;
   campaignFirstClear: (gained: number) => string;
   campaignReplay: (gained: number) => string;
+  /** 장 이름 4개. 탭에 번호와 같이 뜬다. */
+  campaignChapterNames: readonly string[];
+  campaignProgress: (cleared: number, total: number) => string;
+  campaignBoss: string;
+  campaignStatusCleared: string;
+  campaignStatusOpen: string;
+  /** 브리핑의 맵 미리보기 밑글. */
+  campaignMapIntel: string;
+  campaignEnemyUnit: string;
+  campaignEnemyTower: string;
+  /** 적 거점 수와 중립 타워 수. */
+  campaignForces: (bases: number, neutrals: number) => string;
+  /** 적 유닛이 내 것보다 세다. 충돌은 `min(power)` 라 이게 가장 큰 불리함이다. */
+  campaignAdviceUnit: string;
+  campaignAdviceTower: string;
+  campaignAdviceOk: string;
+  campaignRewardFirst: string;
+  campaignRewardReplay: string;
+  campaignDeploy: string;
+  /** 잠긴 판의 [출격] 자리. */
+  campaignLockedHint: string;
   adUnavailable: string;
   adFailed: string;
   /**
@@ -419,6 +440,23 @@ const en: Strings = {
   campaignClearedUnknown: 'Cleared!',
   campaignFirstClear: (gained) => `First clear! +${gained} coins`,
   campaignReplay: (gained) => `Cleared again · +${gained} coins`,
+  // 탭 칸이 좁다 (375px 폭에서 글자 약 75px). 두 단어를 넘기지 않는다.
+  campaignChapterNames: ['First Line', 'Warzone', 'Iron Front', 'Final Siege'],
+  campaignProgress: (c, total) => `Cleared ${c} / ${total}`,
+  campaignBoss: 'BOSS',
+  campaignStatusCleared: 'Cleared',
+  campaignStatusOpen: 'Available',
+  campaignMapIntel: 'Battle map',
+  campaignEnemyUnit: 'Enemy units',
+  campaignEnemyTower: 'Enemy towers',
+  campaignForces: (b, n) => `Enemy bases ${b} · Neutral towers ${n}`,
+  campaignAdviceUnit: 'Enemy units are stronger — upgrade your units in the Shop',
+  campaignAdviceTower: 'Enemy production is faster — upgrade your towers in the Shop',
+  campaignAdviceOk: 'Your forces are ready',
+  campaignRewardFirst: 'First clear reward',
+  campaignRewardReplay: 'Replay reward',
+  campaignDeploy: 'Deploy',
+  campaignLockedHint: 'Clear the previous stage',
   adUnavailable: 'No ad available right now',
   adFailed: 'Ad was not finished, so no reward',
   adError: "Couldn't load the ad — try again in a moment",
@@ -602,6 +640,22 @@ const ko: Strings = {
   campaignClearedUnknown: '클리어!',
   campaignFirstClear: (gained) => `첫 클리어! +${gained}코인`,
   campaignReplay: (gained) => `재클리어 · +${gained}코인`,
+  campaignChapterNames: ['첫 전선', '격전지', '강철 전선', '최후 공세'],
+  campaignProgress: (c, total) => `클리어 ${c} / ${total}`,
+  campaignBoss: '보스',
+  campaignStatusCleared: '클리어',
+  campaignStatusOpen: '도전 가능',
+  campaignMapIntel: '작전 지도',
+  campaignEnemyUnit: '적 유닛',
+  campaignEnemyTower: '적 타워',
+  campaignForces: (b, n) => `적 거점 ${b} · 중립 타워 ${n}`,
+  campaignAdviceUnit: '적 유닛이 더 강합니다 — 상점에서 유닛을 올려 보세요',
+  campaignAdviceTower: '적 생산이 더 빠릅니다 — 상점에서 타워를 올려 보세요',
+  campaignAdviceOk: '전력이 충분합니다',
+  campaignRewardFirst: '첫 클리어 보상',
+  campaignRewardReplay: '재클리어 보상',
+  campaignDeploy: '출격',
+  campaignLockedHint: '앞 스테이지를 깨면 열립니다',
   adUnavailable: '지금은 볼 광고가 없습니다',
   adFailed: '광고를 끝까지 안 봐서 보상이 없습니다',
   adError: '광고를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요',
@@ -788,6 +842,22 @@ const zh: Strings = {
   campaignClearedUnknown: '通关！',
   campaignFirstClear: (gained) => `首次通关！+${gained} 金币`,
   campaignReplay: (gained) => `再次通关 · +${gained} 金币`,
+  campaignChapterNames: ['第一道防线', '争夺之地', '钢铁战线', '最终围攻'],
+  campaignProgress: (c, total) => `已通关 ${c} / ${total}`,
+  campaignBoss: 'BOSS',
+  campaignStatusCleared: '已通关',
+  campaignStatusOpen: '可挑战',
+  campaignMapIntel: '作战地图',
+  campaignEnemyUnit: '敌方单位',
+  campaignEnemyTower: '敌方塔',
+  campaignForces: (b, n) => `敌方据点 ${b} · 中立塔 ${n}`,
+  campaignAdviceUnit: '敌方单位更强 — 去商店升级单位',
+  campaignAdviceTower: '敌方生产更快 — 去商店升级塔',
+  campaignAdviceOk: '战力充足',
+  campaignRewardFirst: '首次通关奖励',
+  campaignRewardReplay: '再次通关奖励',
+  campaignDeploy: '出击',
+  campaignLockedHint: '通关上一关后解锁',
   adUnavailable: '当前没有可观看的广告',
   adFailed: '广告未看完，无法获得奖励',
   adError: '广告加载失败，请稍后再试',
@@ -979,6 +1049,22 @@ const vi: Strings = {
   campaignClearedUnknown: 'Đã qua màn!',
   campaignFirstClear: (gained) => `Qua màn lần đầu! +${gained} xu`,
   campaignReplay: (gained) => `Qua màn lại · +${gained} xu`,
+  campaignChapterNames: ['Tuyến đầu', 'Chiến địa', 'Tuyến thép', 'Tổng công'],
+  campaignProgress: (c, total) => `Đã qua ${c} / ${total}`,
+  campaignBoss: 'BOSS',
+  campaignStatusCleared: 'Đã qua',
+  campaignStatusOpen: 'Có thể chơi',
+  campaignMapIntel: 'Bản đồ tác chiến',
+  campaignEnemyUnit: 'Lính địch',
+  campaignEnemyTower: 'Tháp địch',
+  campaignForces: (b, n) => `Căn cứ địch ${b} · Tháp trung lập ${n}`,
+  campaignAdviceUnit: 'Lính địch mạnh hơn — hãy nâng cấp lính ở Cửa hàng',
+  campaignAdviceTower: 'Địch sản xuất nhanh hơn — hãy nâng cấp tháp ở Cửa hàng',
+  campaignAdviceOk: 'Lực lượng đã sẵn sàng',
+  campaignRewardFirst: 'Thưởng qua màn lần đầu',
+  campaignRewardReplay: 'Thưởng chơi lại',
+  campaignDeploy: 'Xuất kích',
+  campaignLockedHint: 'Qua màn trước để mở khóa',
   adUnavailable: 'Hiện chưa có quảng cáo nào',
   adFailed: 'Chưa xem hết quảng cáo nên không có thưởng',
   adError: 'Không tải được quảng cáo, vui lòng thử lại sau',
@@ -1167,6 +1253,22 @@ const ja: Strings = {
   campaignClearedUnknown: 'クリア！',
   campaignFirstClear: (gained) => `初クリア！ +${gained} コイン`,
   campaignReplay: (gained) => `再クリア · +${gained} コイン`,
+  campaignChapterNames: ['最初の前線', '激戦地', '鋼鉄の前線', '最終攻勢'],
+  campaignProgress: (c, total) => `クリア ${c} / ${total}`,
+  campaignBoss: 'BOSS',
+  campaignStatusCleared: 'クリア済み',
+  campaignStatusOpen: '挑戦可能',
+  campaignMapIntel: '作戦マップ',
+  campaignEnemyUnit: '敵ユニット',
+  campaignEnemyTower: '敵タワー',
+  campaignForces: (b, n) => `敵拠点 ${b} · 中立タワー ${n}`,
+  campaignAdviceUnit: '敵ユニットの方が強い — ショップでユニットを強化しよう',
+  campaignAdviceTower: '敵の生産の方が速い — ショップでタワーを強化しよう',
+  campaignAdviceOk: '戦力は十分です',
+  campaignRewardFirst: '初クリア報酬',
+  campaignRewardReplay: '再クリア報酬',
+  campaignDeploy: '出撃',
+  campaignLockedHint: '前のステージをクリアで解放',
   adUnavailable: '今は見られる広告がありません',
   adFailed: '広告を最後まで見なかったため報酬はありません',
   adError: '広告を読み込めませんでした。しばらくしてからもう一度お試しください',
@@ -1352,6 +1454,22 @@ const zhHant: Strings = {
   campaignClearedUnknown: '通關！',
   campaignFirstClear: (gained) => `首次通關！+${gained} 金幣`,
   campaignReplay: (gained) => `再次通關 · +${gained} 金幣`,
+  campaignChapterNames: ['第一道防線', '爭奪之地', '鋼鐵戰線', '最終圍攻'],
+  campaignProgress: (c, total) => `已通關 ${c} / ${total}`,
+  campaignBoss: 'BOSS',
+  campaignStatusCleared: '已通關',
+  campaignStatusOpen: '可挑戰',
+  campaignMapIntel: '作戰地圖',
+  campaignEnemyUnit: '敵方單位',
+  campaignEnemyTower: '敵方塔',
+  campaignForces: (b, n) => `敵方據點 ${b} · 中立塔 ${n}`,
+  campaignAdviceUnit: '敵方單位更強 — 去商店升級單位',
+  campaignAdviceTower: '敵方生產更快 — 去商店升級塔',
+  campaignAdviceOk: '戰力充足',
+  campaignRewardFirst: '首次通關獎勵',
+  campaignRewardReplay: '再次通關獎勵',
+  campaignDeploy: '出擊',
+  campaignLockedHint: '通關上一關後解鎖',
   adUnavailable: '目前沒有可觀看的廣告',
   adFailed: '廣告未看完，無法獲得獎勵',
   adError: '廣告載入失敗，請稍後再試',

@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test:server": "node tools/server-harness.mjs",
-    "verify": "tsc --noEmit && node tools/server-harness.mjs && vite build",
+    "test:stages": "node tools/check-stages.mjs",
+    "verify": "tsc --noEmit && node tools/server-harness.mjs && node tools/check-stages.mjs && vite build",
     "deploy:server": "npx -y @agent8/deploy"
   },
   "devDependencies": {

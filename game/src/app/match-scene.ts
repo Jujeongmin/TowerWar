@@ -7,7 +7,8 @@
  * **상대가 봇인지 사람인지 이 파일은 모른다.** 차이는 `CommandSource` 하나에 갇혀 있다.
  */
 import { rewardFor, type Reward } from '../account/account';
-import type { AdDoubleResult, RatingChange } from '../account/store';
+import type { AdDoubleResult, CampaignReport, RatingChange } from '../account/store';
+import { CAMPAIGN_STAGES, stageLabel, stageOf, stageTowers } from '../campaign/stages';
 import { audio } from '../audio';
 import { isAdReady } from '../net/ads';
 import { t } from '../i18n';
@@ -97,6 +98,19 @@ const STALL_RECOVER_MS = 4000;
 /** 복구를 다시 시도하기까지의 간격(ms). SDK 재연결 백오프(1·2·4초)와 맞물릴 시간을 준다. */
 const RECOVER_RETRY_MS = 3000;
 
+/** 캠페인 판에서만 쓰는 연결. 계정을 든 쪽(main.ts)이 채운다. */
+export interface CampaignHooks {
+  /**
+   * 이 스테이지를 다음 판으로 정하고 서버에 시작을 적는다. **기다리지 않는다** —
+   * 실패해도 판은 열리고, 결과 화면이 "저장 안 됨"을 말한다 (`store.startCampaign`).
+   */
+  play(stage: number): void;
+  /** 결과 보고. 금액·진행도는 서버(오프라인이면 로컬 같은 계산)가 정한다. */
+  report(stage: number, won: boolean): Promise<CampaignReport>;
+  /** 결과 화면의 [스테이지 목록]. */
+  toList(): void;
+}
+
 export class MatchScene implements Scene {
   private state: MatchState = createMatch([]);
   private source: CommandSource = BotSource.forPlayer(2);
@@ -139,6 +153,13 @@ export class MatchScene implements Scene {
    * 통째로 건너뛴다 (`STALL_GIVEUP_MS` 주석).
    */
   private endedByDisconnect = false;
+  /**
+   * 결과 화면의 첫 버튼이 캠페인에서 무엇을 여는가. `null` 이면 버튼을 숨긴다
+   * (마지막 판을 깼을 때). 캠페인이 아닌 판에서는 안 쓴다.
+   */
+  private campaignNext: number | null = null;
+  private readonly againBtn: HTMLButtonElement;
+  private readonly lobbyBtn: HTMLButtonElement;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -192,18 +213,35 @@ export class MatchScene implements Scene {
     private readonly adDoubleBtn: HTMLButtonElement,
     /** 광고를 보고 보상 두 배. 성공하면 **실제로 들어온 코인**, 아니면 실패 이유. */
     private readonly watchAdForDouble: () => Promise<AdDoubleResult>,
+    private readonly campaign: CampaignHooks,
   ) {
     const again = resultRoot.querySelector<HTMLButtonElement>('#btn-again');
     const lobby = resultRoot.querySelector<HTMLButtonElement>('#btn-lobby');
     if (!again || !lobby) throw new Error('결과 화면에 버튼이 없습니다');
+    this.againBtn = again;
+    this.lobbyBtn = lobby;
     // **같은 판을 다시 돌리지 않는다 — 매칭을 다시 잡는다** (2026-08-04 사용자 지시).
     //
     // 전에는 `restart(true)` 로 시드만 새로 뽑아 그 자리에서 봇전을 다시 열었고,
     // PVP에서는 같은 상대와 같은 시드를 쓸 수 없어 버튼을 아예 숨겼다. 그래서
     // 봇전과 PVP의 결과 화면이 서로 달랐다. 이제 둘 다 매칭 화면으로 돌아간다 —
     // 봇전이었다면 상대를 다시 찾다가 없으면 또 봇으로 떨어진다(§-7).
-    again.addEventListener('click', () => this.toMatchmaking());
-    lobby.addEventListener('click', () => this.toLobby());
+    //
+    // **캠페인은 다르다** — [다음 스테이지]·[다시 하기]가 이 자리에 오고, 매칭이 아니라
+    // 그 자리에서 다음 판을 연다. 같은 씬이라 `switchTo` 가 안 먹으므로 직접 다시 시작한다.
+    again.addEventListener('click', () => {
+      if (this.getPlan().mode !== 'campaign') {
+        this.toMatchmaking();
+        return;
+      }
+      if (this.campaignNext === null) return;
+      this.campaign.play(this.campaignNext);
+      this.restart();
+    });
+    lobby.addEventListener('click', () => {
+      if (this.getPlan().mode === 'campaign') this.campaign.toList();
+      else this.toLobby();
+    });
 
     // **재확인도 설정 창도 없다.** 한 번 누르면 바로 항복이다 (§-23 사용자 지시).
     // 되돌릴 수 없고 보상도 0이라는 것은 버튼 글자 자체가 알린다.
@@ -277,7 +315,14 @@ export class MatchScene implements Scene {
     this.teardown();
     const plan = this.getPlan();
 
-    const planSeed = plan.mode === 'pvp' ? plan.setup.seed : reroll ? undefined : plan.seed;
+    const planSeed =
+      plan.mode === 'pvp'
+        ? plan.setup.seed
+        : plan.mode === 'campaign'
+          ? plan.stage // 맵은 스테이지가 정한다. 시드는 봇 아바타 고르기에만 쓰인다.
+          : reroll
+            ? undefined
+            : plan.seed;
     const seed = (planSeed ?? Date.now()) & 0xffff;
     const local: PlayerId = plan.mode === 'pvp' ? plan.setup.local : 1;
 
@@ -316,6 +361,23 @@ export class MatchScene implements Scene {
         }) ?? null;
       shownKinds = { 1: kinds[1], 2: kinds[2] };
       shownTowers = { 1: towerKinds[1], 2: towerKinds[2] };
+    } else if (plan.mode === 'campaign') {
+      // **봇 세기는 사람 계정이 아니라 스테이지가 정한다.** 그림과 힘이 같은 종류에서
+      // 나오게 한다 — `stages.ts` 머리말. 사람 쪽은 평소 봇전과 같이 계정 보정 그대로다.
+      // `stageOf` 가 못 찾는 번호는 들어올 수 없다(캠페인 화면이 목록에서만 고른다) —
+      // 그래도 1번으로 떨어뜨려 판이 안 깨지게 한다.
+      const stage = stageOf(plan.stage) ?? stageOf(1)!;
+      const mine = this.getMods()[1] ?? { speedMul: 1, unitPower: 1 };
+      this.state = createMatch(stageTowers(stage), {
+        1: mine,
+        2: {
+          speedMul: stage.botSpeed ?? towerSpeedOf(stage.botTower),
+          unitPower: unitPowerOf(stage.botUnit),
+        },
+      });
+      this.source = BotSource.forPlayer(2);
+      shownKinds = { 1: this.getUnitKind(), 2: stage.botUnit };
+      shownTowers = { 1: this.getTowerKind(), 2: stage.botTower };
     } else {
       // 봇도 사람의 강화 단계를 따라 세진다 (app/difficulty.ts). 안 그러면 강화를 살수록
       // 봇전이 쉬워지기만 한다.
@@ -346,6 +408,12 @@ export class MatchScene implements Scene {
       this.renderer.setNames({ 1: plan.setup.names[1], 2: plan.setup.names[2] });
       this.renderer.setProfiles({ 1: plan.setup.profiles[1], 2: plan.setup.profiles[2] });
       this.renderer.setRatings({ 1: plan.setup.ratings[1], 2: plan.setup.ratings[2] });
+    } else if (plan.mode === 'campaign') {
+      // 상대는 사람인 척하지 않는다 — 스테이지 번호가 곧 이름이다. 점수는 캠페인과
+      // 상관이 없어 양쪽 다 안 그린다 (`drawHudRating` 은 0 이하를 건너뛴다).
+      this.renderer.setNames({ [local]: this.getPlayerName(), [other]: t().campaignEnemy(stageLabel(plan.stage)) });
+      this.renderer.setProfiles({ [local]: this.getProfile(), [other]: botProfile(seed) });
+      this.renderer.setRatings({ [local]: 0, [other]: 0 });
     } else {
       // 봇 이름·아바타는 클라이언트가 만든다 — 봇이라는 것을 화면에 안 알리기로 했다
       // (app/bot-name.ts).
@@ -593,9 +661,18 @@ export class MatchScene implements Scene {
     // 내면 안 된다 — 소리가 화면보다 먼저 들리므로 어긋나면 그게 더 눈에 띈다.
     audio.play(!this.resigned && !this.endedByDisconnect && w !== 0 && w === local ? 'victory' : 'defeat');
 
+    const plan = this.getPlan();
+    // 다른 판에서 캠페인 글자가 남아 있으면 안 된다. 언어가 바뀌었을 수도 있어 매번 적는다.
+    this.againBtn.hidden = false;
+    this.againBtn.textContent = t().playAgain;
+    this.lobbyBtn.textContent = t().toLobby;
+    if (plan.mode === 'campaign') {
+      this.showCampaignResult(plan.stage, !this.resigned && w === local);
+      return;
+    }
+
     // 코드로 만나 잡은 친구 방인가. **서버가 내려준 값만 믿는다** — 방을 어떻게
     // 열었는지는 재접속·복구 뒤에 클라이언트가 알 수 없다 (`MatchSetup.friendRoom`).
-    const plan = this.getPlan();
     const friendRoom = plan.mode === 'pvp' && plan.setup.friendRoom;
     // 서버가 지불한 판인가. 봇 대체전(`serverRoom: true`)은 서버가 열고 지불하므로
     // 두 배도 된다. **서버 없이 돌린 봇전은 아니다** — 지불 기록(`paid`)이 없어서
@@ -659,6 +736,34 @@ export class MatchScene implements Scene {
     this.resultRating.classList.toggle('rating-up', diff > 0);
     this.resultRating.classList.toggle('rating-down', diff < 0);
     this.resultRating.hidden = false;
+  }
+
+  /**
+   * 캠페인 결과. 점수 줄·광고 두 배는 없다 — 서버가 연 방이 아니라 청구할 판이 없다.
+   *
+   * **항복·무승부도 진 판으로 보고한다.** 서버의 시작 기록을 비워야 같은 시작으로
+   * 이긴 판을 지어낼 수 없다 (`server.js` 의 `reportCampaign`).
+   */
+  private showCampaignResult(stage: number, won: boolean): void {
+    this.adDoubleBtn.hidden = true;
+    // 이기면 다음 판, 지면 같은 판. 마지막 판을 깼으면 갈 곳이 목록뿐이다.
+    this.campaignNext = won ? (stage < CAMPAIGN_STAGES ? stage + 1 : null) : stage;
+    this.againBtn.hidden = this.campaignNext === null;
+    this.againBtn.textContent = won ? t().campaignNext : t().campaignRetry;
+    this.lobbyBtn.textContent = t().campaignStages;
+    this.resultReward.textContent = won ? t().campaignSaving : t().campaignNoReward;
+
+    const shown = ++this.resultRound;
+    void this.campaign.report(stage, won).then((r) => {
+      // 늦게 온 응답이 다음 판의 결과 화면을 덮어쓰지 않게 한다.
+      if (shown !== this.resultRound || !won) return;
+      if (!r.saved) this.resultReward.textContent = t().campaignNotSaved;
+      else if (r.gained === null) this.resultReward.textContent = t().campaignClearedUnknown;
+      else this.resultReward.textContent = r.first ? t().campaignFirstClear(r.gained) : t().campaignReplay(r.gained);
+    });
+
+    this.resultRoot.hidden = false;
+    this.resultShown = true;
   }
 
   private hideResult(): void {

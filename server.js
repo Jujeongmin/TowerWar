@@ -307,6 +307,41 @@ const FOLLOW_REWARD_COINS = 500;
  * (`game/src/account/account.ts` 의 `AD_COOLDOWN_MS` 와 맞춰 둘 것). */
 const AD_COOLDOWN_MS = 30 * 60 * 1000;
 
+// ── 캠페인 ───────────────────────────────────────────────────────
+//
+// 스테이지 20판, 봇 상대 (2026-10-15 사용자 결정). 판은 클라이언트가 돌린다 — 봇전과
+// 같다. 서버가 쥐는 것은 **진행도와 금액**이다: 클라이언트는 "몇 번 판을 이겼다"만
+// 보내고, 얼마를 줄지·그 판을 할 자격이 있는지는 여기서 정한다.
+//
+// **승패 자체는 여전히 클라이언트 보고다** (`reportResult` 와 같은 한계, §-5). 그래서
+// 막을 수 있는 것만 막는다: 안 열린 판 건너뛰기, 시작도 안 한 판 보고, 순식간에 연속
+// 보고(최소 시간), 같은 시작으로 두 번 보고.
+
+/** 스테이지 수. `game/src/campaign/stages.ts` 의 `CAMPAIGN_STAGES` 와 같아야 한다. */
+const CAMPAIGN_STAGES = 20;
+/**
+ * 처음 깼을 때 코인 (1번부터). **`stages.ts` 의 `firstClear` 와 같아야 한다** —
+ * 금액은 여기가 정하고 그쪽은 화면용 사본이다.
+ */
+const CAMPAIGN_FIRST_CLEAR = [
+  300, 350, 400, 450, 800,
+  600, 650, 700, 750, 1500,
+  1000, 1100, 1200, 1300, 2500,
+  1600, 1800, 2000, 2200, 5000,
+];
+/** 이미 깬 판을 다시 이겼을 때. `stages.ts` 의 `CAMPAIGN_REPLAY_WIN` 과 같아야 한다. */
+const CAMPAIGN_REPLAY_WIN = 50;
+/**
+ * 시작에서 보고까지 최소 시간(ms). 시작·보고를 연달아 쏘는 것을 막는다.
+ *
+ * **20초로 잡았다가 10초로 내렸다.** 1장 첫 판은 내 병력이 많고 적 기지가 약해서
+ * 잘하는 사람은 20초 안에 끝낼 수 있다 — 그러면 진짜로 이긴 판이 "저장 못 함"이 된다.
+ * 유닛이 판을 가로지르는 데만 7초쯤 걸리므로(거리 740 ÷ 속도 105) 10초 아래는 불가능하다.
+ */
+const CAMPAIGN_MIN_MS = 10 * 1000;
+/** 시작 기록이 이보다 오래되면 무효. 판 하나(90초)에 넉넉히 여유를 준다. */
+const CAMPAIGN_START_TTL_MS = 10 * 60 * 1000;
+
 function num(v) {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
@@ -499,6 +534,11 @@ function defaultAccount(account) {
     adRequestIds: [],
     // 제작자 팔로우 보상을 받았는가. **계정당 한 번**의 자물쇠다 (`claimFollowReward`).
     followRewarded: false,
+    // 캠페인: 깬 마지막 스테이지(0 = 하나도 안 깸). 다음 판은 `+1` 까지만 열린다.
+    campaignCleared: 0,
+    // 지금 진행 중인 캠페인 판과 시작 시각. 보고 한 번에 비운다 (`reportCampaign`).
+    campaignStage: 0,
+    campaignAt: 0,
   };
 }
 
@@ -553,6 +593,9 @@ function normalizeAccount(raw, account) {
       ? [...new Set(raw.adRequestIds.filter((id) => typeof id === 'string'))].slice(-50)
       : [],
     followRewarded: raw.followRewarded === true,
+    campaignCleared: Math.min(num(raw.campaignCleared), CAMPAIGN_STAGES),
+    campaignStage: Math.min(num(raw.campaignStage), CAMPAIGN_STAGES),
+    campaignAt: num(raw.campaignAt),
   };
 }
 
@@ -827,6 +870,60 @@ class Server {
       // **기계가 읽는 코드로 던진다.** 화면 문구는 언어마다 달라야 한다(§-40).
       if (now - a.adAt < AD_COOLDOWN_MS) throw new Error('ad_cooldown');
       return await this.#saveAccount({ ...a, coins: a.coins + AD_COINS, adAt: now });
+    });
+  }
+
+  // ── 캠페인 ─────────────────────────────────────────────────────
+
+  /**
+   * 캠페인 판을 시작한다. **열린 판인지 여기서 본다** — 깬 마지막 판 + 1 까지만.
+   *
+   * 시작 시각을 계정에 적어 두고 `reportCampaign` 이 그걸 확인한다. 시작 없이 보고만
+   * 쏘거나, 시작 직후 곧바로 보고하는 것을 막는 자물쇠다.
+   *
+   * 다시 부르면 앞 기록을 덮는다 — 판 도중 [다시 하기]·앱을 닫았다 연 경우가 그렇다.
+   */
+  async startCampaign(stage) {
+    const n = num(stage);
+    return await $lock(`acct:${$sender.account}`, async () => {
+      const a = await this.#loadAccount();
+      if (n < 1 || n > CAMPAIGN_STAGES) throw new Error('bad_stage');
+      if (n > a.campaignCleared + 1) throw new Error('stage_locked');
+      return await this.#saveAccount({ ...a, campaignStage: n, campaignAt: Date.now() });
+    });
+  }
+
+  /**
+   * 캠페인 판 결과. **금액은 클라이언트가 안 보낸다** — 처음 깬 판이면 표의 값,
+   * 이미 깬 판이면 `CAMPAIGN_REPLAY_WIN`, 지면 0.
+   *
+   * 돌려주는 것: `{ account, gained, first }`. `gained` 는 실제로 들어온 코인,
+   * `first` 는 이번에 처음 깼는가 (결과 화면이 [다음 판]을 열지 정한다).
+   *
+   * 거절(던짐): `no_start`(시작 기록 없음·다른 판·오래됨), `too_fast`(최소 시간 전).
+   * **진 판도 보고한다** — 시작 기록을 비워야 같은 시작으로 이긴 판을 지어낼 수 없다.
+   */
+  async reportCampaign(stage, won) {
+    const n = num(stage);
+    return await $lock(`acct:${$sender.account}`, async () => {
+      const a = await this.#loadAccount();
+      const now = Date.now();
+      if (n < 1 || a.campaignStage !== n || now - a.campaignAt > CAMPAIGN_START_TTL_MS) {
+        throw new Error('no_start');
+      }
+      if (now - a.campaignAt < CAMPAIGN_MIN_MS) throw new Error('too_fast');
+      const cleared = { ...a, campaignStage: 0, campaignAt: 0 };
+      if (won !== true) {
+        return { account: await this.#saveAccount(cleared), gained: 0, first: false };
+      }
+      const first = n === a.campaignCleared + 1;
+      const gained = first ? CAMPAIGN_FIRST_CLEAR[n - 1] : CAMPAIGN_REPLAY_WIN;
+      const next = {
+        ...cleared,
+        coins: a.coins + gained,
+        campaignCleared: first ? n : a.campaignCleared,
+      };
+      return { account: await this.#saveAccount(next), gained, first };
     });
   }
 

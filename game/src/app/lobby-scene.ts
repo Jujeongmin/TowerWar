@@ -36,7 +36,12 @@ export class LobbyScene implements Scene {
     /** 설정. 지금은 언어뿐이다 (`settings-scene.ts`). */
     openSettings: () => void,
     editAccount: () => void,
+    /** 캠페인 스테이지 목록 (`campaign-scene.ts`). */
+    openCampaign: () => void,
   ) {
+    const campaign = root.querySelector<HTMLButtonElement>('#btn-campaign');
+    if (!campaign) throw new Error('로비 DOM이 예상과 다릅니다');
+    campaign.addEventListener('click', openCampaign);
     const name = root.querySelector<HTMLElement>('#acc-name');
     const avatar = root.querySelector<HTMLImageElement>('#acc-avatar');
     if (!name || !avatar) throw new Error('로비 DOM이 예상과 다릅니다');

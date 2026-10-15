@@ -20,6 +20,7 @@ import { PROFILE_IDS, type ProfileId } from '../profiles';
 import type { UnitKind } from '../units';
 import type { TowerKind } from '../towers';
 import {
+  applyCampaign,
   applyReward,
   buyTowerKind,
   buyUnitKind,
@@ -120,9 +121,21 @@ export interface RatingChange {
   after: number;
 }
 
+/**
+ * 캠페인 판 하나의 결과. `gained` 가 `null` 이면 얼마가 들어왔는지 모른다(보고 실패).
+ * `saved` 가 거짓이면 이 판의 진행도·코인이 저장되지 않았다.
+ */
+export interface CampaignReport {
+  gained: number | null;
+  first: boolean;
+  saved: boolean;
+}
+
 export class AccountStore {
   private account: Account = loadAccount();
   private net: Agent8Client | null = null;
+  /** 서버에 시작이 적힌 캠페인 판. 0이면 없다 — 그 판의 보고는 서버가 받아 주지 않는다. */
+  private campaignStarted = 0;
   /**
    * 붙이려고 했던 상대. **실패해도 들고 있는다** — `net` 은 성공했을 때만 채워지므로
    * 이것이 없으면 재연결에 쓸 클라이언트를 되찾을 수 없다.
@@ -449,6 +462,59 @@ export class AccountStore {
       return;
     }
     this.setLocal(buyTowerKind(this.account, kind) ?? selectTowerKind(this.account, kind));
+  }
+
+  /**
+   * 캠페인 판 시작. 온라인이면 서버에 시작을 적는다 — 서버가 결과 보고를 받아 주는
+   * 조건이다 (`server.js` 의 `startCampaign`).
+   *
+   * **실패해도 판은 연다.** 막으면 연결이 흔들릴 때 캠페인 자체를 못 한다. 대신 이 판의
+   * 결과는 저장되지 않고, 결과 화면이 그렇게 말한다 (`reportCampaign` 의 `saved`).
+   * 로컬로 대신 주지 않는 이유는 `grantReward` 와 같다 — 서버 값이 나중에 덮어쓴다.
+   */
+  async startCampaign(n: number): Promise<void> {
+    this.campaignStarted = 0;
+    if (!this.net) return;
+    try {
+      this.setLocal(fromRemote(await this.net.startCampaign(n)));
+      this.campaignStarted = n;
+    } catch (e) {
+      console.warn('[account] 캠페인 시작 실패:', String((e as Error)?.message ?? e));
+    }
+  }
+
+  /**
+   * 캠페인 판 결과. 온라인이면 서버가 금액·진행도를 정하고, 오프라인이면 같은 계산을
+   * 로컬에서 한다 (`applyCampaign`).
+   *
+   * `gained` 가 `null` 이면 **얼마가 들어왔는지 모른다** — 보고가 실패했다. 그때도 서버에는
+   * 들어갔을 수 있어서 계정을 다시 읽는다 (`resyncAfterReport` 와 같은 이유).
+   */
+  async reportCampaign(n: number, won: boolean): Promise<CampaignReport> {
+    if (!this.net) {
+      const out = applyCampaign(this.account, n, won);
+      this.setLocal(out.account);
+      return { gained: out.gained, first: out.first, saved: true };
+    }
+    const started = this.campaignStarted === n;
+    this.campaignStarted = 0;
+    // 시작이 서버에 안 적혔으면 보고해도 `no_start` 로 거절된다. 부르지 않는다.
+    if (!started) return { gained: null, first: false, saved: false };
+    const before = this.account.campaignCleared;
+    try {
+      const res = await this.net.reportCampaign(n, won);
+      this.setLocal(fromRemote(res.account));
+      return { gained: res.gained, first: res.first, saved: true };
+    } catch (e) {
+      console.warn('[account] 캠페인 결과 보고 실패:', String((e as Error)?.message ?? e));
+      try {
+        this.setLocal(fromRemote(await this.net.getAccount()));
+      } catch {
+        return { gained: null, first: false, saved: false };
+      }
+      const first = before < n && this.account.campaignCleared >= n;
+      return { gained: null, first, saved: first };
+    }
   }
 
   /**

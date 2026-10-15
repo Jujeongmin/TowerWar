@@ -9,6 +9,7 @@
  * 클라이언트마다 결과가 갈라진다.
  */
 import type { MatchState, PlayerId, PlayerMods } from '../sim/types';
+import { CAMPAIGN_REPLAY_WIN, CAMPAIGN_STAGES, stageOf } from '../campaign/stages';
 import { DEFAULT_PROFILE, isProfileId, type ProfileId } from '../profiles';
 import { DEFAULT_UNIT_KIND, UNIT_KIND_META, isPremiumKind, isUnitKind, unitPowerOf, type UnitKind } from '../units';
 import {
@@ -26,12 +27,12 @@ const STORAGE_KEY = 'towerwar.account.v1';
  * 저장 형식이 바뀌면 올린다.
  * v1 = 강화 없음, v2 = 전투력+공속, v3 = 공속만, v4 = 유닛 생김새,
  * v5 = 봇전 전적 분리, v6 = 닉네임, v7 = 프로필 아바타, v8 = 기본 생김새가 BeerGang,
- * v9 = PVP 점수, v10 = 유료(VX) 소유, v11 = 타워 외형(생산속도).
+ * v9 = PVP 점수, v10 = 유료(VX) 소유, v11 = 타워 외형(생산속도), v12 = 캠페인 진행도.
  */
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 /** 읽어서 살릴 수 있는 형식들. 여기 없는 값이면 기본값으로 되돌린다. */
-const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, SCHEMA_VERSION]);
+const KNOWN_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, SCHEMA_VERSION]);
 
 /** 닉네임 길이 상한. HUD에 들어가야 해서 짧다. `server.js` 의 `NAME_MAX` 와 같아야 한다. */
 export const NAME_MAX = 12;
@@ -139,6 +140,13 @@ export interface Account {
    * (`$sender.isFollower`), 로컬에서 켜 봐야 코인이 서버에 안 올라간다.
    */
   followRewarded: boolean;
+  /**
+   * 캠페인에서 깬 마지막 스테이지(0 = 하나도 안 깸). 다음 판은 `+1` 까지만 열린다.
+   *
+   * **온라인이면 서버가 진짜다** (`server.js` 의 `reportCampaign`). 오프라인 진행도는
+   * 코인과 같은 이유로 서버에 안 올라간다 (`store.ts` 머리말).
+   */
+  campaignCleared: number;
 }
 
 /**
@@ -168,6 +176,7 @@ export function defaultAccount(): Account {
     entitlements: [],
     adAt: 0,
     followRewarded: false,
+    campaignCleared: 0,
   };
 }
 
@@ -196,6 +205,7 @@ export function fromRemote(r: {
   entitlements?: string[];
   adAt?: number;
   followRewarded?: boolean;
+  campaignCleared?: number;
 }): Account {
   const owned = r.ownedUnits.filter(isUnitKind);
   const kind = isUnitKind(r.unitKind) ? r.unitKind : DEFAULT_UNIT_KIND;
@@ -220,6 +230,7 @@ export function fromRemote(r: {
     entitlements: [...new Set(r.entitlements ?? [])],
     adAt: num(r.adAt),
     followRewarded: r.followRewarded === true,
+    campaignCleared: Math.min(num(r.campaignCleared), CAMPAIGN_STAGES),
   };
   return { ...a, unitKind: unitKindOf(a), towerKind: towerKindOf(a) };
 }
@@ -367,6 +378,36 @@ export function applyReward(account: Account, reward: Reward): Account {
   };
 }
 
+/** 캠페인 판 하나의 결과. 서버의 `reportCampaign` 응답과 같은 모양이다. */
+export interface CampaignOutcome {
+  account: Account;
+  /** 실제로 들어온 코인. */
+  gained: number;
+  /** 이번에 처음 깼는가. */
+  first: boolean;
+}
+
+/** 이 판을 할 수 있는가. 깬 마지막 판 + 1 까지. `server.js` 의 `startCampaign` 과 같은 규칙. */
+export function canPlayStage(a: Account, n: number): boolean {
+  return n >= 1 && n <= CAMPAIGN_STAGES && n <= a.campaignCleared + 1;
+}
+
+/**
+ * 오프라인 캠페인 결과. **`server.js` 의 `reportCampaign` 과 같은 계산이다** —
+ * 서버가 붙어 있으면 이 함수는 안 쓴다. 유튜브판은 이것만 쓴다.
+ */
+export function applyCampaign(a: Account, n: number, won: boolean): CampaignOutcome {
+  const stage = stageOf(n);
+  if (!won || !stage || !canPlayStage(a, n)) return { account: a, gained: 0, first: false };
+  const first = n === a.campaignCleared + 1;
+  const gained = first ? stage.firstClear : CAMPAIGN_REPLAY_WIN;
+  return {
+    account: { ...a, coins: a.coins + gained, campaignCleared: first ? n : a.campaignCleared },
+    gained,
+    first,
+  };
+}
+
 /**
  * 전적만 초기화한 새 계정. **점수(rating)·코인·유닛은 그대로 둔다** (사용자 지시:
  * "전적만 초기화, 점수 초기화는 아니야"). 화면에 뜨는 승/패/무(`wins/losses/draws`)만
@@ -432,6 +473,8 @@ export function loadAccount(): Account {
       adAt: num(parsed.adAt),
       // 로컬 사본은 화면 표시용이다. 손으로 켜 봐야 코인은 서버가 준다.
       followRewarded: parsed.followRewarded === true,
+      // v11 이하에는 없다 — `num` 이 0으로 떨어뜨린다.
+      campaignCleared: Math.min(num(parsed.campaignCleared), CAMPAIGN_STAGES),
     };
     // 안 가진 것이 착용돼 있으면(손으로 고친 저장본 등) 기본으로 되돌린다.
     return { ...account, unitKind: unitKindOf(account), towerKind: towerKindOf(account) };

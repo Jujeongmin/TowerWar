@@ -211,6 +211,24 @@ export interface Strings {
   adDouble: string;
   /** 두 배를 실제로 받은 뒤. **서버가 준 금액을 그대로 적는다** — 화면이 다시 계산하지 않는다. */
   rewardDoubled: (gained: number) => string;
+  // ── 캠페인 ──
+  campaign: string;
+  campaignChapter: (n: number) => string;
+  /** 상대 이름 자리와 목록 칸의 읽기 이름. `label` 은 "2-3" 꼴. */
+  campaignEnemy: (label: string) => string;
+  campaignLocked: string;
+  campaignNext: string;
+  campaignRetry: string;
+  campaignStages: string;
+  /** 이긴 직후, 서버 응답 전. */
+  campaignSaving: string;
+  campaignNoReward: string;
+  /** 이겼는데 서버에 시작·보고가 안 들어갔다. */
+  campaignNotSaved: string;
+  /** 이겼고 진행도는 들어갔는데 금액을 모른다 (보고 응답을 못 받았다). */
+  campaignClearedUnknown: string;
+  campaignFirstClear: (gained: number) => string;
+  campaignReplay: (gained: number) => string;
   adUnavailable: string;
   adFailed: string;
   /**
@@ -388,6 +406,19 @@ const en: Strings = {
   adWatch: (coins) => `Watch an ad · +${coins}`,
   adDouble: 'Watch an ad — double it',
   rewardDoubled: (gained) => `Ad reward · +${gained} more`,
+  campaign: 'Campaign',
+  campaignChapter: (n) => `Chapter ${n}`,
+  campaignEnemy: (label) => `Stage ${label}`,
+  campaignLocked: 'Locked',
+  campaignNext: 'Next Stage',
+  campaignRetry: 'Retry',
+  campaignStages: 'Stages',
+  campaignSaving: 'Saving…',
+  campaignNoReward: 'Not cleared — no reward',
+  campaignNotSaved: 'Cleared, but progress could not be saved',
+  campaignClearedUnknown: 'Cleared!',
+  campaignFirstClear: (gained) => `First clear! +${gained} coins`,
+  campaignReplay: (gained) => `Cleared again · +${gained} coins`,
   adUnavailable: 'No ad available right now',
   adFailed: 'Ad was not finished, so no reward',
   adError: "Couldn't load the ad — try again in a moment",
@@ -558,6 +589,19 @@ const ko: Strings = {
   adWatch: (coins) => `광고 보고 +${coins}`,
   adDouble: '광고 보고 두 배 받기',
   rewardDoubled: (gained) => `광고 보상 · +${gained} 추가`,
+  campaign: '캠페인',
+  campaignChapter: (n) => `${n}장`,
+  campaignEnemy: (label) => `스테이지 ${label}`,
+  campaignLocked: '잠김',
+  campaignNext: '다음 스테이지',
+  campaignRetry: '다시 하기',
+  campaignStages: '스테이지 목록',
+  campaignSaving: '저장 중…',
+  campaignNoReward: '클리어 실패 — 보상 없음',
+  campaignNotSaved: '클리어했지만 진행도를 저장하지 못했습니다',
+  campaignClearedUnknown: '클리어!',
+  campaignFirstClear: (gained) => `첫 클리어! +${gained}코인`,
+  campaignReplay: (gained) => `재클리어 · +${gained}코인`,
   adUnavailable: '지금은 볼 광고가 없습니다',
   adFailed: '광고를 끝까지 안 봐서 보상이 없습니다',
   adError: '광고를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요',
@@ -731,6 +775,19 @@ const zh: Strings = {
   adWatch: (coins) => `观看广告 · +${coins}`,
   adDouble: '观看广告 —— 奖励翻倍',
   rewardDoubled: (gained) => `广告奖励 · 追加 +${gained}`,
+  campaign: '战役',
+  campaignChapter: (n) => `第${n}章`,
+  campaignEnemy: (label) => `关卡 ${label}`,
+  campaignLocked: '未解锁',
+  campaignNext: '下一关',
+  campaignRetry: '再试一次',
+  campaignStages: '关卡列表',
+  campaignSaving: '保存中…',
+  campaignNoReward: '未通关 — 无奖励',
+  campaignNotSaved: '已通关，但进度未能保存',
+  campaignClearedUnknown: '通关！',
+  campaignFirstClear: (gained) => `首次通关！+${gained} 金币`,
+  campaignReplay: (gained) => `再次通关 · +${gained} 金币`,
   adUnavailable: '当前没有可观看的广告',
   adFailed: '广告未看完，无法获得奖励',
   adError: '广告加载失败，请稍后再试',
@@ -909,6 +966,19 @@ const vi: Strings = {
   adWatch: (coins) => `Xem quảng cáo · +${coins}`,
   adDouble: 'Xem quảng cáo — nhân đôi',
   rewardDoubled: (gained) => `Thưởng quảng cáo · +${gained} thêm`,
+  campaign: 'Chiến dịch',
+  campaignChapter: (n) => `Chương ${n}`,
+  campaignEnemy: (label) => `Màn ${label}`,
+  campaignLocked: 'Đã khóa',
+  campaignNext: 'Màn tiếp',
+  campaignRetry: 'Chơi lại',
+  campaignStages: 'Danh sách màn',
+  campaignSaving: 'Đang lưu…',
+  campaignNoReward: 'Chưa qua màn — không có thưởng',
+  campaignNotSaved: 'Đã qua màn nhưng không lưu được tiến độ',
+  campaignClearedUnknown: 'Đã qua màn!',
+  campaignFirstClear: (gained) => `Qua màn lần đầu! +${gained} xu`,
+  campaignReplay: (gained) => `Qua màn lại · +${gained} xu`,
   adUnavailable: 'Hiện chưa có quảng cáo nào',
   adFailed: 'Chưa xem hết quảng cáo nên không có thưởng',
   adError: 'Không tải được quảng cáo, vui lòng thử lại sau',
@@ -1084,6 +1154,19 @@ const ja: Strings = {
   adWatch: (coins) => `広告を見て +${coins}`,
   adDouble: '広告を見て 2 倍にする',
   rewardDoubled: (gained) => `広告報酬 · +${gained} 追加`,
+  campaign: 'キャンペーン',
+  campaignChapter: (n) => `第${n}章`,
+  campaignEnemy: (label) => `ステージ ${label}`,
+  campaignLocked: 'ロック中',
+  campaignNext: '次のステージ',
+  campaignRetry: 'もう一度',
+  campaignStages: 'ステージ一覧',
+  campaignSaving: '保存中…',
+  campaignNoReward: 'クリア失敗 — 報酬なし',
+  campaignNotSaved: 'クリアしましたが、進行状況を保存できませんでした',
+  campaignClearedUnknown: 'クリア！',
+  campaignFirstClear: (gained) => `初クリア！ +${gained} コイン`,
+  campaignReplay: (gained) => `再クリア · +${gained} コイン`,
   adUnavailable: '今は見られる広告がありません',
   adFailed: '広告を最後まで見なかったため報酬はありません',
   adError: '広告を読み込めませんでした。しばらくしてからもう一度お試しください',
@@ -1256,6 +1339,19 @@ const zhHant: Strings = {
   adWatch: (coins) => `觀看廣告 · +${coins}`,
   adDouble: '觀看廣告 —— 獎勵加倍',
   rewardDoubled: (gained) => `廣告獎勵 · 追加 +${gained}`,
+  campaign: '戰役',
+  campaignChapter: (n) => `第${n}章`,
+  campaignEnemy: (label) => `關卡 ${label}`,
+  campaignLocked: '未解鎖',
+  campaignNext: '下一關',
+  campaignRetry: '再試一次',
+  campaignStages: '關卡列表',
+  campaignSaving: '儲存中…',
+  campaignNoReward: '未通關 — 無獎勵',
+  campaignNotSaved: '已通關，但進度未能儲存',
+  campaignClearedUnknown: '通關！',
+  campaignFirstClear: (gained) => `首次通關！+${gained} 金幣`,
+  campaignReplay: (gained) => `再次通關 · +${gained} 金幣`,
   adUnavailable: '目前沒有可觀看的廣告',
   adFailed: '廣告未看完，無法獲得獎勵',
   adError: '廣告載入失敗，請稍後再試',

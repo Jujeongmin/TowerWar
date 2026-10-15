@@ -1501,6 +1501,51 @@ check('내 칸 갱신이 던져도 표는 온다', softBoard !== null && softBoa
   softBoard && softBoard.rows.length);
 check('그 사이 갱신이 실제로 시도됐다', refreshTried === true, refreshTried);
 
+// 65) 캠페인. 열린 판만 시작되고, 금액은 서버 표에서 나온다.
+//
+// 시작 시각을 손으로 당긴다 — 하네스는 판을 실제로 안 돌리므로 그대로 보고하면
+// `too_fast` 에 걸린다. 그 거절 자체도 따로 본다.
+const CMP = { account: '0xCMP', roomId: null };
+as(CMP);
+const agoCampaign = (ms = 30000) => {
+  const s = userStates.get(CMP.account);
+  userStates.set(CMP.account, { ...s, campaignAt: s.campaignAt - ms });
+};
+const errOf = async (p) => { try { await p; return null; } catch (e) { return e.message; } };
+
+check('캠페인: 안 열린 판은 시작이 안 된다', (await errOf(server.startCampaign(2))) === 'stage_locked');
+check('캠페인: 없는 판은 시작이 안 된다', (await errOf(server.startCampaign(21))) === 'bad_stage');
+check('캠페인: 시작 없이 보고하면 거절', (await errOf(server.reportCampaign(1, true))) === 'no_start');
+
+await server.startCampaign(1);
+check('캠페인: 시작하자마자 보고하면 거절', (await errOf(server.reportCampaign(1, true))) === 'too_fast');
+agoCampaign();
+check('캠페인: 다른 판으로 보고하면 거절', (await errOf(server.reportCampaign(2, true))) === 'no_start');
+const c1 = await server.reportCampaign(1, true);
+check('캠페인: 첫 클리어는 표의 금액', c1.first === true && c1.gained === 300 && c1.account.coins === 300, c1);
+check('캠페인: 진행도가 오른다', c1.account.campaignCleared === 1, c1.account.campaignCleared);
+check('캠페인: 같은 시작으로 두 번 보고 못 한다', (await errOf(server.reportCampaign(1, true))) === 'no_start');
+
+await server.startCampaign(1);
+agoCampaign();
+const c1again = await server.reportCampaign(1, true);
+check('캠페인: 다시 깬 판은 작은 금액', c1again.first === false && c1again.gained === 50, c1again);
+check('캠페인: 다시 깨도 진행도는 그대로', c1again.account.campaignCleared === 1);
+
+await server.startCampaign(2);
+agoCampaign();
+const c2lost = await server.reportCampaign(2, false);
+check('캠페인: 진 판은 0코인, 진행도 그대로', c2lost.gained === 0 && c2lost.account.campaignCleared === 1, c2lost);
+check('캠페인: 진 판도 시작 기록을 비운다', (await errOf(server.reportCampaign(2, true))) === 'no_start');
+
+await server.startCampaign(2);
+agoCampaign(11 * 60 * 1000);
+check('캠페인: 오래된 시작 기록은 무효', (await errOf(server.reportCampaign(2, true))) === 'no_start');
+
+userStates.set(CMP.account, { ...userStates.get(CMP.account), campaignCleared: 999 });
+check('캠페인: 저장본이 오염돼도 진행도는 상한에서 잘린다',
+  (await server.getAccount()).campaignCleared === 20);
+
 // ── 보고 ────────────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  ← ' + JSON.stringify(r.extra)}`);

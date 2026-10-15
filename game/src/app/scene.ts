@@ -34,4 +34,9 @@ export type MatchPlan =
       /** 서버가 연 봇전 방이면 서버가 내려준 내 타워 외형. 없으면 계정에서 읽는다. */
       towerKind?: TowerKind;
     }
-  | { mode: 'pvp'; setup: MatchSetup; transport: MatchTransport };
+  | { mode: 'pvp'; setup: MatchSetup; transport: MatchTransport }
+  /**
+   * 캠페인 판. 맵·봇 세기를 스테이지가 정한다 (`campaign/stages.ts`). 서버는 판을 안 열고
+   * 진행도와 금액만 정한다 — 봇전처럼 판은 클라이언트가 돌린다.
+   */
+  | { mode: 'campaign'; stage: number };

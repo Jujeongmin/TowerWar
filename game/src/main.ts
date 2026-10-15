@@ -9,6 +9,7 @@ import { towerKindOf, unitKindOf, type Reward } from './account/account';
 import { AccountStore, type RatingChange } from './account/store';
 import { matchModsFor } from './app/difficulty';
 import { BoardScene } from './app/board-scene';
+import { CampaignScene } from './app/campaign-scene';
 import { LobbyScene } from './app/lobby-scene';
 import { MatchScene } from './app/match-scene';
 import { NameScene } from './app/name-scene';
@@ -59,8 +60,19 @@ const net = new Agent8Client();
 const store = new AccountStore();
 
 function grantReward(reward: Reward, winnerSlot: number): Promise<RatingChange | null> {
-  const serverRoom = plan.mode === 'pvp' || plan.serverRoom;
+  // 캠페인은 여기로 안 온다 — 결과 화면이 `campaign.report` 로 따로 보고한다.
+  const serverRoom = plan.mode === 'pvp' || (plan.mode === 'pve' && plan.serverRoom);
   return store.grantReward(reward, winnerSlot, serverRoom);
+}
+
+/**
+ * 캠페인 판을 다음 판으로 정한다. 서버 시작 기록은 **기다리지 않는다** — 판은 바로
+ * 열리고, 시작이 안 적혔으면 결과 화면이 "저장 안 됨"을 말한다 (`store.startCampaign`).
+ * 판은 90초라 시작 요청(최대 8초)이 보고보다 늦을 일은 없다.
+ */
+function prepareCampaign(stage: number): void {
+  plan = { mode: 'campaign', stage };
+  void store.startCampaign(stage);
 }
 
 /**
@@ -112,6 +124,20 @@ const lobby = new LobbyScene(
   () => switchTo(board),
   () => switchTo(settings),
   () => switchTo(nameScene),
+  // 캠페인 시작·보고가 서버를 탄다. 상점과 같은 이유로 끊긴 연결을 되살려 둔다.
+  () => {
+    void store.ensureOnline();
+    switchTo(campaign);
+  },
+);
+const campaign = new CampaignScene(
+  need('campaign'),
+  () => store.current,
+  (stage) => {
+    prepareCampaign(stage);
+    switchTo(match);
+  },
+  () => switchTo(lobby),
 );
 const settings = new SettingsScene(
   need('settings'),
@@ -201,6 +227,11 @@ const match = new MatchScene(
   need<HTMLElement>('tempo-status'),
   need<HTMLButtonElement>('btn-ad-double'),
   () => store.watchAdForDouble(),
+  {
+    play: prepareCampaign,
+    report: (stage, won) => store.reportCampaign(stage, won),
+    toList: () => switchTo(campaign),
+  },
 );
 
 /**

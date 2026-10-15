@@ -645,6 +645,30 @@ export class Agent8Client {
     );
     return res && typeof res === 'object' ? (res as RemoteAccount) : null;
   }
+
+  /** 캠페인 판 시작. 안 열린 판이면 서버가 `stage_locked` 로 던진다. */
+  async startCampaign(stage: number): Promise<RemoteAccount> {
+    return await withTimeout(this.server.remoteFunction('startCampaign', [stage]), '캠페인 시작');
+  }
+
+  /**
+   * 캠페인 판 결과. **금액은 안 보낸다** — 서버가 표에서 정한다.
+   * `reportResult` 와 같은 이유로 길게 기다린다 (계정 자물쇠 + 읽기·쓰기).
+   */
+  async reportCampaign(stage: number, won: boolean): Promise<RemoteCampaignResult> {
+    return await withTimeout(
+      this.server.remoteFunction('reportCampaign', [stage, won]),
+      '캠페인 결과',
+      COIN_CALL_TIMEOUT_MS,
+    );
+  }
+}
+
+/** `reportCampaign` 의 응답. `server.js` 의 같은 이름 메서드 주석 참고. */
+export interface RemoteCampaignResult {
+  account: RemoteAccount;
+  gained: number;
+  first: boolean;
 }
 
 /**
@@ -709,6 +733,8 @@ export interface RemoteAccount {
   adAt: number;
   /** 제작자 팔로우 보상을 이미 받았는가. 계정당 한 번의 자물쇠다. */
   followRewarded: boolean;
+  /** 캠페인에서 깬 마지막 스테이지. 배포 전 서버는 안 보내므로 없을 수 있다. */
+  campaignCleared?: number;
 }
 
 /** `getFollowState` 의 응답. 설정 화면이 버튼 모양을 정하는 데만 쓴다. */

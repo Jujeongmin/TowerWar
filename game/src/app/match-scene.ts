@@ -158,6 +158,8 @@ export class MatchScene implements Scene {
    * (마지막 판을 깼을 때). 캠페인이 아닌 판에서는 안 쓴다.
    */
   private campaignNext: number | null = null;
+  /** 배속 표시를 마지막으로 그린 조건. 같으면 DOM 을 안 건드린다 (`paintTempo`). */
+  private tempoPainted = '';
   private readonly againBtn: HTMLButtonElement;
   private readonly lobbyBtn: HTMLButtonElement;
   /** 결과 화면 위 "OPERATION 1-3". 캠페인 판에서만 보인다. */
@@ -452,6 +454,8 @@ export class MatchScene implements Scene {
     // 배속 버튼은 **살 수 있는 사람에게만** 보인다. 못 켜는 사람에게 죽은 버튼을
     // 보여 주면 눌러 보고 왜 안 되는지 묻게 된다.
     this.tempoBtn.hidden = !this.canTempo();
+    // 새 판은 반드시 다시 그린다 — 결과 화면이 표시를 직접 숨겼고, 언어가 바뀌었을 수 있다.
+    this.tempoPainted = '';
     this.paintTempo();
     this.hideResult();
   }
@@ -508,6 +512,11 @@ export class MatchScene implements Scene {
     const enemy: PlayerId = local === 1 ? 2 : 1;
     const scale = tempoScaleOf(this.state);
     const opponentOn = this.state.tempo[enemy] === true;
+    // **매 프레임 불리지만 DOM 은 바뀔 때만 쓴다** (2026-10-15). 값이 같아도 쓰면 브라우저가
+    // 스타일·레이아웃을 다시 볼 수 있어, 모바일에서 프레임마다 헛일이 붙는다.
+    const key = `${local}|${scale}|${opponentOn}|${this.state.tempo[local] === true}|${this.tempoBtn.hidden}`;
+    if (key === this.tempoPainted) return;
+    this.tempoPainted = key;
     this.tempoStatus.hidden = !opponentOn;
     this.tempoStatus.textContent = opponentOn ? t().opponentTempo(scale) : '';
 
@@ -523,15 +532,29 @@ export class MatchScene implements Scene {
     // **배속은 여기서만 걸린다.** 현실 시간을 배수만큼 부풀려 넣을 뿐이라 틱 하나가
     // 계산하는 것은 그대로다 — 그래서 양쪽이 같은 배속이면 결과가 안 갈라진다
     // (`tempoScaleOf` 주석). 상한(`MAX_ACCUMULATOR`)은 부풀린 뒤에 건다.
-    this.accumulator = Math.min(this.accumulator + dt * tempoScaleOf(this.state), MAX_ACCUMULATOR);
+    //
+    // **PVP 는 진행 배율도 곱한다** (`net/pacing.ts`). 상대 약속에 닿기 전에 미리 천천히
+    // 돌아 멈칫거림을 없애고, 한참 뒤처졌으면 조금 빨리 돌아 따라잡는다. 봇전은 1이다.
+    const pace = this.source.paceFactor?.(this.state.tick, this.state) ?? 1;
+    this.accumulator = Math.min(
+      this.accumulator + dt * tempoScaleOf(this.state) * pace,
+      MAX_ACCUMULATOR,
+    );
 
     while (this.accumulator >= TICK_DT) {
       // 배치를 먼저 보낸다. 내가 멈춰 있어도 이건 계속 나가야 상대가 진행한다.
       this.source.pump?.(this.state.tick, this.state);
 
       const commands = this.source.commandsFor(this.state.tick, this.state);
-      // null = 상대 입력이 아직 안 왔다. 시간을 누산기에 남겨 두고 다음 프레임에 다시 본다.
-      if (commands === null) break;
+      // null = 상대 입력이 아직 안 왔다. 다음 프레임에 다시 본다.
+      //
+      // **기다린 시간은 쌓아 두지 않는다** (2026-10-15). 전에는 누산기에 남겨 뒀다가 풀리는
+      // 순간 최대 15틱(0.5초)을 한 프레임에 몰아 돌려 화면이 순간이동했다. 멈추는 쪽은
+      // 언제나 **앞선 쪽**이라 그 시간을 버리는 것이 맞다 — 상대와의 격차가 그만큼 준다.
+      if (commands === null) {
+        this.accumulator = Math.min(this.accumulator, TICK_DT);
+        break;
+      }
 
       const before = this.myRoutes();
       const events = step(this.state, commands);

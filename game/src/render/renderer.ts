@@ -305,6 +305,19 @@ export class Renderer {
    */
   private mascotBaked: HTMLCanvasElement | null = null;
   private echoBaked: HTMLCanvasElement | null = null;
+  /**
+   * 안 움직이는 배경을 미리 그려 둔 두 장 (2026-10-15).
+   *
+   * 전에는 매 프레임 화면 전체 크기 그라디언트를 8번(배경 6 + 필드 2) 새로 만들고 칠했다.
+   * DPR 2 폰에서 화면 전체를 그만큼 덧칠하는 것이 프레임의 큰 몫이었다(2a4646b 는 필터만
+   * 걷어냈다). 그중 움직이는 것은 레이더 빛(`sweep`)과 먼지뿐이라, 그 **아래**(`bgUnder`)와
+   * **위**(`bgOver`: 진영 빛·마스코트·비네트·모서리·필드 지형)를 화면 크기가 바뀔 때만
+   * 굽고 매 프레임은 복사만 한다. 겹치는 순서는 전과 같다.
+   */
+  private bgUnder: HTMLCanvasElement | null = null;
+  private bgOver: HTMLCanvasElement | null = null;
+  /** 구운 배경이 맞는 조건. 화면 크기·DPR·마스코트 유무가 바뀌면 다시 굽는다. */
+  private bgKey = '';
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -467,13 +480,10 @@ export class Renderer {
 
     const ctx = this.ctx;
     ctx.save();
-    ctx.fillStyle = BG;
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    this.drawCommandBackdrop();
+    this.drawBackground();
     ctx.translate(this.ox, this.oy);
     ctx.scale(this.scale, this.scale);
 
-    this.drawField();
     this.drawRoutes(state, ui);
     this.drawDrag(state, ui);
     this.drawCut(ui);
@@ -489,9 +499,55 @@ export class Renderer {
 
   // ── 배경 ────────────────────────────────────────────────────────
 
-  /** 로비 HUD와 같은 전술 콘솔 질감. 필드 입력 좌표에는 영향을 주지 않는다. */
-  private drawCommandBackdrop(): void {
+  /**
+   * 배경 전체. 구운 두 장 사이에 움직이는 것(레이더 빛·먼지)만 매 프레임 그린다
+   * (`bgUnder` 주석). 순서: 바탕색 → 아래층 → 레이더 빛·먼지 → 위층(필드 지형 포함).
+   */
+  private drawBackground(): void {
     const ctx = this.ctx;
+    const dpr = this.canvas.width / Math.max(1, this.viewW);
+    const key = `${this.canvas.width}x${this.canvas.height}|${this.ox}|${this.oy}|${this.scale}|${this.mascotBaked ? 1 : 0}`;
+    if (key !== this.bgKey || !this.bgUnder || !this.bgOver) {
+      this.bgKey = key;
+      this.bgUnder = this.bakeLayer(dpr, (c) => {
+        c.fillStyle = BG;
+        c.fillRect(0, 0, this.viewW, this.viewH);
+        this.paintBackdropUnder(c);
+      });
+      this.bgOver = this.bakeLayer(dpr, (c) => {
+        this.paintBackdropOver(c);
+        c.translate(this.ox, this.oy);
+        c.scale(this.scale, this.scale);
+        this.paintField(c);
+      });
+    }
+    // 구운 층은 장치 픽셀 크기라 변환 없이 그대로 찍는다.
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.bgUnder, 0, 0);
+    ctx.restore();
+    this.paintBackdropLive(ctx);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.bgOver, 0, 0);
+    ctx.restore();
+  }
+
+  /** 화면과 같은 장치 픽셀 크기의 캔버스에 한 번 그린다. 좌표는 화면 px(CSS px)로 쓴다. */
+  private bakeLayer(dpr: number, paint: (c: CanvasRenderingContext2D) => void): HTMLCanvasElement {
+    const layer = document.createElement('canvas');
+    layer.width = this.canvas.width;
+    layer.height = this.canvas.height;
+    const c = layer.getContext('2d');
+    if (c) {
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paint(c);
+    }
+    return layer;
+  }
+
+  /** 로비 HUD와 같은 전술 콘솔 질감 — 아래층. 필드 입력 좌표에는 영향을 주지 않는다. */
+  private paintBackdropUnder(ctx: CanvasRenderingContext2D): void {
     const w = this.viewW;
     const h = this.viewH;
 
@@ -513,7 +569,14 @@ export class Renderer {
     theatre.addColorStop(1, 'rgba(18,95,124,0.15)');
     ctx.fillStyle = theatre;
     ctx.fillRect(0, HUD_H, w, h - HUD_H);
+    ctx.restore();
+  }
 
+  /** 배경 중 움직이는 것. 매 프레임 그린다. */
+  private paintBackdropLive(ctx: CanvasRenderingContext2D): void {
+    const w = this.viewW;
+    const h = this.viewH;
+    ctx.save();
     // A slow radar-like pool of light gives the otherwise static map a little
     // life without introducing moving geometry that could be mistaken for units.
     const sweepX = w * (0.5 + Math.sin(this.time * 0.13) * 0.16);
@@ -535,7 +598,14 @@ export class Renderer {
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
 
+  /** 배경 위층 — 진영 빛·마스코트·비네트·모서리. 구워 둔다. */
+  private paintBackdropOver(ctx: CanvasRenderingContext2D): void {
+    const w = this.viewW;
+    const h = this.viewH;
+    ctx.save();
     // 모눈 격자 대신 양 진영에서 번지는 넓은 빛만 남긴다. 전장이 지도처럼 보여야 한다.
     const blue = ctx.createLinearGradient(0, 0, w * 0.42, 0);
     blue.addColorStop(0, 'rgba(63,189,241,0.07)');
@@ -548,7 +618,7 @@ export class Renderer {
     ctx.fillStyle = red;
     ctx.fillRect(w * 0.58, HUD_H, w * 0.42, h - HUD_H);
 
-    this.drawBattlefieldMascot(w, h);
+    this.drawBattlefieldMascot(ctx, w, h);
 
     const vignette = ctx.createRadialGradient(w / 2, h * 0.52, Math.min(w, h) * 0.18, w / 2, h * 0.52, Math.max(w, h) * 0.72);
     vignette.addColorStop(0, 'rgba(0,0,0,0)');
@@ -574,11 +644,10 @@ export class Renderer {
    * It deliberately lives in screen space and under the vignette, so the art
    * stays visible on every aspect ratio without competing with game objects.
    */
-  private drawBattlefieldMascot(w: number, h: number): void {
+  private drawBattlefieldMascot(ctx: CanvasRenderingContext2D, w: number, h: number): void {
     const main = this.mascotBaked;
     if (!main) return;
 
-    const ctx = this.ctx;
     const fieldTop = this.safeTop + HUD_H;
     const fieldH = Math.max(1, h - fieldTop - this.safeBottom);
     const size = Math.min(w * 0.72, fieldH * 0.46, 360);
@@ -659,8 +728,8 @@ export class Renderer {
     }
   }
 
-  private drawField(): void {
-    const ctx = this.ctx;
+  /** 필드 지형. 논리 좌표로 그린다 — 부르는 쪽이 변환을 걸어 둔다. 구워 둔다. */
+  private paintField(ctx: CanvasRenderingContext2D): void {
     ctx.save();
 
     // Irregular terrain plates and contour lines suggest an actual campaign

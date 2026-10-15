@@ -424,12 +424,12 @@ export class Agent8Client {
         // 결과는 onBatch(브로드캐스트)로 돌아온다.
         //
         // **`throttle` 안전망.** SDK 는 remoteFunction 을 롤링 1초에 10회 넘게 부르면
-        // `Too many calls to the function` 을 던진다. 락스텝이 이미 벽시계로 ~7.7회/초로
-        // 묶지만(SEND_INTERVAL_MS), 재연결·타이밍 지터로 순간 초과할 수 있다. throttle 을
-        // 주면 SDK 가 내부에서 묶어 **절대 안 던진다**(lodash throttle, leading). 락스텝
-        // 간격(130ms)이 이 값(100ms)보다 커서 정상 전송은 안 버려지고, 버스트만 걸러진다.
+        // `Too many calls to the function` 을 던진다. throttle 을 주면 그 한도 계산을
+        // 아예 안 타고(2.0.22 확인) SDK 가 내부에서 묶어 **절대 안 던진다**(lodash throttle,
+        // leading). **이 값은 락스텝 간격(`SEND_INTERVAL_MS` 80ms)보다 작아야 한다** —
+        // 창 안에 들어온 호출은 버려지는데, 내 쪽엔 이미 예약해 둔 배치라 버려지면 데싱크다.
         server
-          .remoteFunction('sendInputs', [batch], { needResponse: false, throttle: 100 })
+          .remoteFunction('sendInputs', [batch], { needResponse: false, throttle: 50 })
           .catch((e: unknown) => console.warn('[net] sendInputs 실패', e));
       },
       onBatch(handler) {

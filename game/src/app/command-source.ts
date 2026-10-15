@@ -9,6 +9,7 @@
  */
 import { BOT_NORMAL, Bot } from '../ai/bot';
 import type { Lockstep } from '../net/lockstep';
+import { Pacer } from '../net/pacing';
 import { TICK_DT } from '../sim/config';
 import type { Command, MatchState, PlayerId } from '../sim/types';
 
@@ -27,6 +28,11 @@ export interface CommandSource {
   readonly waiting: boolean;
   /** 정지가 길어졌을 때 콘솔에 찍을 값들. 봇전에는 없다. */
   stats?(): Record<string, number>;
+  /**
+   * 벽시계를 틱으로 바꿀 때 곱할 배율 (`net/pacing.ts`). 봇전은 없다 — 기다릴 상대가 없다.
+   * **결정론과 무관하다** — 틱의 내용이 아니라 틱이 도는 빠르기만 바꾼다.
+   */
+  paceFactor?(nextTick: number, state: MatchState): number;
 }
 
 /**
@@ -67,7 +73,13 @@ export class BotSource implements CommandSource {
 
 /** PVP. 락스텝에 그대로 위임한다. */
 export class NetSource implements CommandSource {
+  private readonly pacer = new Pacer();
+
   constructor(private readonly lockstep: Lockstep) {}
+
+  paceFactor(nextTick: number, state: MatchState): number {
+    return this.pacer.factor(this.lockstep.headroom(nextTick), this.lockstep.delayTicks(state), Date.now());
+  }
 
   get waiting(): boolean {
     return this.lockstep.stalled;

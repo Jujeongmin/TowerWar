@@ -304,13 +304,24 @@ await server.sendInputs({ execTick: 42, commands: [{ kind: 'upgrade', player: 99
 const relayed = messages.at(-1);
 check('명령이 룸에 브로드캐스트된다', relayed && relayed.type === 'tw.inputs', relayed);
 check('클라이언트가 보낸 player 를 서버 값으로 덮는다', relayed.message.commands[0].player === started.slots['0xBBB'], relayed.message.commands[0]);
-check('ackTick 이 기록된다', (await $global.getRoomState('room-1')).players['0xBBB'].ackTick === 42);
+// 배치마다 방 상태를 쓰면 상태 전체가 두 클라이언트에 초당 15번씩 밀려 간다
+// (server.js `SEEN_WRITE_MS`). 방금 시작한 판이라 seenAt 이 새것 → 안 써야 한다.
+check('배치마다 방 상태를 쓰지 않는다', (await $global.getRoomState('room-1')).players['0xBBB'].ackTick !== 42);
+{
+  const st = await $global.getRoomState('room-1');
+  st.players['0xBBB'].seenAt = Date.now() - 4000;
+  await $global.updateRoomState('room-1', { players: st.players });
+}
+await server.sendInputs({ execTick: 43 });
+check('seenAt 이 낡으면 쓴다 (끊김 판정용)',
+  Date.now() - (await $global.getRoomState('room-1')).players['0xBBB'].seenAt < 1000);
 
 // 7) 빈 배치도 통과해야 한다 (상대가 진행할 수 있게)
 as(A);
+messages.length = 0;
 const emptyOk = await server.sendInputs({ execTick: 45 });
 check('빈 배치도 받는다', emptyOk === true);
-check('빈 배치도 ackTick 을 올린다', (await $global.getRoomState('room-1')).players['0xAAA'].ackTick === 45);
+check('빈 배치도 중계된다', messages.at(-1)?.message?.execTick === 45, messages.at(-1));
 
 // 7-b) 재연결 복구 — 끊겼다 붙은 사람을 방에 다시 넣는다
 // SDK 재연결은 소켓만 붙이고 방 참가를 복구하지 않는다 (server.js `rejoinRoom` 주석).

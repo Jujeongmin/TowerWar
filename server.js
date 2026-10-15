@@ -83,6 +83,19 @@ const DESYNC_CHECK_TICKS = 30;
 const PEER_TIMEOUT_MS = 20000;
 
 /**
+ * 입력 배치를 받아도 `seenAt` 을 이 간격(ms)보다 자주 쓰지 않는다.
+ *
+ * **전에는 배치마다 방 상태를 썼다** (2026-10-15 에 고쳤다). 쓸 때마다 방 상태 **전체**가
+ * 구독 중인 두 클라이언트에 밀려 가서, 판 하나에서 클라이언트마다 초당 15번쯤 1~2KB 를
+ * 받았다 — 그런데 그 값 중 `ackTick` 은 아무도 안 읽고(약속은 `tw.inputs` 메시지로
+ * 오간다), `seenAt` 만 `$roomTick`(v1 전용)의 끊김 판정이 쓴다. 모바일에서는 받을 때마다
+ * LZ4 버퍼 할당이 생겨 GC 로 프레임이 튀었다 (랜덤디펜스는 판 도중 방 상태를 안 쓴다).
+ *
+ * `PEER_TIMEOUT_MS`(20초)보다 훨씬 짧기만 하면 끊김 판정은 그대로다.
+ */
+const SEEN_WRITE_MS = 3000;
+
+/**
  * 혼자 이만큼 기다리면 봇전으로 확정한다.
  *
  * **이 판정을 클라이언트가 하면 안 된다.** "아무도 없네" 하고 나가는 그 순간 상대가
@@ -1392,11 +1405,14 @@ class Server {
     const stamped = commands.map((c) => ({ ...c, player }));
     $room.broadcastToRoom(MSG_INPUTS, { from: account, player, execTick, commands: stamped });
 
-    // ackTick 이 "상대가 이 틱까지는 시뮬레이션해도 안전하다"는 약속이다.
-    const players = this.#patchPlayer(state, account, { ackTick: execTick, seenAt: Date.now() });
-    const patch = { players };
-    if (batch && batch.hash) Object.assign(patch, this.#desyncPatch(state, account, batch.hash));
-    await $room.updateRoomState(patch);
+    // **방 상태는 꼭 필요할 때만 쓴다** (`SEEN_WRITE_MS` 주석). 약속(`execTick`)은 위
+    // 메시지로 이미 갔다 — 여기 남기는 `ackTick` 은 진단용 사본일 뿐이다.
+    const now = Date.now();
+    const seen = num(((state.players || {})[account] || {}).seenAt);
+    const hash = batch && batch.hash ? this.#desyncPatch(state, account, batch.hash) : {};
+    if (now - seen < SEEN_WRITE_MS && Object.keys(hash).length === 0) return true;
+    const players = this.#patchPlayer(state, account, { ackTick: execTick, seenAt: now });
+    await $room.updateRoomState({ players, ...hash });
     return true;
   }
 

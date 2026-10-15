@@ -37,10 +37,16 @@ import type { InputBatch, MatchSetup, MatchTransport } from './types';
  *
  * **한도는 롤링 1초에 10회**다 (`@agent8/gameserver` 의 `remoteFunction`). 100ms
  * (정확히 10회/초)는 롤링 윈도우 경계라 가끔 11번째가 `Too many calls` 로 던져진다
- * (실제로 났다, 1.5배속에서). **130ms(≈7.7회/초)로 여유를 둔다.** 그 위에
- * `agent8.ts` 의 sendInputs 가 SDK throttle 옵션까지 걸어 어떤 경우에도 안 던지게 한다.
+ * (실제로 났다, 1.5배속에서). 그래서 130ms 로 뒀었다.
+ *
+ * **80ms 로 줄였다** (2026-10-15). sendInputs 는 SDK `throttle` 옵션 경로를 타는데,
+ * 그 경로는 10회 한도를 아예 안 센다 (`GameServer.js` 의 remoteFunction — throttle 갈래는
+ * `callTimestamps` 를 안 건드린다, 2.0.22 에서 확인). 한도가 문제가 아니었으니 간격을
+ * 줄여 상대 약속이 덜 뭉텅이로 오게 한다 — 130ms 면 배치 사이에 4틱씩 뛰어 그만큼
+ * 멈칫거렸다. **throttle 값(`agent8.ts`)은 반드시 이보다 작아야 한다** — throttle 창 안에
+ * 들어온 호출은 버려지는데, 내 쪽엔 이미 예약해 둔 배치라 버려지면 데싱크다.
  */
-const SEND_INTERVAL_MS = 130;
+export const SEND_INTERVAL_MS = 80;
 
 /**
  * 정지 중에 약속(`execTick`)이 현재 틱보다 앞설 수 있는 한도 —
@@ -113,7 +119,7 @@ export class Lockstep {
       lastSentFor: this.lastSentFor,
       sent: this.sent,
       received: this.received,
-      msSinceRecv: this.lastRecvAt === 0 ? -1 : Date.now() - this.lastRecvAt,
+      msSinceRecv: this.lastRecvAt === 0 ? -1 : this.now() - this.lastRecvAt,
       lateBatches: this.lateBatches,
     };
   }
@@ -121,6 +127,10 @@ export class Lockstep {
   constructor(
     private readonly setup: MatchSetup,
     private readonly transport: MatchTransport,
+    /** 벽시계(ms). 검증 하네스가 가짜 시계를 넣는다 — 실제 게임은 `Date.now`. */
+    private readonly now: () => number = Date.now,
+    /** 전송 간격(ms). 하네스가 옛 값(130)과 비교하려고 바꾼다. 게임은 기본값만 쓴다. */
+    private readonly sendIntervalMs: number = SEND_INTERVAL_MS,
   ) {
     // 시작 구간은 아무도 명령을 낼 수 없다. 양쪽이 `inputDelayTicks` 까지는
     // 명령이 없다고 서로 약속한 상태로 출발해야 첫 틱부터 진행된다.
@@ -132,6 +142,20 @@ export class Lockstep {
   dispose(): void {
     this.stop();
     this.transport.close?.();
+  }
+
+  /**
+   * 멈추지 않고 더 돌릴 수 있는 틱 수 — 상대 약속 − 다음에 돌릴 틱. 0 이면 이번 틱에서
+   * 멈춘다. 진행 속도 조절(`pacing.ts`)이 이걸 보고 미리 늦추거나 따라잡는다.
+   */
+  headroom(nextTick: number): number {
+    const peer: PlayerId = this.setup.local === 1 ? 2 : 1;
+    return this.ackTick[peer] - nextTick;
+  }
+
+  /** 지금 배속에서의 입력 지연(틱). `pump` 가 쓰는 값과 같다. */
+  delayTicks(state: MatchState): number {
+    return Math.round(this.setup.inputDelayTicks * tempoScaleOf(state));
   }
 
   /** 사람 입력. 다음 배치에 실려 나가고, 그때 내 쪽에도 예약된다. */
@@ -169,9 +193,9 @@ export class Lockstep {
     // 그대로 보내면 초당 30회라 remote function 한도를 넘겨 내 조작이 유실된다.
     // 아직 간격이 안 됐으면 `outgoing` 을 그대로 쌓아 두고 다음 기회에 함께 보낸다 —
     // 명령은 버려지지 않고 최대 100ms 늦게 나갈 뿐이다.
-    const now = Date.now();
+    const now = this.now();
     const since = now - this.lastSendAt;
-    if (since < SEND_INTERVAL_MS) return;
+    if (since < this.sendIntervalMs) return;
     this.lastSendAt = now;
 
     // **`state.tick` 이 멈춰도 배치를 계속 보내야 한다.**
@@ -215,9 +239,14 @@ export class Lockstep {
       // 풀린다. 위 상한이 있어서 이 여유가 쌓여 지연이 되지는 않는다.
       const owed = Math.ceil((since / 1000) * TICK_RATE * tempoScaleOf(state)) + STALL_SURPLUS_TICKS;
       execTick = Math.min(this.lastSentFor + owed, nextTick + delay * MAX_LEAD_FACTOR);
-      // 상한에 이미 닿아 있으면 한 틱도 못 올린다. 그래도 배치는 보낸다 —
-      // 늦게 도착한 상대 배치가 이 사이에 나를 풀어 줄 수 있다.
-      if (execTick < this.lastSentFor) execTick = this.lastSentFor;
+      // **상한에 이미 닿아 있으면 이번엔 안 보낸다** (2026-10-15).
+      //
+      // 전에는 같은 `execTick` 으로 다시 보냈다. 받는 쪽 `place` 는 이미 받은 틱을 버리므로
+      // 그 배치는 양쪽에서 통째로 버려졌다 — **거기 실린 내 명령(경로·항복)까지.** 데싱크는
+      // 아니지만(양쪽이 똑같이 버린다) 사람이 그은 경로가 조용히 사라졌다. 측정 하네스
+      // (`lockstep-sim.ts`)에서 판마다 수십 번 났다. 새 약속이 없으면 보낼 것도 없다 —
+      // 명령은 `outgoing` 에 남겨 다음 배치에 싣는다.
+      if (execTick <= this.lastSentFor) return;
     }
     this.lastSentFor = execTick;
 
@@ -243,7 +272,7 @@ export class Lockstep {
     // 서버가 모두에게 뿌리므로 내 것도 돌아온다. 이미 예약해 뒀으니 버린다.
     if (batch.player === this.setup.local) return;
     this.received++;
-    this.lastRecvAt = Date.now();
+    this.lastRecvAt = this.now();
     this.place(batch);
   }
 

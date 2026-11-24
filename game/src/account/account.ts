@@ -147,6 +147,9 @@ export interface Account {
    * 코인과 같은 이유로 서버에 안 올라간다 (`store.ts` 머리말).
    */
   campaignCleared: number;
+  /** 출석판: 이번 바퀴에서 받은 칸(0~7)과 마지막으로 받은 UTC 날짜 번호. **서버가 진짜다.** */
+  attendDay: number;
+  attendAt: number;
 }
 
 /**
@@ -177,6 +180,8 @@ export function defaultAccount(): Account {
     adAt: 0,
     followRewarded: false,
     campaignCleared: 0,
+    attendDay: 0,
+    attendAt: 0,
   };
 }
 
@@ -206,6 +211,8 @@ export function fromRemote(r: {
   adAt?: number;
   followRewarded?: boolean;
   campaignCleared?: number;
+  attendDay?: number;
+  attendAt?: number;
 }): Account {
   const owned = r.ownedUnits.filter(isUnitKind);
   const kind = isUnitKind(r.unitKind) ? r.unitKind : DEFAULT_UNIT_KIND;
@@ -231,6 +238,8 @@ export function fromRemote(r: {
     adAt: num(r.adAt),
     followRewarded: r.followRewarded === true,
     campaignCleared: Math.min(num(r.campaignCleared), CAMPAIGN_STAGES),
+    attendDay: Math.min(num(r.attendDay), ATTENDANCE.length),
+    attendAt: num(r.attendAt),
   };
   return { ...a, unitKind: unitKindOf(a), towerKind: towerKindOf(a) };
 }
@@ -475,6 +484,8 @@ export function loadAccount(): Account {
       followRewarded: parsed.followRewarded === true,
       // v11 이하에는 없다 — `num` 이 0으로 떨어뜨린다.
       campaignCleared: Math.min(num(parsed.campaignCleared), CAMPAIGN_STAGES),
+      attendDay: Math.min(num(parsed.attendDay), ATTENDANCE.length),
+      attendAt: num(parsed.attendAt),
     };
     // 안 가진 것이 착용돼 있으면(손으로 고친 저장본 등) 기본으로 되돌린다.
     return { ...account, unitKind: unitKindOf(account), towerKind: towerKindOf(account) };
@@ -503,4 +514,27 @@ export function clearAccount(): void {
 function num(v: unknown): number {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+// ── 출석판 (2026-11-24, CrazyGames 판에서 이식) ─────────────────────────────
+// 금액은 `server.js` 의 `ATTENDANCE` 와 같아야 한다 — 지급은 서버가 한다. 날짜는 UTC.
+
+export const ATTENDANCE: readonly number[] = [300, 500, 800, 1000, 1500, 2000, 4000];
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface AttendanceState {
+  /** 오늘 받을 수 있는가. */
+  canClaim: boolean;
+  /** 다음에 받을 칸(1~7). 오늘 받았으면 내일 칸. */
+  next: number;
+  /** 도장이 찍힌 칸 수(화면용). */
+  stamped: number;
+}
+
+export function attendanceState(a: Account, now: number): AttendanceState {
+  const today = Math.floor(now / DAY_MS);
+  const canClaim = a.attendAt !== today;
+  const wrapped = a.attendDay >= ATTENDANCE.length;
+  const next = wrapped ? 1 : a.attendDay + 1;
+  return { canClaim, next, stamped: canClaim && wrapped ? 0 : a.attendDay };
 }

@@ -11,11 +11,11 @@ import type { AdDoubleResult, CampaignReport, RatingChange } from '../account/st
 import { CAMPAIGN_STAGES, stageLabel, stageOf, stageTowers } from '../campaign/stages';
 import { audio } from '../audio';
 import { isAdReady } from '../net/ads';
-import { t } from '../i18n';
+import { getLang, t } from '../i18n';
 import { Lockstep } from '../net/lockstep';
-import { TICK_DT } from '../sim/config';
+import { TICK_DT, TOWER_CAP } from '../sim/config';
 import { generateMap } from '../sim/maps';
-import { createMatch, step, tempoScaleOf } from '../sim/sim';
+import { createMatch, routeBlockedBy, step, tempoScaleOf } from '../sim/sim';
 import type { MatchState, Owner, PlayerId, PlayerMods, TickEvents } from '../sim/types';
 import { InputController } from '../render/input';
 import type { Renderer } from '../render/renderer';
@@ -109,7 +109,23 @@ export interface CampaignHooks {
   report(stage: number, won: boolean): Promise<CampaignReport>;
   /** 결과 화면의 [스테이지 목록]. */
   toList(): void;
+  /** 이긴 뒤 [다음 스테이지]: 전차 이동 연출을 거쳐 그 판으로 (2026-11-24). */
+  next(stage: number): void;
+  /** 이 판에 전차 지원군(첫 판의 강한 장면)을 띄우는가. 캠페인을 하나도 안 깬 사람의 1판만. */
+  reinforce(stage: number): boolean;
 }
+
+/** 전차 지원군: 본진에 더하는 병력, 적 본진에 남기는 비율, 늦어도 이 시각(초)에는 온다, 연출 길이. */
+const REINFORCE_TROOPS = 30;
+const REINFORCE_ENEMY_KEEP = 0.35;
+const REINFORCE_LATEST_SEC = 16;
+const REINFORCE_HOLD_SEC = 2.4;
+const REINFORCE_TEXT: Record<string, [string, (n: number) => string]> = {
+  en: ['TANK SUPPORT!', (n) => `Base +${n} troops — enemy base shelled!`],
+  ko: ['전차 지원!', (n) => `본진 병력 +${n} — 적 본진 포격!`],
+  ja: ['戦車支援！', (n) => `本陣 +${n} 兵 — 敵本陣を砲撃！`],
+  zh: ['坦克支援！', (n) => `主基地兵力 +${n} — 炮击敌方主基地！`],
+};
 
 export class MatchScene implements Scene {
   private state: MatchState = createMatch([]);
@@ -118,6 +134,13 @@ export class MatchScene implements Scene {
   private accumulator = 0;
   /** 결과창을 이미 띄웠는가. 매 프레임 다시 띄우지 않기 위한 것. */
   private resultShown = false;
+  /** 전차 지원군 (캠페인 첫 판). 연출 중이면 남은 시간 동안 판을 멈춘다. */
+  private reinforcePending = false;
+  private reinforceHold = 0;
+  private reinforceTimers: number[] = [];
+  private elapsed = 0;
+  /** 지원군 뒤 "밀어붙여라" 안내의 표적 타워 id. -1 이면 없음. */
+  private pushTarget = -1;
   /**
    * 결과 화면을 몇 번째 띄웠는가. 점수 변동은 서버 왕복이라 늦게 오는데, 그 사이에
    * 다음 판이 끝나면 앞 판의 점수가 새 결과 화면에 얹힌다 — 번호가 다르면 버린다.
@@ -240,6 +263,12 @@ export class MatchScene implements Scene {
         return;
       }
       if (this.campaignNext === null) return;
+      const cur = this.getPlan();
+      // 이긴 판이면 전차 이동 연출을 거쳐 다음 판으로. 진 판(다시 하기)은 그 자리에서.
+      if (cur.mode === 'campaign' && this.campaignNext > cur.stage) {
+        this.campaign.next(this.campaignNext);
+        return;
+      }
       this.campaign.play(this.campaignNext);
       this.restart();
     });
@@ -302,6 +331,7 @@ export class MatchScene implements Scene {
    * 시뮬레이션이 안 굴러 아무 일도 안 일어난다.
    */
   private resign(): void {
+    if (this.reinforceHold > 0) return;
     const local = this.input?.ui.local;
     // **연타를 막는다.** 명령은 `inputDelayTicks` 뒤에 적용되므로 그 사이에 판이 아직
     // 안 끝나 있고, `winner` 검사만으로는 두 번째 누름이 그대로 통과한다. `applyResign`
@@ -376,7 +406,8 @@ export class MatchScene implements Scene {
       this.state = createMatch(stageTowers(stage), {
         1: mine,
         2: {
-          speedMul: stage.botSpeed ?? towerSpeedOf(stage.botTower),
+          // 새 유저의 1-1(전차 지원군 판)은 봇을 더 느리게 — 첫 1분 안에 이기는 맛을 본다.
+          speedMul: (stage.botSpeed ?? towerSpeedOf(stage.botTower)) * (this.campaign.reinforce(plan.stage) ? 0.7 : 1),
           unitPower: unitPowerOf(stage.botUnit),
         },
       });
@@ -408,6 +439,15 @@ export class MatchScene implements Scene {
     // 검증 대상을 늘리지 않으려는 것이다. 힘·속도는 위에서 이미 `PlayerMods` 로 들어갔다.
     this.renderer.setUnitKinds(shownKinds);
     this.renderer.setTowerKinds(shownTowers);
+    // 그림 바닥(2026-11-24): 캠페인은 장(5판씩)마다, 그 밖은 시드로 넷 중 하나.
+    this.renderer.setTheme(plan.mode === 'campaign' ? Math.floor((plan.stage - 1) / 5) + 1 : 1 + (seed % 4));
+    this.reinforcePending = plan.mode === 'campaign' && this.campaign.reinforce(plan.stage);
+    this.reinforceHold = 0;
+    this.elapsed = 0;
+    this.pushTarget = -1;
+    this.renderer.setPushGuide(null);
+    const rf = document.getElementById('reinforce');
+    if (rf) rf.hidden = true;
     if (plan.mode === 'pvp') {
       // 서버가 내려준 것만 쓴다. 클라이언트가 보내면 남의 이름·아바타를 자칭할 수 있다.
       this.renderer.setNames({ 1: plan.setup.names[1], 2: plan.setup.names[2] });
@@ -535,6 +575,20 @@ export class MatchScene implements Scene {
     //
     // **PVP 는 진행 배율도 곱한다** (`net/pacing.ts`). 상대 약속에 닿기 전에 미리 천천히
     // 돌아 멈칫거림을 없애고, 한참 뒤처졌으면 조금 빨리 돌아 따라잡는다. 봇전은 1이다.
+    // 전차 지원군 연출 중에는 판을 멈추고 그림만 돈다 (캠페인 봇전뿐이라 lockstep 과 무관).
+    if (this.reinforceHold > 0) {
+      this.reinforceHold -= dt;
+      if (this.reinforceHold <= 0) {
+        const rf = document.getElementById('reinforce');
+        if (rf) rf.hidden = true;
+      }
+      const ui = this.input?.ui;
+      if (ui) this.renderer.render(this.state, ui, 0, dt);
+      return;
+    }
+    this.elapsed += dt;
+    this.maybeReinforce();
+    this.updatePushGuide();
     const pace = this.source.paceFactor?.(this.state.tick, this.state) ?? 1;
     this.accumulator = Math.min(
       this.accumulator + dt * tempoScaleOf(this.state) * pace,
@@ -646,7 +700,113 @@ export class MatchScene implements Scene {
     this.state.winner = winner;
   }
 
+  // ── 전차 지원군 (캠페인 첫 판의 "강한 장면", CrazyGames 판에서 이식 2026-11-24) ──
+
+  /** 첫 경로를 연 뒤, 내 타워가 셋이 되거나 일정 시간이 지나면 온다. */
+  private maybeReinforce(): void {
+    if (!this.reinforcePending || this.state.winner !== null) return;
+    if (!this.state.routes.some((r) => r.owner === 1)) return;
+    const mine = this.state.towers.filter((t) => t.owner === 1).length;
+    if (mine < 3 && this.elapsed < REINFORCE_LATEST_SEC) return;
+    this.reinforcePending = false;
+    this.playReinforce();
+  }
+
+  private playReinforce(): void {
+    const root = document.getElementById('reinforce');
+    const mine = this.state.towers.filter((t) => t.owner === 1);
+    const theirs = this.state.towers.filter((t) => t.owner === 2);
+    if (!root || mine.length === 0) return;
+    const base = mine.reduce((a, b) => (b.troops > a.troops ? b : a));
+    const target = theirs.length ? theirs.reduce((a, b) => (b.troops > a.troops ? b : a)) : null;
+    this.reinforceHold = REINFORCE_HOLD_SEC;
+    this.accumulator = 0;
+    // 연출 층(#reinforce)은 화면 전체를 덮는다. 캔버스가 가운데 좁은 기둥이라 그 위치만큼 민다.
+    const cr = this.canvas.getBoundingClientRect();
+    const k = cr.width / (this.canvas.clientWidth || cr.width || 1);
+    const at = (x: number, y: number) => {
+      const v = this.renderer.toScreen(x, y);
+      return { x: cr.left + v.x * k, y: cr.top + v.y * k };
+    };
+    const p = at(base.x, base.y);
+    const q = target ? at(target.x, target.y) : p;
+    root.style.setProperty('--rf-x', `${p.x}px`);
+    root.style.setProperty('--rf-y', `${p.y}px`);
+    root.style.setProperty('--rf-tx', `${q.x}px`);
+    root.style.setProperty('--rf-ty', `${q.y}px`);
+    const text = REINFORCE_TEXT[getLang()] ?? REINFORCE_TEXT.en;
+    root.querySelector('.rf-title')!.textContent = text[0];
+    root.querySelector('.rf-sub')!.textContent = text[1](REINFORCE_TROOPS);
+    root.hidden = false;
+    root.classList.remove('is-on');
+    void root.offsetWidth;
+    root.classList.add('is-on');
+    audio.play('tank');
+    this.reinforceTimers.push(
+      window.setTimeout(() => {
+        base.troops = Math.min(TOWER_CAP, base.troops + REINFORCE_TROOPS);
+        this.renderer.burst(base.x, base.y, '#3fbdf1', 1.0);
+        audio.play('capture');
+      }, 900),
+      window.setTimeout(() => {
+        if (target && target.owner === 2) {
+          target.troops = Math.max(1, Math.floor(target.troops * REINFORCE_ENEMY_KEEP));
+          this.renderer.burst(target.x, target.y, '#ffb347', 1.1);
+          this.renderer.burst(target.x, target.y, '#f2555f', 0.7);
+        }
+        this.canvas.classList.remove('is-shaking');
+        void this.canvas.offsetWidth;
+        this.canvas.classList.add('is-shaking');
+      }, 1350),
+      window.setTimeout(() => {
+        if (!target || target.owner !== 2 || this.state.winner !== null) return;
+        this.pushTarget = target.id;
+        this.updatePushGuide();
+      }, REINFORCE_HOLD_SEC * 1000),
+    );
+  }
+
+  /**
+   * "밀어붙여라" 안내. **실제로 그을 수 있는 경로만** 가리킨다 — 가운데 타워에 막혀 있으면
+   * 길목 타워부터 (CrazyGames 판 사용자 신고로 고친 것). 매 프레임 다시 고른다.
+   */
+  private updatePushGuide(): void {
+    if (this.pushTarget < 0) return;
+    const st = this.state;
+    const goal = st.towers[this.pushTarget];
+    if (!goal || goal.owner === 1 || st.winner !== null) {
+      this.pushTarget = -1;
+      this.renderer.setPushGuide(null);
+      return;
+    }
+    const mine = st.towers.filter((t) => t.owner === 1);
+    const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+    const aimed = (id: number) => st.routes.some((r) => r.owner === 1 && r.toId === id);
+    if (aimed(goal.id)) {
+      this.renderer.setPushGuide(null);
+      return;
+    }
+    const direct = mine.filter((m) => !routeBlockedBy(st, m, goal)).sort((a, b) => dist(a, goal) - dist(b, goal))[0];
+    if (direct) {
+      this.renderer.setPushGuide({ from: direct.id, to: goal.id });
+      return;
+    }
+    const steps = st.towers
+      .filter((t) => t.owner !== 1 && t.id !== goal.id && !aimed(t.id))
+      .sort((a, b) => dist(a, goal) - dist(b, goal));
+    for (const t of steps) {
+      const from = mine.filter((m) => !routeBlockedBy(st, m, t)).sort((a, b) => dist(a, t) - dist(b, t))[0];
+      if (from) {
+        this.renderer.setPushGuide({ from: from.id, to: t.id });
+        return;
+      }
+    }
+    this.renderer.setPushGuide(null);
+  }
+
   private teardown(): void {
+    for (const id of this.reinforceTimers) window.clearTimeout(id);
+    this.reinforceTimers = [];
     this.input?.dispose();
     this.input = null;
     this.source.dispose?.();

@@ -96,7 +96,7 @@ const OWNER_COLOR: Record<Owner, { main: string; fill: string; dim: string }> = 
  * 정탑다운 스프라이트처럼 원 안에 욱여넣지 않고, **바닥을 타워 지점에 대고 세운다.**
  * 재고 링과 숫자는 그 발치에 남아 타워의 실제 위치를 계속 가리킨다.
  */
-const TOWER_SPRITE_H = 1.85;
+const TOWER_SPRITE_H = 2.35;
 
 /**
  * 건물 폭 상한 = 타워 지름 × 이 값.
@@ -104,7 +104,7 @@ const TOWER_SPRITE_H = 1.85;
  * 높이만 맞추면 가로로 넓은 건물(성채는 312×208)이 지름의 2.8배까지 벌어져 경로를 덮는다.
  * 두 상한 중 더 빡빡한 쪽을 쓴다.
  */
-const TOWER_SPRITE_W = 1.75;
+const TOWER_SPRITE_W = 2.1;
 
 /** 건물 바닥이 타워 중심에서 아래로 얼마나 내려가는가 (반경 배수). */
 const TOWER_FOOT = 0.55;
@@ -319,6 +319,127 @@ export class Renderer {
   /** 구운 배경이 맞는 조건. 화면 크기·DPR·마스코트 유무가 바뀌면 다시 굽는다. */
   private bgKey = '';
 
+  /** 장별 전장 바닥 그림 (2026-11-24 비주얼 개편, `assets/field/chN.webp`). 판마다 `setTheme`. */
+  private fieldImg: HTMLImageElement | null = null;
+  private readonly fieldCache = new Map<number, HTMLImageElement>();
+
+  /** 전장 바닥 그림을 고른다 (1~4장). 같은 장이면 다시 안 받는다. */
+  setTheme(chapter: number): void {
+    const c = Math.max(1, Math.min(4, Math.floor(chapter)));
+    let img = this.fieldCache.get(c);
+    if (!img) {
+      img = new Image();
+      img.decoding = 'async';
+      img.src = `./assets/field/ch${c}.webp`;
+      this.fieldCache.set(c, img);
+    }
+    this.fieldImg = img;
+  }
+
+  /** 논리 좌표 → 캔버스 CSS px. DOM 연출(전차 지원군)을 판 위에 맞출 때 쓴다. */
+  toScreen(x: number, y: number): Vec {
+    return { x: this.ox + x * this.scale, y: this.oy + y * this.scale };
+  }
+
+  /** 판 밖 연출(전차 포격 등)이 남기는 점령 고리. 논리 좌표. */
+  burst(x: number, y: number, color: string, life = 0.8): void {
+    this.effects.push({ kind: 'capture', x, y, age: 0, life, color });
+  }
+
+  /** 전차 지원군 뒤의 안내: from 에서 to 로 끄는 시늉. null 이면 끈다. */
+  private push: { from: number; to: number } | null = null;
+  setPushGuide(p: { from: number; to: number } | null): void {
+    this.push = p;
+  }
+
+  private drawPushGuide(state: MatchState, ui: UiState): void {
+    if (!this.push) return;
+    const from = state.towers[this.push.from];
+    const to = state.towers[this.push.to];
+    if (!from || !to) return;
+    const ctx = this.ctx;
+    const color = OWNER_COLOR[ui.local].main;
+    const tr = towerRadiusOf(to);
+    const tfoot = to.y + tr * TOWER_FOOT;
+    const pulse = (this.time * 1.2) % 1;
+    ctx.save();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = `rgba(255,220,90,${(0.95 * (1 - pulse)).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.ellipse(to.x, tfoot, tr * (1.2 + pulse * 0.9), tr * (1.2 + pulse * 0.9) * GROUND_SQUASH, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    const cycle = (this.time % 2.4) / 2.4;
+    const drag = Math.min(1, cycle / GESTURE_DRAG_FRACTION);
+    const eased = 1 - (1 - drag) * (1 - drag);
+    const hx = from.x + (to.x - from.x) * eased;
+    const hy = from.y + (to.y - from.y) * eased;
+    const a = cycle > GESTURE_DRAG_FRACTION ? Math.max(0, 1 - (cycle - GESTURE_DRAG_FRACTION) * 3) : 1;
+    if (a > 0.01) {
+      ctx.strokeStyle = withAlpha(color, 0.78 * a);
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.setLineDash([10, 9]);
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(hx, hy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const k = (towerRadiusOf(from) * 2.4) / 32;
+      ctx.translate(hx, hy);
+      ctx.scale(k, k);
+      const path = cursorPath();
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = withAlpha('#06141d', a);
+      ctx.lineWidth = 2.2;
+      ctx.stroke(path);
+      ctx.fillStyle = withAlpha(color, a);
+      ctx.fill(path);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * 그림 바닥. 화면 전체를 덮게(cover) 깔고 위(적)는 붉게, 아래(나)는 푸르게, 가장자리를
+   * 눌러 타워·유닛·숫자가 떠 보이게 한다. 그림이 아직 안 왔으면 false — 옛 콘솔 배경.
+   */
+  private drawFieldArt(): boolean {
+    const img = this.fieldImg;
+    if (!img || !img.complete || img.naturalWidth === 0) return false;
+    const ctx = this.ctx;
+    const w = this.viewW;
+    const h = this.viewH;
+    ctx.save();
+    const k = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+    const dw = img.naturalWidth * k;
+    const dh = img.naturalHeight * k;
+    ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    const tint = ctx.createLinearGradient(0, 0, 0, h);
+    tint.addColorStop(0, 'rgba(120,20,30,0.30)');
+    tint.addColorStop(0.18, 'rgba(120,20,30,0.08)');
+    tint.addColorStop(0.5, 'rgba(0,0,0,0)');
+    tint.addColorStop(0.82, 'rgba(10,60,120,0.08)');
+    tint.addColorStop(1, 'rgba(10,60,120,0.28)');
+    ctx.fillStyle = tint;
+    ctx.fillRect(0, 0, w, h);
+    const vg = ctx.createRadialGradient(w / 2, h * 0.52, Math.min(w, h) * 0.3, w / 2, h * 0.52, Math.max(w, h) * 0.75);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.32)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+    // 중앙선
+    ctx.translate(this.ox, this.oy);
+    ctx.scale(this.scale, this.scale);
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 12]);
+    ctx.beginPath();
+    ctx.moveTo(10, FIELD_H / 2);
+    ctx.lineTo(FIELD_W - 10, FIELD_H / 2);
+    ctx.stroke();
+    ctx.restore();
+    return true;
+  }
+
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('2D 컨텍스트를 만들 수 없습니다');
@@ -480,7 +601,7 @@ export class Renderer {
 
     const ctx = this.ctx;
     ctx.save();
-    this.drawBackground();
+    if (!this.drawFieldArt()) this.drawBackground();
     ctx.translate(this.ox, this.oy);
     ctx.scale(this.scale, this.scale);
 
@@ -491,6 +612,7 @@ export class Renderer {
     this.drawUnits(state, alpha);
     for (const t of state.towers) this.drawTower(t, state, ui);
     this.drawStartMarkers(state, ui);
+    this.drawPushGuide(state, ui);
 
     ctx.restore();
     this.drawHud(state, ui);

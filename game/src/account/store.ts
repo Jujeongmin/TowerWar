@@ -362,6 +362,24 @@ export class AccountStore {
    * 오프라인에서는 안 준다. 팔로우 여부를 알 방법이 없고, 코인을 로컬로 주면
    * 콘솔에서 고쳐 두고 접속하는 것과 같아진다 (이 파일 머리말).
    */
+  /** 오늘 출석 칸을 받는다. 서버가 지급한다 — 오프라인이면 못 받는다(`null`). */
+  async claimAttendance(): Promise<{ gained: number; day: number } | null> {
+    if (!this.net) return null;
+    try {
+      const res = await this.net.claimAttendance();
+      this.setLocal(fromRemote(res.account));
+      return { gained: res.gained, day: res.day };
+    } catch (e) {
+      console.warn('[account] 출석 보상 실패:', String((e as Error)?.message ?? e));
+      try {
+        this.setLocal(fromRemote(await this.net.getAccount()));
+      } catch {
+        /* 다음에 다시 읽는다 */
+      }
+      return null;
+    }
+  }
+
   async claimFollowReward(): Promise<string | null> {
     if (!this.net) return 'offline';
     try {

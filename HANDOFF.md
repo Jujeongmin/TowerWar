@@ -1,6 +1,28 @@
 # TowerWar — 인수인계
 
-최종 갱신: 2026-08-10
+최종 갱신: 2026-11-24
+
+---
+
+## -77. 비주얼 전면 개편 + 첫 판 전차 지원군 + 출석판 + 밸런스 (2026-11-24, CrazyGames 판에서 이식)
+
+CrazyGames 포팅(`Desktop\TowerWar-crazygames`, PORTING_REPORT.md)에서 만든 것을 원본에도 넣었다 (사용자 지시: "원본에 UI 등 모든 요소 푸시").
+
+- **그림**: Codex(일부 Verse8 나노바나나)로 그린 밝은 광택 카툰. 타워 5단계(파랑 원본에서 빨강·회색 색 변환), 장별 전장 바닥 4장(`assets/field/`), 전차(`fx/tank.png`), 로고·로비 배경·리본·아이콘(`assets/ui/`), 이동 배경 4장(`assets/travel/`).
+  **배포 캐시 때문에 바뀐 파일은 이름도 바꿨다**: 타워 `lvN_v2.png`(towers.ts `art`), 효과음 `sfx_v2/`, 배경음 `bgm_v2/`.
+- **음향**: PixelLab 효과음 12개(`tank`·`reward` 신규), 배경음 2곡 루프.
+- **렌더러**: 그림 바닥(`setTheme` — 캠페인은 장마다, 그 밖은 시드), 그림이 없을 때만 옛 콘솔 배경. 타워 그림 크게(`TOWER_SPRITE_H/W`). 입력은 지붕을 눌러도 잡히게 판정을 위로 45 (`input.ts BUILDING_UP`).
+- **첫 화면**: 닉네임을 묻지 않는다 — 봇 이름 규칙으로 자동(로비 이름 버튼으로 변경). 캠페인을 하나도 안 깬 새 유저는 바로 1-1.
+- **1-1 전차 지원군**(새 유저만): 첫 보급선 뒤 내 타워 셋 또는 16초에 전차가 와서 본진 +30, 적 본진 35%로. 이어서 "밀어붙여라" 안내 — **실제로 그을 수 있는 경로만** 가리킨다. 이 판은 봇 속도 ×0.7.
+- **전차 이동**: 캠페인 판으로 갈 때(로비 PLAY·지도·결과 [다음]) `travel-scene.ts`.
+- **로비 재구성**: 큰 PLAY(캠페인 다음 판) + 타일 4개(빠른 매칭·친구·캠페인·상점) + 아이콘(순위·설정) + 왼쪽(출석·게임 방법). id 는 원본 그대로.
+- **출석판**: 서버 `claimAttendance`(UTC 날짜, 300~4000, `ATTENDANCE` 가 server.js·account.ts 양쪽). 계정에 `attendDay`·`attendAt`. **서버가 배포돼야 동작한다** — 옛 서버면 "Function not found" 로 받기가 실패하고 창은 그대로 남는다.
+- **밸런스**: 5판부터 첫 클리어 ×1.2, 3·4·12·20판 봇 속도 하향, 19판 타워 barracks — 근거는 CrazyGames 판 `docs/economy-report.md`(봇-대-봇 시뮬레이션). `server.js CAMPAIGN_FIRST_CLEAR` 동기화. 재클리어는 원본은 50 그대로.
+- verify: 서버 하네스 250/250, 캠페인 맵, 락스텝 데싱크 0, 빌드 통과.
+
+### 사람이 할 일
+- 서버(server.js) 배포가 develop 푸시로 같이 되는지 확인. 안 되면 `npm run deploy:server`. 그 전까지 출석 받기와 새 첫 클리어 금액은 옛 서버 기준이다.
+- `claimAttendance` 서버 하네스 테스트는 아직 없다.
 
 ---
 
@@ -2843,11 +2865,11 @@ https://github.com/Jujeongmin/TowerWar   공개
 
 | 경로 | 왜 |
 |---|---|
-| `assets-src/` | 51MB. **Tiny Swords 원본 팩 재배포 금지**, BeerGang 3D 권한 미확인 |
+| `assets-src/` | 51MB. **Tiny Swords 원본 팩 재배포 금지**, BeerGang 3D 상용 권한 확인됨(2026-11-24 사용자) |
 | `game/public/assets/` | 뽑아낸 PNG지만 **재배포인 것은 같다** |
 
 **뽑아낸 것도 재배포다.** 원본이 아니라 추출·가공한 PNG라도 Tiny Swords 조항
-("재배포·재판매·재포장 금지")에 걸린다. BeerGang 은 애초에 상용 권한이 미확인이다.
+("재배포·재판매·재포장 금지")에 걸린다. BeerGang 3D 는 상용 권한이 확인됐다(2026-11-24 사용자) — 다만 원본 팩 재배포는 별개라 저장소에는 안 올린다.
 
 **클론하면 게임이 그림 없이 돈다.** 렌더러의 원·도형 폴백 경로가 그대로 산다 —
 §7에서 "지우지 말 것"이라고 적어 둔 그 폴백이 여기서 값을 한다.
@@ -3930,7 +3952,7 @@ BeerGang 으로 갈려면 `GangHouse`·`BeerGang_HQ`·`genesis` 안의 2D PNG가
 없으면 Blender 파일에서 2D 렌더를 뽑는 아트 작업이 필요하다.
 
 **라이선스**: `game/public/assets/LICENSE-tiny-swords.txt` 는 아직 그대로다.
-BeerGang 아트의 상용 사용 권한을 확인해야 한다 (§1의 "실제 출시" 목표 때문에).
+BeerGang 아트의 상용 사용 권한은 확인됐다 (2026-11-24 사용자).
 
 ---
 
@@ -5070,7 +5092,7 @@ screenshot failed: the Browser pane is not displayed, so the page is not composi
 이라고 적혀 있었다 — 이제 커밋이 그 자리를 대신한다. 작업 브랜치는 `dev` 다.
 
 **`assets-src/` 는 `.gitignore` 에 있다.** 51MB인 것도 있지만 **라이선스가 진짜 이유다** —
-Tiny Swords 가 에셋 재배포를 금지하고 BeerGang 3D 는 상용 권한이 미확인이다.
+Tiny Swords 가 에셋 재배포를 금지한다. BeerGang 3D 상용 권한은 확인됐다(2026-11-24).
 저장소를 공개로 돌리기 전에 `game/public/assets/` 안의 뽑아낸 PNG까지 같이 정리할 것
 (§-16 · §-18 · §7).
 

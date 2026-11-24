@@ -337,13 +337,19 @@ const CAMPAIGN_STAGES = 20;
  * 금액은 여기가 정하고 그쪽은 화면용 사본이다.
  */
 const CAMPAIGN_FIRST_CLEAR = [
-  300, 350, 400, 450, 800,
-  600, 650, 700, 750, 1500,
-  1000, 1100, 1200, 1300, 2500,
-  1600, 1800, 2000, 2200, 5000,
+  300, 350, 400, 450, 950,
+  2050, 1700, 1800, 1900, 5400,
+  3600, 4200, 4800, 5400, 7200,
+  3600, 3600, 7200, 7200, 12000,
 ];
 /** 이미 깬 판을 다시 이겼을 때. `stages.ts` 의 `CAMPAIGN_REPLAY_WIN` 과 같아야 한다. */
 const CAMPAIGN_REPLAY_WIN = 50;
+/**
+ * 7일 출석판 (2026-11-24, CrazyGames 판에서 이식). **`account.ts` 의 `ATTENDANCE` 와 같아야 한다.**
+ * 하루(UTC 날짜)에 한 칸. 빠져도 칸은 안 깎인다. 7칸 다 받은 다음 날 1칸부터.
+ */
+const ATTENDANCE = [300, 500, 800, 1000, 1500, 2000, 4000];
+const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * 시작에서 보고까지 최소 시간(ms). 시작·보고를 연달아 쏘는 것을 막는다.
  *
@@ -552,6 +558,9 @@ function defaultAccount(account) {
     // 지금 진행 중인 캠페인 판과 시작 시각. 보고 한 번에 비운다 (`reportCampaign`).
     campaignStage: 0,
     campaignAt: 0,
+    // 출석판: 이번 바퀴에서 받은 칸 수(0~7), 마지막으로 받은 UTC 날짜 번호(0 = 한 번도 안 받음).
+    attendDay: 0,
+    attendAt: 0,
   };
 }
 
@@ -609,6 +618,8 @@ function normalizeAccount(raw, account) {
     campaignCleared: Math.min(num(raw.campaignCleared), CAMPAIGN_STAGES),
     campaignStage: Math.min(num(raw.campaignStage), CAMPAIGN_STAGES),
     campaignAt: num(raw.campaignAt),
+    attendDay: Math.min(num(raw.attendDay), ATTENDANCE.length),
+    attendAt: num(raw.attendAt),
   };
 }
 
@@ -883,6 +894,22 @@ class Server {
       // **기계가 읽는 코드로 던진다.** 화면 문구는 언어마다 달라야 한다(§-40).
       if (now - a.adAt < AD_COOLDOWN_MS) throw new Error('ad_cooldown');
       return await this.#saveAccount({ ...a, coins: a.coins + AD_COINS, adAt: now });
+    });
+  }
+
+  /**
+   * 출석 보상. **금액·날짜는 서버가 정한다** (서버 시계의 UTC 날짜). 오늘 이미 받았으면 거절.
+   * 돌려주는 것: `{ account, gained, day }`.
+   */
+  async claimAttendance() {
+    return await $lock(`acct:${$sender.account}`, async () => {
+      const a = await this.#loadAccount();
+      const today = Math.floor(Date.now() / DAY_MS);
+      if (a.attendAt === today) throw new Error('already_claimed');
+      const day = a.attendDay >= ATTENDANCE.length ? 1 : a.attendDay + 1;
+      const gained = ATTENDANCE[day - 1];
+      const saved = await this.#saveAccount({ ...a, coins: a.coins + gained, attendDay: day, attendAt: today });
+      return { account: saved, gained, day };
     });
   }
 

@@ -16,8 +16,8 @@ dist/
 #
 # 2. **라이선스.** Tiny Swords 는 "에셋 재배포·재판매·재포장 금지"다
 #    (`game/public/assets/LICENSE-tiny-swords.txt`). 원본 팩을 저장소에 통째로
-#    올리는 것은 그 조항에 정면으로 걸린다. BeerGang 3D 는 상용 권한이
-#    아직 확인 안 됐다 (HANDOFF §-16 · §-18).
+#    올리는 것은 그 조항에 정면으로 걸린다. BeerGang 3D 상용 권한은
+#    확인됐다 (2026-11-24 사용자).
 #
 # 다시 구우려면 원본이 필요하다. 어디 있는지는 HANDOFF 를 볼 것:
 #   assets-src/beergang/GangHouse/BeerGang/{glb,anim}/   유닛 베이커 입력
@@ -32,7 +32,7 @@ assets-src/
 #
 # 걸려 있는 조항은 그대로다 — 공개로 두는 한 유효하다:
 #   tower/*.png            Tiny Swords. "재배포·재판매·재포장 금지"
-#   unit/*.png             BeerGang 3D 를 구운 것. 상용 권한 미확인
+#   unit/*.png             BeerGang 3D 를 구운 것. 상용 권한 확인됨 (2026-11-24)
 #   profile/beergang.png   위와 같음
 #
 # 원본(`assets-src/`)은 계속 뺀다. 51MB이고 빌드에 필요 없다.

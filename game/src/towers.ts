@@ -8,7 +8,7 @@
  *
  * ── 그림은 옛 레벨 사다리를 되살린 것이다 ──────────────────────
  *
- * `assets/tower/{p1,p2,neutral}/lv1~lv5.png` 는 2026-07-30에 타워 레벨을 없애면서
+ * `assets/tower/{p1,p2,neutral}/lv1_v2~lv5_v2.png` (2026-11-24 새 그림, 배포 캐시 때문에 `_v2`) 는 2026-07-30에 타워 레벨을 없애면서
  * `lv3` 하나만 쓰게 된 옛 사다리다(작은 집 → 큰 집 → 병영 → 석탑 → 성채).
  * 그림 자체가 이미 "셀수록 세 보이는" 순서라 새 에셋 없이 여섯 단계를 채운다.
  *
@@ -90,13 +90,13 @@ export interface TowerKindMeta {
  */
 export const TOWER_KIND_META: Record<TowerKind, TowerKindMeta> = {
   // 유닛과 같은 사다리다 — 2026-08-09에 함께 5배로 올렸다 (사용자 지시).
-  tower_hut: { art: 'lv1', price: 0, speed: 1 },
-  tower_keep: { art: 'lv4', price: 2000, speed: 1.25, accent: '#e8eef5' },
-  tower_house: { art: 'lv2', price: 4500, speed: 1.5, accent: '#f5c542' },
-  tower_barracks: { art: 'lv3', price: 7500, speed: 1.75, accent: '#34d399' },
-  tower_citadel: { art: 'lv5', price: 12000, speed: 2, accent: '#a78bfa' },
+  tower_hut: { art: 'lv1_v2', price: 0, speed: 1 },
+  tower_keep: { art: 'lv4_v2', price: 2000, speed: 1.25, accent: '#e8eef5' },
+  tower_house: { art: 'lv2_v2', price: 4500, speed: 1.5, accent: '#f5c542' },
+  tower_barracks: { art: 'lv3_v2', price: 7500, speed: 1.75, accent: '#34d399' },
+  tower_citadel: { art: 'lv5_v2', price: 12000, speed: 2, accent: '#a78bfa' },
   tower_prime: {
-    art: 'lv5',
+    art: 'lv5_v2',
     price: 0,
     speed: 2.5,
     premium: true,

@@ -536,6 +536,11 @@ export class Agent8Client {
    *
    * 실패는 그대로 던진다: `not_following`(아직 팔로우 안 함) / `already_claimed`(이미 받음).
    */
+  /** 출석 보상. 금액·날짜는 서버가 정한다. */
+  async claimAttendance(): Promise<{ account: RemoteAccount; gained: number; day: number }> {
+    return await withTimeout(this.server.remoteFunction('claimAttendance', []), '출석 보상', COIN_CALL_TIMEOUT_MS);
+  }
+
   async claimFollowReward(): Promise<RemoteAccount> {
     return await withTimeout(
       this.server.remoteFunction('claimFollowReward', []),

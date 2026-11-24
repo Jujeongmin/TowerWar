@@ -5,6 +5,7 @@
  * 매치의 고정 타임스텝 루프는 MatchScene 안에 있다.
  */
 import './style.css';
+import './theme.css';
 import { towerKindOf, unitKindOf, type Reward } from './account/account';
 import { AccountStore, type RatingChange } from './account/store';
 import { matchModsFor } from './app/difficulty';
@@ -17,6 +18,12 @@ import type { MatchPlan, Scene } from './app/scene';
 import { PvpScene } from './app/pvp-scene';
 import { SettingsScene } from './app/settings-scene';
 import { ShopScene } from './app/shop-scene';
+import { botName } from './app/bot-name';
+import { TravelScene } from './app/travel-scene';
+import { AttendanceModal } from './app/attendance';
+import { attendanceState } from './account/account';
+import { stageLabel } from './campaign/stages';
+import { applyTx } from './i18n-cg';
 import { Agent8Client } from './net/agent8';
 import { audio, installAudioUnlock } from './audio';
 import { devAdProvider, setAdProvider, verse8AdProvider } from './net/ads';
@@ -125,20 +132,59 @@ const lobby = new LobbyScene(
   () => switchTo(settings),
   () => switchTo(nameScene),
   // 캠페인 시작·보고가 서버를 탄다. 상점과 같은 이유로 끊긴 연결을 되살려 둔다.
+  // 큰 [PLAY] = 캠페인 다음 판으로 바로 (전차 이동 연출). 지도는 [캠페인] 타일(#btn-map).
   () => {
     void store.ensureOnline();
-    switchTo(campaign);
+    goStage(Math.min(store.current.campaignCleared + 1, 20));
   },
 );
+need('btn-map').addEventListener('click', () => {
+  void store.ensureOnline();
+  switchTo(campaign);
+});
 const campaign = new CampaignScene(
   need('campaign'),
   () => store.current,
-  (stage) => {
-    prepareCampaign(stage);
-    switchTo(match);
-  },
+  (stage) => goStage(stage),
   () => switchTo(lobby),
 );
+
+/**
+ * 캠페인 판으로 간다 — 전차 이동 연출을 거친다 (2026-11-24, CrazyGames 판에서 이식).
+ * 판 시작 기록(`prepareCampaign`)은 연출 전에 보낸다 — 서버 최소 시간(10초)과 안 겹친다.
+ */
+const travel = new TravelScene(need('travel'));
+
+// 7일 출석판 (2026-11-24). 로비 [출석] 버튼 + 받을 칸이 있으면 세션에 한 번 자동으로 띄운다.
+const attendance = new AttendanceModal(need('attend'), () => store.current, () => store.claimAttendance());
+let attendAutoShown = false;
+function paintDailyDot(): void {
+  const dot = document.querySelector<HTMLElement>('#btn-daily .dot');
+  if (dot) dot.hidden = !attendanceState(store.current, Date.now()).canClaim;
+}
+need('btn-daily').addEventListener('click', () => attendance.open(() => {
+  paintDailyDot();
+  lobby.enter();
+}));
+function maybeAutoAttendance(): void {
+  paintDailyDot();
+  const nx = document.getElementById('lb-next');
+  if (nx) nx.textContent = `Stage ${stageLabel(Math.min(store.current.campaignCleared + 1, 20))}`;
+  if (attendAutoShown || current !== lobby) return;
+  if (store.current.campaignCleared < 1 || !attendanceState(store.current, Date.now()).canClaim) return;
+  attendAutoShown = true;
+  window.setTimeout(() => {
+    if (current === lobby) attendance.open(() => {
+      paintDailyDot();
+      lobby.enter();
+    });
+  }, 500);
+}
+function goStage(stage: number): void {
+  prepareCampaign(stage);
+  travel.prepare(stage, () => switchTo(match));
+  switchTo(travel);
+}
 const settings = new SettingsScene(
   need('settings'),
   // 언어가 바뀌면 지금 화면을 다시 읽게 한다. 씬들이 값을 `enter()` 에서 읽으므로
@@ -231,6 +277,9 @@ const match = new MatchScene(
     play: prepareCampaign,
     report: (stage, won) => store.reportCampaign(stage, won),
     toList: () => switchTo(campaign),
+    next: (stage) => goStage(stage),
+    // 첫 판의 강한 장면: 캠페인을 하나도 안 깬 사람의 1-1 에만.
+    reinforce: (stage) => stage === 1 && store.current.campaignCleared === 0,
   },
 );
 
@@ -248,16 +297,39 @@ function switchTo(next: Scene): void {
   current = next;
   // **배경음은 매치인지 아닌지로만 가른다.** 씬마다 곡을 두면 로비↔상점을 오가는
   // 것만으로 음악이 계속 끊긴다 (`audio.setBgm` 이 같은 곡은 무시한다).
-  audio.setBgm(next === match ? 'match' : 'lobby');
+  audio.setBgm(next === match || next === travel ? 'match' : 'lobby');
   current.enter();
   // 로비에 서 있는 동안 순위표를 미리 받아 둔다. **결과를 안 기다린다** — 로비가 이것
   // 때문에 늦게 뜨면 안 된다. 너무 잦은 호출은 `prefetchLeaderboard` 가 막는다.
-  if (next === lobby) store.prefetchLeaderboard();
+  if (next === lobby) {
+    store.prefetchLeaderboard();
+    applyTx();
+    maybeAutoAttendance();
+  }
 }
 
-/** 이름이 없으면 로비보다 먼저 설정 화면. 서버 계정을 읽은 뒤에도 한 번 더 본다. */
+/**
+ * 닉네임을 **묻지 않는다** (2026-11-24 사용자 지시: "처음에 바로 플레이할 수 있어야 한다,
+ * 닉네임은 없애든지 자동 설정"). 이름이 없으면 봇 이름 규칙으로 하나 지어 붙이고, 로비의
+ * 이름 버튼(`acc-name`)으로 언제든 바꿀 수 있다.
+ */
+function ensureName(): void {
+  if (store.current.name) return;
+  const auto = botName((Math.random() * 0x7fffffff) | 0);
+  void store.setName(auto, store.current.profile).catch((e) => {
+    console.warn('[name] 자동 닉네임 실패:', String((e as Error)?.message ?? e));
+  });
+}
+
+/** 첫 화면. 캠페인을 하나도 안 깬 새 유저는 로비를 건너뛰고 바로 1-1 판(전차 지원군이 나오는 판). */
 function showFirstScreen(): void {
-  switchTo(store.current.name ? lobby : nameScene);
+  ensureName();
+  if (store.current.campaignCleared === 0) {
+    prepareCampaign(1);
+    switchTo(match);
+  } else {
+    switchTo(lobby);
+  }
 }
 
 initVxShop();
@@ -304,12 +376,15 @@ function afterConnect(): void {
   // 화면이 열리는 즉시 그려진다.
   store.prefetchLeaderboard();
 
-  if (current !== nameScene && current !== lobby) return;
-  const want = store.current.name ? lobby : nameScene;
-  if (current !== want) {
-    switchTo(want);
+  // 서버 계정에 이름이 없으면(새 계정) 자동 이름을 서버에 올린다.
+  ensureName();
+  // 첫 판이 서버에 붙기 전에 시작됐으면 시작 기록이 없다 — 지금 적어야 결과가 저장된다.
+  if (current === match && plan.mode === 'campaign') void store.startCampaign(plan.stage);
+  if (current === nameScene) {
+    switchTo(lobby);
     return;
   }
+  if (current !== lobby) return;
   // 같은 화면이면 값만 새로 읽는다. 닉네임 화면은 입력 중일 수 있어 다시 안 부른다.
   if (current === lobby) {
     lobby.enter();

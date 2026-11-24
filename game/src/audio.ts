@@ -31,8 +31,9 @@
  * 소리가 뭉개진다. 소리마다 **최소 간격**을 두고, 동시에 우는 수를 제한한다.
  */
 
-const SFX_BASE = '/assets/sfx';
-const BGM_BASE = '/assets/bgm';
+// 2026-11-24 파일을 통째로 바꿔 폴더 이름도 바꿨다 — 배포 서버가 같은 이름의 옛 파일을 계속 준다.
+const SFX_BASE = '/assets/sfx_v2';
+const BGM_BASE = '/assets/bgm_v2';
 
 /** 찾아볼 확장자. 앞에서부터 시도하고 먼저 200이 오는 것을 쓴다. */
 const EXTS = ['mp3', 'ogg', 'wav'] as const;
@@ -48,6 +49,8 @@ export const SFX = [
   'defeat',
   'tap',
   'purchase',
+  'tank',
+  'reward',
 ] as const;
 export type SfxName = (typeof SFX)[number];
 

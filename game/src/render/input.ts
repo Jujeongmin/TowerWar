@@ -41,6 +41,9 @@ const TAP_PAD = 16;
  */
 const SNAP_PAD = 34;
 
+/** 건물 그림이 판정 원 위로 솟은 높이(논리 px). 이만큼 위를 눌러도 그 타워다. */
+const BUILDING_UP = 45;
+
 export class InputController {
   readonly ui: UiState;
 
@@ -222,7 +225,11 @@ export class InputController {
     let best: number | null = null;
     let bestD = Infinity;
     for (const t of state.towers) {
-      const d = Math.hypot(t.x - p.x, t.y - p.y);
+      // 건물 그림은 판정 원(발치)에서 위로 솟아 있다(2026-11-24 새 타워 그림). 지붕을 눌러도
+      // 잡히게 위쪽으로 BUILDING_UP 만큼 판정을 늘린다. 겹치는 곳은 가까운 쪽이 이긴다.
+      const up = t.y - p.y;
+      const dy = up > 0 ? Math.max(0, up - BUILDING_UP) : -up;
+      const d = Math.hypot(t.x - p.x, dy);
       if (d <= towerRadiusOf(t) + pad && d < bestD) {
         bestD = d;
         best = t.id;

@@ -31,6 +31,27 @@ import type { Scene } from './scene';
 const CHAPTERS = Math.ceil(STAGES.length / STAGES_PER_CHAPTER);
 
 /**
+ * 그림 경로 (2026-11-24 캠페인 화면 개편: 점·선 대신 게임 그림을 쓴다 — 사용자: "코드로 만든 성의없는 UI").
+ * 지도 칸 배경 = 장별 이동 파노라마, 노드 = 실제 타워 그림, 미리보기 = 전장 바닥 + 타워 그림.
+ */
+const ASSET = '/assets';
+const travelSrc = (chapter: number) => `${ASSET}/travel/ch${chapter}.webp`;
+const fieldSrc = (chapter: number) => `${ASSET}/field/ch${chapter}.webp`;
+const towerArt = (side: 'p1' | 'p2' | 'neutral', kind: Parameters<typeof towerSpriteKindOf>[0]) =>
+  `${ASSET}/tower/${side}/${TOWER_KIND_META[towerSpriteKindOf(kind)].art}.png`;
+const imgCache = new Map<string, HTMLImageElement>();
+function cachedImg(src: string, onload: () => void): HTMLImageElement {
+  let img = imgCache.get(src);
+  if (!img) {
+    img = new Image();
+    img.src = src;
+    imgCache.set(src, img);
+  }
+  if (!img.complete) img.addEventListener('load', onload, { once: true });
+  return img;
+}
+
+/**
  * 작전로 위 노드 자리(%). 왼쪽 아래에서 시작해 지그재그로 오른쪽 보스까지 간다.
  * 칸 수가 장당 5판에 맞춰져 있다 — `STAGES_PER_CHAPTER` 를 바꾸면 같이 고칠 것.
  */
@@ -153,6 +174,7 @@ export class CampaignScene implements Scene {
         if (c === this.chapter) b.classList.add('is-active');
         if (!open) b.classList.add('is-locked');
         if (done) b.classList.add('is-done');
+        b.style.setProperty('--tab-art', `url(${travelSrc(c + 1)})`);
         b.append(
           el('span', 'cmp-tab-no', String(c + 1).padStart(2, '0')),
           el('span', 'cmp-tab-name', names[c] ?? t().campaignChapter(c + 1)),
@@ -211,8 +233,17 @@ export class CampaignScene implements Scene {
       b.setAttribute('aria-pressed', String(st.n === this.selected));
 
       const face = el('span', 'cmp-node-face');
-      face.append(el('span', 'cmp-node-no', stageLabel(st.n)));
-      b.append(face);
+      const art = el('img', 'cmp-node-art');
+      art.alt = '';
+      art.src = boss
+        ? towerArt('p2', 'tower_citadel')
+        : cleared
+          ? towerArt('p1', 'tower_house')
+          : open
+            ? towerArt('p1', 'tower_hut')
+            : towerArt('neutral', 'tower_hut');
+      face.append(art);
+      b.append(face, el('span', 'cmp-node-no', stageLabel(st.n)));
       if (boss) b.append(el('span', 'cmp-node-tag', t().campaignBoss));
       if (cleared) b.append(el('span', 'cmp-node-check', '✓'));
       b.addEventListener('click', () => {
@@ -222,6 +253,7 @@ export class CampaignScene implements Scene {
       return b;
     });
 
+    this.track.style.setProperty('--track-art', `url(${travelSrc(this.chapter + 1)})`);
     const label = el('span', 'cmp-track-label', `CHAPTER ${String(this.chapter + 1).padStart(2, '0')}`);
     label.setAttribute('aria-hidden', 'true');
     this.track.replaceChildren(svg, label, ...nodes);
@@ -331,51 +363,51 @@ export class CampaignScene implements Scene {
     const sx = w / FIELD_W;
     const sy = h / FIELD_H;
 
-    // 격자와 중앙선 — 판 화면의 바닥과 같은 인상.
-    ctx.strokeStyle = 'rgba(125, 211, 252, 0.07)';
-    ctx.lineWidth = 1;
-    for (let gx = 0; gx <= w; gx += 14) {
-      ctx.beginPath();
-      ctx.moveTo(gx + 0.5, 0);
-      ctx.lineTo(gx + 0.5, h);
-      ctx.stroke();
+    // 바닥 = 그 장의 전장 그림, 타워 = 판에서 쓰는 그림 (점·격자 대신).
+    const redraw = () => {
+      if (canvas.isConnected) this.drawMap(canvas, st);
+    };
+    const chapter = chapterOf(st.n) + 1;
+    const ground = cachedImg(fieldSrc(chapter), redraw);
+    if (ground.complete && ground.naturalWidth) ctx.drawImage(ground, 0, 0, w, h);
+    else {
+      ctx.fillStyle = '#6fae3c';
+      ctx.fillRect(0, 0, w, h);
     }
-    for (let gy = 0; gy <= h; gy += 14) {
-      ctx.beginPath();
-      ctx.moveTo(0, gy + 0.5);
-      ctx.lineTo(w, gy + 0.5);
-      ctx.stroke();
-    }
-    ctx.setLineDash([3, 3]);
-    ctx.strokeStyle = 'rgba(125, 211, 252, 0.22)';
-    ctx.beginPath();
-    ctx.moveTo(0, h / 2);
-    ctx.lineTo(w, h / 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    const r = Math.max(6, Math.min(10, w / 13));
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(0, h / 2 - 0.5, w, 1);
+    const r = Math.max(7, Math.min(12, w / 11));
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `700 ${Math.round(r * 0.95)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-    for (const [x, y, owner, troops] of st.spots) {
+    ctx.font = `900 ${Math.round(r * 0.8)}px ui-sans-serif, system-ui, sans-serif`;
+    for (const [x, y, owner] of st.spots) {
+      const side = owner === 1 ? 'p1' : owner === 2 ? 'p2' : 'neutral';
+      const kind = owner === 2 ? st.botTower : 'tower_hut';
+      const img = cachedImg(towerArt(side, kind), redraw);
       const cx = x * sx;
       const cy = y * sy;
-      const color = owner === 1 ? COLOR_ME : owner === 2 ? COLOR_ENEMY : COLOR_NEUTRAL;
-      if (owner !== 0) {
-        ctx.fillStyle = owner === 1 ? 'rgba(63, 189, 241, 0.18)' : 'rgba(242, 85, 95, 0.18)';
+      if (img.complete && img.naturalWidth) {
+        const ih = r * 2.6;
+        const iw = (img.naturalWidth / img.naturalHeight) * ih;
+        ctx.drawImage(img, cx - iw / 2, cy - ih * 0.8, iw, ih);
+      } else {
+        ctx.fillStyle = owner === 1 ? COLOR_ME : owner === 2 ? COLOR_ENEMY : COLOR_NEUTRAL;
         ctx.beginPath();
-        ctx.arc(cx, cy, r * 1.7, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r * 0.7, 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.fillStyle = '#0b141d';
-      ctx.strokeStyle = color;
-      ctx.lineWidth = owner === 0 ? 1.5 : 2;
+    }
+    for (const [x, y, owner, troops] of st.spots) {
+      const cx = x * sx;
+      const cy = y * sy + r * 0.55;
+      ctx.fillStyle = 'rgba(14,39,66,0.85)';
       ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.arc(cx, cy, r * 0.62, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = owner === 1 ? COLOR_ME : owner === 2 ? COLOR_ENEMY : '#ffffff';
+      ctx.lineWidth = 1.5;
       ctx.stroke();
-      ctx.fillStyle = owner === 0 ? '#c3ced8' : '#f2f7fb';
+      ctx.fillStyle = '#fff';
       ctx.fillText(String(troops), cx, cy + 0.5);
     }
   }

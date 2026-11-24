@@ -4,11 +4,24 @@
 
 TypeScript + Canvas 2D, 렌더 라이브러리 없음. 배포는 [Verse8](https://verse8.io) 플랫폼.
 
+<p>
+<img src="docs/screenshots/01-lobby.png" width="200" alt="Lobby" />
+<img src="docs/screenshots/02-tank-support.png" width="200" alt="Tank support in stage 1-1" />
+<img src="docs/screenshots/04-tank-travel.png" width="200" alt="Tank travel between stages" />
+<img src="docs/screenshots/05-campaign-map.png" width="200" alt="Campaign map" />
+<img src="docs/screenshots/06-shop.png" width="200" alt="Shop" />
+</p>
+
 ```
-로비 ─┬─ 자동 매칭 ── 상대를 못 찾으면 조용히 봇전
+로비 ─┬─ PLAY ── 캠페인 다음 판 (20판·4장, 판 사이 전차 이동)
+      ├─ 빠른 매칭 ── 상대를 못 찾으면 조용히 봇전
       ├─ 친구랑 하기 ── 방 코드 4자리
-      └─ 상점 ── 생산 속도 강화 · 유닛 5종
+      ├─ 상점 ── 타워(생산 속도) · 유닛(체력·공격) 단계
+      └─ 출석 ── 7일 출석판 (서버 지급)
 ```
+
+- **첫 판(1-1)은 바로 시작한다.** 닉네임은 자동, 판 중반에 전차 지원군이 와서 본진 병력 +30·적 본진 포격.
+- **그림**: 밝은 광택 카툰(2026-11-24 개편) — Codex·Verse8 이미지 생성, 효과음·배경음은 PixelLab.
 
 - **1v1 실시간.** 결정론적 락스텝 — 양쪽이 같은 시드로 같은 시뮬레이션을 돌리고
   서버는 명령만 중계한다. 매 틱 상태 해시를 비교해 데싱크를 잡는다.
